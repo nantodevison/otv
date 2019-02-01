@@ -22,21 +22,31 @@ ligne_traitee_global=np.empty(1,dtype='<U24')
 def recup_troncon_elementaire (id_ign_ligne):
     global ligne_traitee_global
     ligne_traitee_global=np.insert(ligne_traitee_global,1,id_ign_ligne)
+    df_ligne=df.loc[id_ign_ligne]
 
-    if df.loc[id_ign_ligne,'nb_intrsct_src']==2 : #cas simple de la ligne qui en touche qu'uen seule autre du dote source
-        df_touches_source=df.loc[(~df.index.isin(ligne_traitee_global)) & ((df.loc[:,'source']==df.loc[id_ign_ligne,'source']) | (df.loc[:,'target']==df.loc[id_ign_ligne,'source']))]#recuperer le troncon qui ouche le point d'origine
-        if len(df_touches_source>0):
+    if df_ligne.loc['nb_intrsct_src']==2 : #cas simple de la ligne qui en touche qu'uen seule autre du dote source
+        df_touches_source=df.loc[(~df.index.isin(ligne_traitee_global)) & ((df.loc[:,'source']==df_ligne.loc['source']) | (df.loc[:,'target']==df_ligne.loc['source']))]#recuperer le troncon qui ouche le point d'origine
+        if len(df_touches_source>0): #car la seule voie touchee peut déjà etre dans les lignes traitees
             id_ign_suivant=df_touches_source.index.tolist()[0]
             print (ligne_traitee_global,id_ign_suivant)#il faut ajouter une condition de sortie de la boucle pour qu'iil ne tourne pas en rond sur les 2 même lignes
             yield from recup_troncon_elementaire(id_ign_suivant)
     
-    if df.loc[id_ign_ligne,'nb_intrsct_tgt']==2 : #cas simple de la ligne qui en touche qu'uen seule autre du cote target
-        df_touches_target=df.loc[(~df.index.isin(ligne_traitee_global)) & ((df.loc[:,'source']==df.loc[id_ign_ligne,'target']) | (df.loc[:,'target']==df.loc[id_ign_ligne,'target']))]#recuperer le troncon qui ouche le point d'origine
-        if len(df_touches_target>0):
+    if df_ligne.loc['nb_intrsct_tgt']==2 : #cas simple de la ligne qui en touche qu'uen seule autre du cote target
+        df_touches_target=df.loc[(~df.index.isin(ligne_traitee_global)) & ((df.loc[:,'source']==df_ligne.loc['target']) | (df.loc[:,'target']==df_ligne.loc['target']))]#recuperer le troncon qui ouche le point d'origine
+        if len(df_touches_target>0): #car la seule voie touchee peut déjà etre dans les lignes traitees
             id_ign_suivant=df_touches_target.index.tolist()[0]
             print (ligne_traitee_global,id_ign_suivant)#il faut ajouter une condition de sortie de la boucle pour qu'iil ne tourne pas en rond sur les 2 même lignes
             yield from recup_troncon_elementaire(id_ign_suivant)        
-    
+    elif df_ligne.loc['nb_intrsct_tgt']==3 : #cas plus complexe d'une ligne a un carrefour. soit c'est la meme voie qui se divise, soit ce sont d'autre voie qui touche
+        df_touches_target=df.loc[(~df.index.isin(ligne_traitee_global)) & ((df.loc[:,'source']==df_ligne.loc['target']) | (df.loc[:,'target']==df_ligne.loc['target']))]#recuperer le troncon qui ouche le point d'origine
+        if len(df_touches_target>0): #si les voies touchees n'on pas ete traiees
+            if ((df_ligne.loc['numero']==df_touches_target['numero']).all()==1 and 
+                 ((df_ligne.loc['nature']=='Route à 1 chaussée' and ('Route à 2 chaussées'==df_touches_target['nature']).all())
+                   or(df_ligne.loc['nature']=='Route à 2 chaussée' and 
+                      df_touches_target['nature'].isin(['Route à 1 chaussée','Route à 2 chaussées'])))):# !! on ne compare que à numero, dc pb en urbain si les 2 lignes qui touchent ont le mm numero, et que la ligne de voie etait decrite par 1 ligne puis par 2
+                for id_ign_suivant in df_touches_target.index.tolist():
+                    print (ligne_traitee_global,id_ign_suivant)#il faut ajouter une condition de sortie de la boucle pour qu'iil ne tourne pas en rond sur les 2 même lignes
+                    yield from recup_troncon_elementaire(id_ign_suivant)
     
     yield id_ign_ligne
 
