@@ -17,15 +17,18 @@ df.set_index('id_ign',inplace=True) #passer l'id_ign commme index ; necessaire s
 
 
 #stockge des données lignes traitees dans une numpy array (uen focntion géératrice issue de yield marcherait bien aussi
-ligne_traitee=np.array(np.ones(len(df),dtype='<U24'))
+ligne_traitee_global=np.empty(1,dtype='<U24')
 
-def recup_troncon_elementaire (id_ign_ligne, i=0):
-    ligne_traitee[i]=id_ign_ligne
-    i+=1
-    if df.loc[id_ign_ligne,'nb_intrsct_src']==2 : 
-        id_ign_suivant=df.loc[(~df.index.isin(ligne_traitee)) & ((df.loc[:,'source']==df.loc[id_ign_ligne,'source']) | (df.loc[:,'target']==df.loc[id_ign_ligne,'source']))].index.tolist()[0]#recuperer le troncon qui ouche le point d'origine
-        print (ligne_traitee[i],id_ign_suivant,i)#il faut ajouter une condition de sortie de la boucle pour qu'iil ne tourne pas en rond sur les 2 même lignes
-        yield from recup_troncon_elementaire(id_ign_suivant,i)
+def recup_troncon_elementaire (id_ign_ligne):
+    global ligne_traitee_global
+    ligne_traitee_global=np.insert(ligne_traitee_global,1,id_ign_ligne)
+
+    if df.loc[id_ign_ligne,'nb_intrsct_src']==2 : #cas simple de la ligne qui en touche qu'uen seule autre
+        df_touches_source=df.loc[(~df.index.isin(ligne_traitee_global)) & ((df.loc[:,'source']==df.loc[id_ign_ligne,'source']) | (df.loc[:,'target']==df.loc[id_ign_ligne,'source']))]#recuperer le troncon qui ouche le point d'origine
+        if len(df_touches_source>0):
+            id_ign_suivant=df_touches_source.index.tolist()[0]
+            print (ligne_traitee_global,id_ign_suivant)#il faut ajouter une condition de sortie de la boucle pour qu'iil ne tourne pas en rond sur les 2 même lignes
+            yield from recup_troncon_elementaire(id_ign_suivant)
     yield id_ign_ligne
 
 def recuperer_troncon(id_ign_ligne,ligne_troncon=[]):
