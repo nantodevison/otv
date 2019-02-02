@@ -73,4 +73,5 @@ def recuperer_troncon(id_ign_ligne,ligne_troncon=[]):
     yield(id_ign_ligne)
 
 if __name__=='__main__' : 
-    recup_troncon_elementaire ('TRONROUT0000000033007539', i=0)
+    for i in recup_troncon_elementaire ('TRONROUT0000000033007539', i=0) :
+        print (i)
