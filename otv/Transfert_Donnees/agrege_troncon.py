@@ -20,22 +20,19 @@ ligne_traitee_global = np.empty(1, dtype='<U24')
 
 
 def recup_troncon_elementaire (id_ign_ligne):
-    
-    #♠preparation des donnees
+    #preparation des donnees
     global ligne_traitee_global
     ligne_traitee_global = np.insert(ligne_traitee_global, 1, id_ign_ligne)
     df_ligne = df.loc[id_ign_ligne]
     geom_ligne=df_ligne['geom'][0]#car la bdtopo n'a que des lignes mais shapely les voit commes des multi
     df2_chaussees=df.loc[df.loc[:,'nature'].isin(['Route à 2 chaussées','Quasi-autoroute','Autoroute'])] #isoler les troncon de voies decrits par 2 lignes
-
     # cas simple de la ligne qui en touche qu'uen seule autre du cote source
     if df_ligne.loc['nb_intrsct_src'] == 2 : 
         df_touches_source = df.loc[(~df.index.isin(ligne_traitee_global)) & ((df.loc[:, 'source'] == df_ligne.loc['source']) | (df.loc[:, 'target'] == df_ligne.loc['source']))]  # recuperer le troncon qui ouche le point d'origine
         if len(df_touches_source) > 0:  # car la seule voie touchee peut déjà etre dans les lignes traitees
             id_ign_suivant = df_touches_source.index.tolist()[0]
             print (f'cas source nb lign = 2 ; liste totale traite {ligne_traitee_global}, id en cours : {id_ign_suivant}')  # il faut ajouter une condition de sortie de la boucle pour qu'iil ne tourne pas en rond sur les 2 même lignes
-            yield from recup_troncon_elementaire(id_ign_suivant)
-        
+            yield from recup_troncon_elementaire(id_ign_suivant)    
     #cas simple de la ligne qui en touche qu'uen seule autre du cote target
     if df_ligne.loc['nb_intrsct_tgt'] == 2 :   
         df_touches_target = df.loc[(~df.index.isin(ligne_traitee_global)) & ((df.loc[:, 'source'] == df_ligne.loc['target']) | (df.loc[:, 'target'] == df_ligne.loc['target']))]  # recuperer le troncon qui ouche le point d'origine
@@ -59,13 +56,15 @@ def recup_troncon_elementaire (id_ign_ligne):
     if df_ligne.loc['nature'] in ['Route à 2 chaussées','Quasi-autoroute','Autoroute']  :
         buffer_parralleles=geom_ligne.parallel_offset(df_ligne['largeur']+3, 'left').buffer(5).union(geom_ligne.parallel_offset(df_ligne['largeur']+3, 'right').buffer(5))
         ligne_dans_buffer=df2_chaussees.loc[df.loc[:, 'geom'].within(buffer_parralleles)]
-        if len(ligne_dans_buffer)>0 : #si une ligne est contenue, on part sur celle là
+        if len(ligne_dans_buffer)>0 and ~ligne_dans_buffer.index.isin(ligne_traitee_global) : #si une ligne est contenue, on part sur celle là
+            print(f'ligne {df_ligne} dans buffer')
             yield from recup_troncon_elementaire(ligne_dans_buffer.index.tolist()[0])
         else : #sinon on prend les lignes qui intersctent
             lignes_intersect_buffer=df2_chaussees.loc[df.loc[:, 'geom'].intersects(buffer_parralleles)]
-            lignes_intersect_buffer=lignes_intersect_buffer.loc[lignes_intersect_buffer.loc[:,'numero']==df_ligne.loc['numero']]
-            yield from recup_troncon_elementaire(lignes_intersect_buffer.index.tolist()[0])
-    
+            print('intersectent :',lignes_intersect_buffer)
+            lignes_intersect_buffer=lignes_intersect_buffer.loc[(~lignes_intersect_buffer.index.isin(ligne_traitee_global)) & lignes_intersect_buffer.loc[:,'numero']==df_ligne['numero']]
+            if len(lignes_intersect_buffer)>0 : #si une ligne est contenu et pa encore traitee, on part sur celle làprint(lignes_intersect_buffer)
+                yield from recup_troncon_elementaire(lignes_intersect_buffer.index.tolist()[0])
     yield id_ign_ligne
 
 
