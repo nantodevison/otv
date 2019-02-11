@@ -73,12 +73,7 @@ def recup_troncon_elementaire (id_ign_ligne):
     #maintenant que toute les lignes qui se touchent on ete parcourue, on regarde s'il faut chercher des lignes qui ne touchent pas (voie decrite par 2 ligne)
     if df_ligne.loc['nature'] in ['Route à 2 chaussées','Quasi-autoroute','Autoroute']  :
         linear_ring_lgn_paralel_ccw=LinearRing(geom_ligne).is_ccw #nous dit si a ligne es orientee counter clok wise
-        if (linear_ring_lgn_paralel_ccw and sens_ligne=='Direct') or (not linear_ring_lgn_paralel_ccw and sens_ligne=='Inverse') :
-            buffer_parralleles=geom_ligne.parallel_offset(df_ligne['largeur']+3, 'left').buffer(5)
-        elif (linear_ring_lgn_paralel_ccw and sens_ligne=='Inverse') or (not linear_ring_lgn_paralel_ccw and sens_ligne=='Direct') :
-            buffer_parralleles=geom_ligne.parallel_offset(df_ligne['largeur']+3, 'right').buffer(5)
-        else :
-            buffer_parralleles=geom_ligne.parallel_offset(df_ligne['largeur']+3, 'left').buffer(5).union(geom_ligne.parallel_offset(df_ligne['largeur']+3, 'right').buffer(5)) #on fat un buffer des deux cote
+        buffer_parralleles=geom_ligne.parallel_offset(df_ligne['largeur']+3, 'left').buffer(5).union(geom_ligne.parallel_offset(df_ligne['largeur']+3, 'right').buffer(5)) #on fat un buffer des deux cote
         buff_xmin, buff_ymin, buff_xmax, buff_ymax=buffer_parralleles.bounds
         lignes_possibles=df2_chaussees.cx[buff_xmin:buff_xmax, buff_ymin:buff_ymax]
         ligne_dans_buffer=lignes_possibles.loc[lignes_possibles.loc[:, 'geom'].within(buffer_parralleles)]
