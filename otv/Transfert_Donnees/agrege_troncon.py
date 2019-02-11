@@ -7,7 +7,7 @@ import matplotlib
 import geopandas as gp
 import numpy as np
 from Martin_Perso import Connexion_Transfert as ct
-from shapely.geometry import Point
+from shapely.geometry import Point, LinearRing
 
 # ouvrir connexion, recuperer donnees
 with ct.ConnexionBdd('local_otv') as c : 
@@ -31,6 +31,7 @@ def recup_troncon_elementaire (id_ign_ligne):
     #donnees de la ligne
     df_ligne = df.loc[id_ign_ligne]
     geom_ligne=df_ligne['geom'][0]#car la bdtopo n'a que des lignes mais shapely les voit commes des multi
+    sens_ligne=df_ligne['sens']
     
     # cas simple de la ligne qui en touche qu'uen seule autre du cote source
     if df_ligne.loc['nb_intrsct_src'] == 2 : 
@@ -71,7 +72,13 @@ def recup_troncon_elementaire (id_ign_ligne):
     #CE QU IL FAUDRAIT C'EST NE FAIRE LE BUFFER QUE POUR LA LIGNE SOURCE : par exmeple : definir buffer_parralle qu esi buffer parralle n'est pas dans locals() (à verifier)
     #maintenant que toute les lignes qui se touchent on ete parcourue, on regarde s'il faut chercher des lignes qui ne touchent pas (voie decrite par 2 ligne)
     if df_ligne.loc['nature'] in ['Route à 2 chaussées','Quasi-autoroute','Autoroute']  :
-        buffer_parralleles=geom_ligne.parallel_offset(df_ligne['largeur']+3, 'left').buffer(5).union(geom_ligne.parallel_offset(df_ligne['largeur']+3, 'right').buffer(5))
+        linear_ring_lgn_paralel_ccw=LinearRing(geom_ligne).is_ccw #nous dit si a ligne es orientee counter clok wise
+        if (linear_ring_lgn_paralel_ccw and sens_ligne=='Direct') or (not linear_ring_lgn_paralel_ccw and sens_ligne=='Inverse') :
+            buffer_parralleles=geom_ligne.parallel_offset(df_ligne['largeur']+3, 'left').buffer(5)
+        elif (linear_ring_lgn_paralel_ccw and sens_ligne=='Inverse') or (not linear_ring_lgn_paralel_ccw and sens_ligne=='Direct') :
+            buffer_parralleles=geom_ligne.parallel_offset(df_ligne['largeur']+3, 'right').buffer(5)
+        else :
+            buffer_parralleles=geom_ligne.parallel_offset(df_ligne['largeur']+3, 'left').buffer(5).union(geom_ligne.parallel_offset(df_ligne['largeur']+3, 'right').buffer(5)) #on fat un buffer des deux cote
         buff_xmin, buff_ymin, buff_xmax, buff_ymax=buffer_parralleles.bounds
         lignes_possibles=df2_chaussees.cx[buff_xmin:buff_xmax, buff_ymin:buff_ymax]
         ligne_dans_buffer=lignes_possibles.loc[lignes_possibles.loc[:, 'geom'].within(buffer_parralleles)]
