@@ -113,18 +113,18 @@ def affecter_troncon(id_ign_ligne):
     """
     Grouper les troncon par numero arbitraire
     baser sur recup_troncon_elementaire et recup_troncon_parallele
-    en entree : id d'une ligne -> str
+    en entree : liste d'id de ligne -> lite de str
     """
-    
-    #les variables liées à la ligne
-    df_ligne = df.loc[id_ign_ligne[0]]
-    
     #appel du dico de resultat
     global dico_tronc_elem
     
     #pour chaque ligne on va creer un id dans le dico, avec les tronon associes
     for indice, ligne in enumerate(id_ign_ligne) :
+        
+        #les variables liées à la ligne
+        df_ligne = df.loc[ligne]
         print(ligne)
+        
         #recuperation ds troncons connexes en cas simple
         for troncon in recup_troncon_elementaire(ligne):
             if indice in dico_tronc_elem.keys():
@@ -145,5 +145,5 @@ def affecter_troncon(id_ign_ligne):
 
 
 if __name__ == '__main__' : 
-    affecter_troncon (['TRONROUT0000000202559704'])
+    affecter_troncon(['TRONROUT0000000202559704','TRONROUT0000000202559685'])
     print (dico_tronc_elem)
