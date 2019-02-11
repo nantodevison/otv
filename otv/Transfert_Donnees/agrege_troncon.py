@@ -72,7 +72,6 @@ def recup_troncon_elementaire (id_ign_ligne):
     #CE QU IL FAUDRAIT C'EST NE FAIRE LE BUFFER QUE POUR LA LIGNE SOURCE : par exmeple : definir buffer_parralle qu esi buffer parralle n'est pas dans locals() (à verifier)
     #maintenant que toute les lignes qui se touchent on ete parcourue, on regarde s'il faut chercher des lignes qui ne touchent pas (voie decrite par 2 ligne)
     if df_ligne.loc['nature'] in ['Route à 2 chaussées','Quasi-autoroute','Autoroute']  :
-        linear_ring_lgn_paralel_ccw=LinearRing(geom_ligne).is_ccw #nous dit si a ligne es orientee counter clok wise
         buffer_parralleles=geom_ligne.parallel_offset(df_ligne['largeur']+3, 'left').buffer(5).union(geom_ligne.parallel_offset(df_ligne['largeur']+3, 'right').buffer(5)) #on fat un buffer des deux cote
         buff_xmin, buff_ymin, buff_xmax, buff_ymax=buffer_parralleles.bounds
         lignes_possibles=df2_chaussees.cx[buff_xmin:buff_xmax, buff_ymin:buff_ymax]
