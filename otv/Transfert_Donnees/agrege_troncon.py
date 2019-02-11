@@ -13,29 +13,46 @@ from shapely.geometry import Point
 with ct.ConnexionBdd('local_otv') as c : 
     df = gp.read_postgis("select t.*, v1.cnt nb_intrsct_src, v2.cnt as nb_intrsct_tgt from referentiel.troncon_route_bdt17_ed15_l t left join referentiel.troncon_route_bdt17_ed15_l_vertices_pgr v1 on t.\"source\"=v1.id left join referentiel.troncon_route_bdt17_ed15_l_vertices_pgr v2  on t.target=v2.id", c.connexionPsy)
 
+#donnees generale du jdd
 df.set_index('id_ign', inplace=True)  # passer l'id_ign commme index ; necessaire sinon pb avec geometrie vu comme texte
+df2_chaussees=df.loc[df.loc[:,'nature'].isin(['Route à 2 chaussées','Quasi-autoroute','Autoroute'])] #isoler les troncon de voies decrits par 2 lignes
 
 # stockge des données lignes traitees dans une numpy array (uen focntion géératrice issue de yield marcherait bien aussi
 ligne_traitee_global = np.empty(1, dtype='<U24')
 
 
+
+
 def recup_troncon_elementaire (id_ign_ligne):
     #preparation des donnees
-    global ligne_traitee_global
+    global ligne_traitee_global, df2_chaussees #recuperer la liste des troncons traites et celle des voies representees par 2 lignes
     ligne_traitee_global = np.insert(ligne_traitee_global, 1, id_ign_ligne)
+    
+    #donnees de la ligne
     df_ligne = df.loc[id_ign_ligne]
     geom_ligne=df_ligne['geom'][0]#car la bdtopo n'a que des lignes mais shapely les voit commes des multi
-    df2_chaussees=df.loc[df.loc[:,'nature'].isin(['Route à 2 chaussées','Quasi-autoroute','Autoroute'])] #isoler les troncon de voies decrits par 2 lignes
+    
     # cas simple de la ligne qui en touche qu'uen seule autre du cote source
     if df_ligne.loc['nb_intrsct_src'] == 2 : 
-        df_touches_source = df.loc[(~df.index.isin(ligne_traitee_global)) & ((df.loc[:, 'source'] == df_ligne.loc['source']) | (df.loc[:, 'target'] == df_ligne.loc['source']))]  # recuperer le troncon qui ouche le point d'origine
+        df_touches_source = df.loc[(~df.index.isin(ligne_traitee_global)) & ((df.loc[:, 'source'] == df_ligne.loc['source']) | (df.loc[:, 'target'] == df_ligne.loc['source']))]  # recuperer le troncon qui ouche le point d'origine et qui n'est pas deja traite
         if len(df_touches_source) > 0:  # car la seule voie touchee peut déjà etre dans les lignes traitees
             id_ign_suivant = df_touches_source.index.tolist()[0]
             print (f'cas source nb lign = 2 ; liste totale traite {ligne_traitee_global}, id en cours : {id_ign_suivant}')  # il faut ajouter une condition de sortie de la boucle pour qu'iil ne tourne pas en rond sur les 2 même lignes
-            yield from recup_troncon_elementaire(id_ign_suivant)    
+            yield from recup_troncon_elementaire(id_ign_suivant)  
+    elif df_ligne.loc['nb_intrsct_src'] == 3 :  # cas plus complexe d'une ligne a un carrefour. soit c'est la meme voie qui se divise, soit ce sont d'autre voie qui touche
+        df_touches_source = df.loc[(~df.index.isin(ligne_traitee_global)) & ((df.loc[:, 'source'] == df_ligne.loc['source']) | (df.loc[:, 'target'] == df_ligne.loc['source']))]  # recuperer le troncon qui ouche le point d'origine
+        if len(df_touches_source) > 0:  # si les voies touchees n'on pas ete traiees
+            if ((df_ligne.loc['numero'] == df_touches_source['numero']).all() == 1 and 
+                 ((df_ligne.loc['nature'] == 'Route à 1 chaussée' and ('Route à 2 chaussées' == df_touches_source['nature']).all())
+                   or(df_ligne.loc['nature'] == 'Route à 2 chaussée' and 
+                      df_touches_source['nature'].isin(['Route à 1 chaussée', 'Route à 2 chaussées'])))):  # !! on ne compare que à numero, dc pb en urbain si les 2 lignes qui touchent ont le mm numero, et que la ligne de voie etait decrite par 1 ligne puis par 2
+                for id_ign_suivant in df_touches_source.index.tolist():
+                    print (f'cas target nb lign = 3 ;  id en cours : {id_ign_suivant}')  # il faut ajouter une condition de sortie de la boucle pour qu'iil ne tourne pas en rond sur les 2 même lignes
+                    yield from recup_troncon_elementaire(id_ign_suivant)  
+   
     #cas simple de la ligne qui en touche qu'uen seule autre du cote target
     if df_ligne.loc['nb_intrsct_tgt'] == 2 :   
-        df_touches_target = df.loc[(~df.index.isin(ligne_traitee_global)) & ((df.loc[:, 'source'] == df_ligne.loc['target']) | (df.loc[:, 'target'] == df_ligne.loc['target']))]  # recuperer le troncon qui ouche le point d'origine
+        df_touches_target = df.loc[(~df.index.isin(ligne_traitee_global)) & ((df.loc[:, 'source'] == df_ligne.loc['target']) | (df.loc[:, 'target'] == df_ligne.loc['target']))]  # recuperer le troncon qui ouche le point d'origine  et qui n'est pas deja traite
         if len(df_touches_target) > 0:  # car la seule voie touchee peut déjà etre dans les lignes traitees
             id_ign_suivant = df_touches_target.index.tolist()[0]
             print (f'cas target nb lign = 2 ; id en cours : {id_ign_suivant}')  # il faut ajouter une condition de sortie de la boucle pour qu'iil ne tourne pas en rond sur les 2 même lignes
