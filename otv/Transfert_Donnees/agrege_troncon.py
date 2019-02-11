@@ -26,6 +26,7 @@ def recup_troncon_elementaire (id_ign_ligne):
     ligne_traitee_global = np.insert(ligne_traitee_global, 1, id_ign_ligne)
     df_ligne = df.loc[id_ign_ligne]
     geom_ligne=df_ligne['geom'][0]#car la bdtopo n'a que des lignes mais shapely les voit commes des multi
+    df2_chaussees=df.loc[df.loc[:,'nature'].isin(['Route à 2 chaussées','Quasi-autoroute','Autoroute'])] #isoler les troncon de voies decrits par 2 lignes
 
     # cas simple de la ligne qui en touche qu'uen seule autre du cote source
     if df_ligne.loc['nb_intrsct_src'] == 2 : 
@@ -55,14 +56,14 @@ def recup_troncon_elementaire (id_ign_ligne):
     #DANS LA PARTIE EN DESSOUS IL MANQUE UN MOYEN DE NE PAS FAIRE LE BUFFER A CHAQUE FOIS
     #CE QU IL FAUDRAIT C'EST NE FAIRE LE BUFFER QUE POUR LA LIGNE SOURCE : par exmeple : definir buffer_parralle qu esi buffer parralle n'est pas dans locals() (à verifier)
     #maintenant que toute les lignes qui se touchent on ete parcourue, on regarde s'il faut chercher des lignes qui ne touchent pas (voie decrite par 2 ligne)
-    if df_ligne.loc['nature'].isin(['Route à 2 chaussées','Quasi-autoroute','Autoroute'])  :
+    if df_ligne.loc['nature'] in ['Route à 2 chaussées','Quasi-autoroute','Autoroute']  :
         buffer_parralleles=geom_ligne.parallel_offset(df_ligne['largeur']+3, 'left').buffer(5).union(geom_ligne.parallel_offset(df_ligne['largeur']+3, 'right').buffer(5))
-        ligne_dans_buffer=df.loc[df.loc[:, 'geom'].within(buffer_parralleles)]
+        ligne_dans_buffer=df2_chaussees.loc[df.loc[:, 'geom'].within(buffer_parralleles)]
         if len(ligne_dans_buffer)>0 : #si une ligne est contenue, on part sur celle là
             yield from recup_troncon_elementaire(ligne_dans_buffer.index.tolist()[0])
         else : #sinon on prend les lignes qui intersctent
-            lignes_intersect_buffer=df.loc[df.loc[:, 'geom'].intersects(buffer_parralleles)]
-            lignes_intersect_buffer=lignes_intersect_buffer.loc[lignes_intersect_buffer.loc[:,'numero']==df_ligne.loc['numero']] and lignes_intersect_buffer.loc['nature'].isin(['Route à 2 chaussées','Quasi-autoroute','Autoroute'])
+            lignes_intersect_buffer=df2_chaussees.loc[df.loc[:, 'geom'].intersects(buffer_parralleles)]
+            lignes_intersect_buffer=lignes_intersect_buffer.loc[lignes_intersect_buffer.loc[:,'numero']==df_ligne.loc['numero']]
             yield from recup_troncon_elementaire(lignes_intersect_buffer.index.tolist()[0])
     
     yield id_ign_ligne
