@@ -9,6 +9,7 @@ Module de creation de troncon homogene
 import matplotlib
 import geopandas as gp
 import numpy as np
+from datetime import datetime
 from Martin_Perso import Connexion_Transfert as ct
 from shapely.wkt import loads
 from Martin_Perso import Outils
@@ -157,11 +158,11 @@ def affecter_troncon(df):
     
     #pour chaque ligne on va creer un id dans le dico, avec les tronon associes
     for indice, ligne in enumerate(liste_ligne) :
-    
-        #les variables liées à la ligne
-        print(ligne)
-        
+              
         if ligne not in ligne_traitee_global : 
+                    #message d'avancement
+            if indice % 1000 == 0 :
+                print (f"{indice}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')}")
             #recuperation ds troncons connexes en cas simple
             for troncon in recup_troncon_elementaire(ligne):
                 if indice in dico_tronc_elem.keys():
