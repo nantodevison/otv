@@ -41,9 +41,6 @@ def recup_troncon_elementaire (id_ign_ligne, ligne_traite_troncon=[]):
                 liste des ligne traitees dans le cadre de ce troncon elementaire -> liste de str
     en sortie : id de la ligne suivante -> str
     """
-    #preparation des donnees
-    global ligne_traitee_global, df2_chaussees #recuperer la liste des troncons traites et celle des voies representees par 2 lignes
-    ligne_traitee_global = np.insert(ligne_traitee_global, 1, id_ign_ligne)
     
     #donnees de la ligne
     df_ligne = df.loc[id_ign_ligne]
@@ -175,15 +172,19 @@ def affecter_troncon(df):
     #pour chaque ligne on va creer un id dans le dico, avec les tronon associes
     for indice, ligne in enumerate(liste_ligne) :
 
-        if ligne not in ligne_traitee_global : 
-            
+        if ligne in ligne_traitee_global :
+            pass 
+        else:    
             #message d'avancement
             #debut_traitement_ligne=datetime.now()
             if indice % 1000 == 0 :
                 print (f"{indice}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)}")
             #recuperation ds troncons connexes en cas simple
             for troncon in recup_troncon_elementaire(ligne):
-                df[troncon,'tronc_elem']=indice
+                if indice in dico_tronc_elem.keys():
+                    dico_tronc_elem[indice].append(troncon)
+                else :
+                    dico_tronc_elem[indice]=[troncon]
             
             #recuperation des toncons connexes si 2 lignes pour une voie
             if ligne in df2_chaussees  :
@@ -194,7 +195,10 @@ def affecter_troncon(df):
                     continue
                 
                 for troncon in recup_troncon_elementaire(ligne_parrallele):
-                    df[troncon,'tronc_elem']=indice
+                    if indice in dico_tronc_elem.keys():
+                        dico_tronc_elem[indice].append(troncon)
+                    else :
+                        dico_tronc_elem[indice]=[troncon]
             
             """            
             fin_traitement_ligne=datetime.now()
