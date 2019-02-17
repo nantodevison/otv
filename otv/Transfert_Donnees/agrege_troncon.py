@@ -172,27 +172,18 @@ def affecter_troncon(df):
     #liste des des lignes
     liste_ligne=df.index.tolist()
     
-    #pour stat de durre de traitement
-    liste_durree=[]
-    
     #pour chaque ligne on va creer un id dans le dico, avec les tronon associes
     for indice, ligne in enumerate(liste_ligne) :
 
         if ligne not in ligne_traitee_global : 
             
             #message d'avancement
-            debut_traitement_ligne=int(datetime.now().strftime('%f')) 
+            #debut_traitement_ligne=datetime.now()
             if indice % 1000 == 0 :
-                if liste_durree:
-                    duree_moyenne=statistics.mean(liste_durree)
-                    print (f"{indice}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)} \n duree moyenne d'une ligne : {duree_moyenne}")
-                liste_durree=[]
+                print (f"{indice}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)}")
             #recuperation ds troncons connexes en cas simple
             for troncon in recup_troncon_elementaire(ligne):
-                if indice in dico_tronc_elem.keys():
-                    dico_tronc_elem[indice].append(troncon)
-                else :
-                    dico_tronc_elem[indice]=[troncon]
+                df[troncon,'tronc_elem']=indice
             
             #recuperation des toncons connexes si 2 lignes pour une voie
             if ligne in df2_chaussees  :
@@ -203,15 +194,12 @@ def affecter_troncon(df):
                     continue
                 
                 for troncon in recup_troncon_elementaire(ligne_parrallele):
-                    if indice in dico_tronc_elem.keys():
-                        dico_tronc_elem[indice].append(troncon)
-                    else :
-                        dico_tronc_elem[indice]=[troncon]
+                    df[troncon,'tronc_elem']=indice
             
-                        
-            fin_traitement_ligne=int(datetime.now().strftime('%f'))  
+            """            
+            fin_traitement_ligne=datetime.now()
             durree=fin_traitement_ligne-debut_traitement_ligne
-            liste_durree.append(durree)
+            print(f'ligne : {ligne} duree : {durree}')"""
 
 if __name__ == '__main__' : 
     #affecter_troncon(['TRONROUT0000000202559719'])
