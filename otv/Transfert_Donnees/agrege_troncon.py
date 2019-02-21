@@ -7,7 +7,6 @@ Module de creation de troncon homogene
 
 '''
 import matplotlib
-import statistics
 import geopandas as gp
 import numpy as np
 from datetime import datetime
@@ -45,6 +44,8 @@ def recup_troncon_elementaire (id_ign_ligne, ligne_traite_troncon=[]):
     #donnees de la ligne
     df_ligne = df.loc[id_ign_ligne]
     nature=df_ligne.loc['nature']
+    #print('ligne_traite_troncon : ',ligne_traite_troncon)
+    ligne_traite_troncon.append(id_ign_ligne)
     
     # cas simple de la ligne qui en touche qu'uen seule autre du cote source
     if df_ligne.loc['nb_intrsct_src'] == 2 : 
@@ -54,7 +55,7 @@ def recup_troncon_elementaire (id_ign_ligne, ligne_traite_troncon=[]):
         if len(df_touches_source) > 0:  # car la seule voie touchee peut déjà etre dans les lignes traitees
             id_ign_suivant = df_touches_source.index.tolist()[0]
             #print (f'fin traitement cas = 2 ; src : apres test isin : {datetime.now()}')
-            ligne_traite_troncon.append(id_ign_ligne) #liste des lignes deja traitees
+            #ligne_traite_troncon+=[id_ign_ligne,id_ign_suivant] #liste des lignes deja traitees
             yield from recup_troncon_elementaire(id_ign_suivant, ligne_traite_troncon) #on boucle pour chercher la suivante 
     elif df_ligne.loc['nb_intrsct_src'] == 3 :  # cas plus complexe d'une ligne a un carrefour. soit c'est la meme voie qui se divise, soit ce sont d'autre voie qui touche
         #print (f' cas = 3 ; src : avant test isin : {datetime.now()}')
@@ -66,7 +67,7 @@ def recup_troncon_elementaire (id_ign_ligne, ligne_traite_troncon=[]):
                    or(nature == 'Route à 2 chaussée' and df_touches_source['nature'].isin(['Route à 1 chaussée', 'Route à 2 chaussées']))):  # !!  ou une route qui était en deux et qui passe à 1
                     for id_ign_suivant in df_touches_source.index.tolist():
                         #print (f'fin traitement cas = 3 mm numero ; src : apres test isin : {datetime.now()}')
-                        ligne_traite_troncon.append(id_ign_ligne)
+                        #ligne_traite_troncon+=[id_ign_ligne,id_ign_suivant]
                         yield from recup_troncon_elementaire(id_ign_suivant, ligne_traite_troncon)  
             else: #si toute les voies n'ont pas le même nom
                 if nature in ['Autoroute', 'Quasi-autoroute'] :
@@ -83,7 +84,7 @@ def recup_troncon_elementaire (id_ign_ligne, ligne_traite_troncon=[]):
                         if 55 < angle < 135 :
                             id_ign_suivant=df_touches_source.loc[~df.id.isin(df_ligne_autre.id)].index.values.tolist()[0]
                             #print (f'fin traitement cas = 3 ; src : apres test isin : {datetime.now()}')
-                            ligne_traite_troncon.append(id_ign_ligne)
+                            #ligne_traite_troncon+=[id_ign_ligne,id_ign_suivant]
                             yield from recup_troncon_elementaire(id_ign_suivant, ligne_traite_troncon)    
 
     #cas simple de la ligne qui en touche qu'uen seule autre du cote target
@@ -94,7 +95,7 @@ def recup_troncon_elementaire (id_ign_ligne, ligne_traite_troncon=[]):
         if len(df_touches_target) > 0:  # car la seule voie touchee peut déjà etre dans les lignes traitees
             id_ign_suivant = df_touches_target.index.tolist()[0]
             #print (f'fin traitement cas = 2 ; tgt : apres test isin : {datetime.now()}')
-            ligne_traite_troncon.append(id_ign_ligne)
+            #ligne_traite_troncon+=[id_ign_ligne,id_ign_suivant]
             yield from recup_troncon_elementaire(id_ign_suivant, ligne_traite_troncon)        
     # cas plus complexe d'une ligne a un carrefour de 3 lignes
     elif df_ligne.loc['nb_intrsct_tgt'] == 3 :
@@ -107,7 +108,7 @@ def recup_troncon_elementaire (id_ign_ligne, ligne_traite_troncon=[]):
                    or(nature == 'Route à 2 chaussée' and df_touches_target['nature'].isin(['Route à 1 chaussée', 'Route à 2 chaussées']))):  # !!  ou une route qui était en deux et qui passe à 1
                     for id_ign_suivant in df_touches_target.index.tolist():
                         #print (f'fin traitement cas = 3 mm numero ; tgt : apres test isin : {datetime.now()}')
-                        ligne_traite_troncon.append(id_ign_ligne)
+                        #ligne_traite_troncon+=[id_ign_ligne,id_ign_suivant]
                         yield from recup_troncon_elementaire(id_ign_suivant, ligne_traite_troncon)
             else: #si toute les voies n'ont pas le même nom
                 if nature in ['Autoroute', 'Quasi-autoroute'] :
@@ -124,11 +125,11 @@ def recup_troncon_elementaire (id_ign_ligne, ligne_traite_troncon=[]):
                         if 55 < angle < 135 :
                             id_ign_suivant=df_touches_target.loc[~df.id.isin(df_ligne_autre.id)].index.tolist()[0]
                             #print (f'fin traitement cas = 3 ; tgt : apres test isin : {datetime.now()}')
-                            ligne_traite_troncon.append(id_ign_ligne)
+                            #ligne_traite_troncon+=[id_ign_ligne,id_ign_suivant]
                             yield from recup_troncon_elementaire(id_ign_suivant, ligne_traite_troncon)
-    yield id_ign_ligne
+    yield ligne_traite_troncon
 
-def recup_troncon_parallele(id_ign_ligne):  
+def recup_troncon_parallele(id_ign_ligne,ligne_traitee_global):  
     """
     Obtenir la ligne parrallele pour les voies decrites par 2 lignes
     en entree : id de le ligne -> str
@@ -164,48 +165,43 @@ def affecter_troncon(df):
     en entree : liste d'id de ligne -> lite de str
     """
     #appel du dico de resultat
-    global dico_tronc_elem, ligne_traitee_global, df2_chaussees
+    #global ligne_traitee_global
+    ligne_traitee_global = np.empty(1, dtype='<U24')
     
     #liste des des lignes
-    liste_ligne=df.index.tolist()
+    liste_ligne=np.array(df.index.tolist())
     
     #pour chaque ligne on va creer un id dans le dico, avec les tronon associes
-    for indice, ligne in enumerate(liste_ligne) :
-
+    for indice, ligne in np.ndenumerate(liste_ligne) :
         if ligne in ligne_traitee_global :
-            pass 
-        else:    
-            #message d'avancement
+            continue 
+        else:
             #debut_traitement_ligne=datetime.now()
-            if indice % 1000 == 0 :
-                print (f"{indice}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)}")
+            if indice[0] % 1000 == 0 :
+                print (f"{indice[0]}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)}")
             #recuperation ds troncons connexes en cas simple
-            for troncon in recup_troncon_elementaire(ligne):
-                if indice in dico_tronc_elem.keys():
-                    dico_tronc_elem[indice].append(troncon)
-                else :
-                    dico_tronc_elem[indice]=[troncon]
-            
+            for liste_troncon in recup_troncon_elementaire(ligne,[]):
+                ligne_traitee_global=np.append(ligne_traitee_global,liste_troncon)
+                #print('lignes : ', liste_troncon)
+                dico_tronc_elem[indice[0]]=liste_troncon
+                break
+                    
             #recuperation des toncons connexes si 2 lignes pour une voie
             if ligne in df2_chaussees  :
-                ligne_parrallele=recup_troncon_parallele(ligne)
+                ligne_parrallele=recup_troncon_parallele(ligne,ligne_traitee_global)
                 print('parrallele ',ligne_parrallele)
                 
                 if ligne_parrallele==None: #cas où pas de ligne parrallele trouvee
                     continue
                 
-                for troncon in recup_troncon_elementaire(ligne_parrallele):
-                    if indice in dico_tronc_elem.keys():
-                        dico_tronc_elem[indice].append(troncon)
-                    else :
-                        dico_tronc_elem[indice]=[troncon]
-            
-            """            
-            fin_traitement_ligne=datetime.now()
-            durree=fin_traitement_ligne-debut_traitement_ligne
-            print(f'ligne : {ligne} duree : {durree}')"""
+                for liste_troncon in recup_troncon_elementaire(ligne_parrallele,[]):
+                    ligne_traitee_global=np.append(ligne_traitee_global,liste_troncon)
+                    #print('lignes : ', liste_troncon)
+                    dico_tronc_elem[indice[0]]=liste_troncon
+                    break
 
 if __name__ == '__main__' : 
     #affecter_troncon(['TRONROUT0000000202559719'])
+    print ('debut : ',datetime.now().strftime('%H:%M:%S'))
     affecter_troncon(df)
-    print (dico_tronc_elem)
+    print ('fin : ',datetime.now().strftime('%H:%M:%S'), dico_tronc_elem)
