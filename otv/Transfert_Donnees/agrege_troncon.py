@@ -13,6 +13,7 @@ from datetime import datetime
 from Martin_Perso import Connexion_Transfert as ct
 from shapely.wkt import loads
 from Martin_Perso import Outils
+#from psycopg2 import extras
 
 # ouvrir connexion, recuperer donnees
 with ct.ConnexionBdd('local_otv') as c : 
@@ -24,11 +25,6 @@ nature_2_chaussees=['Route à 2 chaussées','Quasi-autoroute','Autoroute']
 df.set_index('id_ign', inplace=True)  # passer l'id_ign commme index ; necessaire sinon pb avec geometrie vu comme texte
 df2_chaussees=df.loc[df.loc[:,'nature'].isin(nature_2_chaussees)] #isoler les troncon de voies decrits par 2 lignes
 
-# stockge des données lignes traitees dans une numpy array (uen focntion géératrice issue de yield marcherait bien aussi
-ligne_traitee_global = np.empty(1, dtype='<U24')
-
-#resultat
-dico_tronc_elem={}
 
 
 def recup_troncon_elementaire (id_ign_ligne, ligne_traite_troncon=[]):
@@ -165,6 +161,7 @@ def affecter_troncon(df):
     en entree : liste d'id de ligne -> lite de str
     """
     #appel du dico de resultat
+    dico_tronc_elem={}
     #global ligne_traitee_global
     ligne_traitee_global = np.empty(1, dtype='<U24')
     
@@ -176,14 +173,17 @@ def affecter_troncon(df):
         if ligne in ligne_traitee_global :
             continue 
         else:
-            #debut_traitement_ligne=datetime.now()
+            """if indice[0]>=100 : 
+                break
             if indice[0] % 1000 == 0 :
                 print (f"{indice[0]}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)}")
-            #recuperation ds troncons connexes en cas simple
+            #recuperation ds troncons connexes en cas simple"""
             for liste_troncon in recup_troncon_elementaire(ligne,[]):
                 ligne_traitee_global=np.append(ligne_traitee_global,liste_troncon)
                 #print('lignes : ', liste_troncon)
-                dico_tronc_elem[indice[0]]=liste_troncon
+                #dico_tronc_elem[indice[0]]=liste_troncon
+                for troncon in liste_troncon : 
+                    dico_tronc_elem[troncon]=indice[0]
                 break
                     
             #recuperation des toncons connexes si 2 lignes pour une voie
@@ -194,14 +194,27 @@ def affecter_troncon(df):
                 if ligne_parrallele==None: #cas où pas de ligne parrallele trouvee
                     continue
                 
-                for liste_troncon in recup_troncon_elementaire(ligne_parrallele,[]):
+                for liste_troncon in recup_troncon_elementaire(df, ligne_parrallele, []):
                     ligne_traitee_global=np.append(ligne_traitee_global,liste_troncon)
                     #print('lignes : ', liste_troncon)
-                    dico_tronc_elem[indice[0]]=liste_troncon
+                    for troncon in liste_troncon : 
+                        dico_tronc_elem[troncon]=indice[0]
                     break
+    return dico_tronc_elem
+                
+def inserer_dico(conn, dico):
+    
+    with conn : 
+        print(conn)
+        #a tester en mettant à jour psycopg2 pg.extras.execute_values(conn.curs, "INSERT INTO referentiel.tronc_elem_bdt17_ed15_l(id_ign,id_tronc_elem) VALUES %s", dico.items())
+        conn.curs.executemany("""INSERT INTO referentiel.tronc_elem_bdt17_ed15_l(id_ign,id_tronc_elem) VALUES (%s, %s)""", dico.items())
+        conn.connexionPsy.commit()
 
 if __name__ == '__main__' : 
     #affecter_troncon(['TRONROUT0000000202559719'])
     print ('debut : ',datetime.now().strftime('%H:%M:%S'))
-    affecter_troncon(df)
-    print ('fin : ',datetime.now().strftime('%H:%M:%S'), dico_tronc_elem)
+    dico=affecter_troncon(df)
+    print(dico)
+    with ct.ConnexionBdd('local_otv') as c :
+        inserer_dico(c, dico)
+    print ('fin : ',datetime.now().strftime('%H:%M:%S'), dico)
