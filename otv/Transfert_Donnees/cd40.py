@@ -1,9 +1,10 @@
+# -*- coding: utf-8 -*-
 '''
 Created on 18 mars 2019
 
 @author: martin.schoreisz
 
-Rappatrier les données du CD40
+Rappatrier les donnees du CD40
 '''
 
 import pandas as pd
@@ -14,13 +15,14 @@ import Connexion_Transfert as ct
 for chemin, dossier, files in os.walk(r"Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA\Doc_travail\Donnees_source\CD40\Trafics 2018 Landes\comptage_B152") :
     for fichier in files : 
         if fichier.endswith('.xls') :
+            print(chemin,fichier)
             path_donnees=os.path.join(chemin,fichier)
             df_fichier_xls=df=pd.read_excel(path_donnees,headers=None, skiprows=1) #les 1eres lignes mettent le bordel dans la definition des colonnes
             
-            #epurer les données
+            #epurer les donnï¿½es
             df2=df.dropna(how='all').dropna(axis=1,how='all')
             
-            #définir les variables globales
+            #dï¿½finir les variables globales
             section='040.'+df2.loc[0,'Unnamed: 125'].split(' ')[1]
             vma=int(df2.loc[4,'Unnamed: 0'].split(' : ')[1][:2])
             id_comptag='40-'+'D'+str(int(df2.loc[4,'Unnamed: 141'][4:]))+'-'+df2.loc[4,'Unnamed: 125'][3:].replace(' ','+')
@@ -33,22 +35,24 @@ for chemin, dossier, files in os.walk(r"Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA
                    'Unnamed: 65', 'Unnamed: 72', 'Unnamed: 79', 'Unnamed: 86',
                    'Unnamed: 93', 'Unnamed: 100', 'Unnamed: 107']].dropna(axis=1,how='all')
                 #renommer les colonnes
-            donnees.columns=[element.replace('é','e').replace('.','').lower() for element in list(donnees.loc[7])]
+            donnees.columns=[element.replace('Ã©','e').replace('.','').lower() for element in list(donnees.loc[7])]
                 #remplacer l'annee en string et ne conserver 
             donnees=donnees.drop(7).replace(['D.Moy.Jour', '% PL'],['tmja','pc_pl'])
                 #inserer les valeusr qui vont bien
             donnees['annee']='2018'
             donnees['id_comptag']=id_comptag
-                #réarranger les colonnes
+                #rï¿½arranger les colonnes
             cols=donnees.columns.tolist()
             cols_arrangees=cols[-1:]+cols[:1]+cols[-2:-1]+cols[1:-2]
             donnees=donnees[cols_arrangees]
             donnees.columns=['id_comptag','donnees_type','annee','janv','fevr','mars','avri','mai','juin','juil','aout','sept','octo','nove','dece']
             
-            #inserer les données
+            #inserer les donnï¿½es
             with ct.ConnexionBdd('local_otv') as c : 
                 donnees.to_sql('na_2010_2017_mensuel', c.sqlAlchemyConn, schema='comptage',if_exists='append', index=False)
-                for record in c.curs.execute("select distinct id_comptag from comptage.na_2010_2017") : 
+                curseur=c.connexionPsy.cursor()
+                curseur.execute("select distinct id_comptag from comptage.na_2010_2017")
+                for record in curseur : 
                     if id_comptag==record[0] : 
                         c.curs.execute("update comptage.na_2010_2017 set tmja_2018=%s, pc_pl_2018=%s where id_comptag=%s",(tmja, pc_pl,id_comptag))
                         c.connexionPsy.commit()
