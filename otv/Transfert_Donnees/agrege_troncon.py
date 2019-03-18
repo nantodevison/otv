@@ -10,9 +10,9 @@ import matplotlib
 import geopandas as gp
 import numpy as np
 from datetime import datetime
-from Martin_Perso import Connexion_Transfert as ct
+import Connexion_Transfert as ct
 from shapely.wkt import loads
-from Martin_Perso import Outils
+import Outils
 #from psycopg2 import extras
 
 # ouvrir connexion, recuperer donnees
