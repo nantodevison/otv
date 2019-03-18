@@ -1,0 +1,29 @@
+--creer la table des differents nomde donnees et la remplir
+create table comptage.enum_mensuel_donnees_type (nom character varying) ; 
+CREATE TABLE comptage.enum_mensuel_donnees_type (
+	nom varchar NOT NULL,
+	CONSTRAINT donnees_type_pk PRIMARY KEY (nom)
+);
+insert into comptage.enum_mensuel_donnees_type values('tmja'),('pc_pl') ;
+
+
+--Creer la table des comptages mensuels
+CREATE TABLE comptage.na_2010_2017_mensuel (
+	id_comptag varchar NOT NULL,
+	donnees_type varchar NOT NULL,
+	annee varchar(4) NOT NULL,
+	janv float4 NULL,
+	fevr float4 NULL,
+	mars float4 NULL,
+	avri float4 NULL,
+	mai float4 NULL,
+	juin float4 NULL,
+	juil float4 NULL,
+	aout float4 NULL,
+	sept float4 NULL,
+	octo float4 NULL,
+	nove float4 NULL,
+	dece float4 NULL,
+	CONSTRAINT na_2010_2017_mensuel_pk PRIMARY KEY (id_comptag, donnees_type, annee),
+	CONSTRAINT na_2010_2017_mensuel_fk_donnees_type FOREIGN KEY (donnees_type) REFERENCES comptage.enum_mensuel_donnees_type(nom) ON UPDATE CASCADE
+);
