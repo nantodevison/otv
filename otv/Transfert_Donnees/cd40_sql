@@ -26,4 +26,6 @@ CREATE TABLE comptage.na_2010_2017_mensuel (
 	dece float4 NULL,
 	CONSTRAINT na_2010_2017_mensuel_pk PRIMARY KEY (id_comptag, donnees_type, annee),
 	CONSTRAINT na_2010_2017_mensuel_fk_donnees_type FOREIGN KEY (donnees_type) REFERENCES comptage.enum_mensuel_donnees_type(nom) ON UPDATE CASCADE
+	CONSTRAINT na_2010_2017_mensuel_na_2010_2017_fk_id_comptag FOREIGN KEY (id_comptag) REFERENCES comptage.na_2010_2017(id_comptag) ON UPDATE CASCADE;
+	
 );
