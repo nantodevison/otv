@@ -56,7 +56,7 @@ for chemin, dossier, files in os.walk(r"Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA
             with ct.ConnexionBdd('local_otv') as c : 
                 c.curs.execute("select distinct id_comptag from comptage.na_2010_2017")
                 if id_comptag in [record[0] for record in c.curs] :
-                    c.curs.execute("update comptage.na_2010_2017 set tmja_2018=%s, pc_pl_2018=%s where id_comptag=%s",(tmja, pc_pl,id_comptag))
+                    c.curs.execute("update comptage.na_2010_2017 set tmja_2018=%s, pc_pl_2018=%s, id_cpt=%s, ann_cpt=%s, where id_comptag=%s",(tmja, pc_pl,compteur,annee_cpt,id_comptag))
                 else : 
                     c.curs.execute("insert into comptage.na_2010_2017 (id_comptag, dep, route, pr, abs, reseau, gestionnai, concession,type_poste, id_cpt, ann_cpt, tmja_2018, pc_pl_2018) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",(id_comptag,dep,voie,pr,absice,reseau,gest,concession,type_poste,compteur,annee_cpt, tmja, pc_pl))
                 c.connexionPsy.commit()
