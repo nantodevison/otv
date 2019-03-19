@@ -10,6 +10,7 @@ Rappatrier les donnees du CD40
 import pandas as pd
 import os
 import Connexion_Transfert as ct
+import Outils as O
 
 #lire les fichiers
 for chemin, dossier, files in os.walk(r"Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA\Doc_travail\Donnees_source\CD40\Trafics 2018 Landes\comptage_B152") :
@@ -23,9 +24,13 @@ for chemin, dossier, files in os.walk(r"Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA
             df2=df.dropna(how='all').dropna(axis=1,how='all')
             
             #d�finir les variables globales
-            section='040.'+df2.loc[0,'Unnamed: 125'].split(' ')[1]
+            df2=df.dropna(how='all').dropna(axis=1,how='all')
+            compteur='040.'+df2.loc[0,'Unnamed: 125'].split(' ')[1]
             vma=int(df2.loc[4,'Unnamed: 0'].split(' : ')[1][:2])
-            id_comptag='40-'+'D'+str(int(df2.loc[4,'Unnamed: 141'][4:]))+'-'+df2.loc[4,'Unnamed: 125'][3:].replace(' ','+')
+            voie=O.epurationNomRoute(df2.loc[4,'Unnamed: 141'].split(' ')[1])
+            pr,absice=df2.loc[4,'Unnamed: 125'].split(' ')[1],df2.loc[4,'Unnamed: 125'].split(' ')[2]
+            dep,gest, reseau,concession,type_poste,annee_cpt='40','CD40','D','N','permanent','2018'
+            id_comptag=dep+'-'+voie+'-'+pr+'+'+absice
             tmja=df2.loc[18,'Unnamed: 107']
             pc_pl=df2.loc[19,'Unnamed: 107']
             
@@ -49,10 +54,10 @@ for chemin, dossier, files in os.walk(r"Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA
             
             #inserer les donn�es
             with ct.ConnexionBdd('local_otv') as c : 
-                donnees.to_sql('na_2010_2017_mensuel', c.sqlAlchemyConn, schema='comptage',if_exists='append', index=False)
-                curseur=c.connexionPsy.cursor()
-                curseur.execute("select distinct id_comptag from comptage.na_2010_2017")
-                for record in curseur : 
-                    if id_comptag==record[0] : 
-                        c.curs.execute("update comptage.na_2010_2017 set tmja_2018=%s, pc_pl_2018=%s where id_comptag=%s",(tmja, pc_pl,id_comptag))
-                        c.connexionPsy.commit()
+                c.curs.execute("select distinct id_comptag from comptage.na_2010_2017")
+                if id_comptag in [record[0] for record in c.curs] :
+                    c.curs.execute("update comptage.na_2010_2017 set tmja_2018=%s, pc_pl_2018=%s, id_cpt=%s, ann_cpt=%s, where id_comptag=%s",(tmja, pc_pl,compteur,annee_cpt,id_comptag))
+                else : 
+                    c.curs.execute("insert into comptage.na_2010_2017 (id_comptag, dep, route, pr, abs, reseau, gestionnai, concession,type_poste, id_cpt, ann_cpt, tmja_2018, pc_pl_2018) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",(id_comptag,dep,voie,pr,absice,reseau,gest,concession,type_poste,compteur,annee_cpt, tmja, pc_pl))
+                c.connexionPsy.commit()
+                donnees.to_sql('na_2010_2017_mensuel', c.sqlAlchemyConn,schema='comptage',if_exists='append',index=False)
