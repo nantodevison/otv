@@ -17,7 +17,7 @@ import Outils
 
 # ouvrir connexion, recuperer donnees
 with ct.ConnexionBdd('local_otv') as c : 
-    df = gp.read_postgis("select t.*, v1.cnt nb_intrsct_src, st_astext(v1.the_geom) as src_geom, v2.cnt as nb_intrsct_tgt, st_astext(v2.the_geom) as tgt_geom from public.test_agreg_lineaire t left join public.test_agreg_lineaire_vertices_pgr v1 on t.\"source\"=v1.id left join public.test_agreg_lineaire_vertices_pgr v2  on t.target=v2.id", c.connexionPsy)
+    df = gp.read_postgis("select t.*, v1.cnt nb_intrsct_src, st_astext(v1.the_geom) as src_geom, v2.cnt as nb_intrsct_tgt, st_astext(v2.the_geom) as tgt_geom from public.test_agreg_lineaire t left join public.test_agreg_lineaire_vertices_pgr v1 on t.\"source\"=v1.id left join public.test_agreg_lineaire_vertices_pgr v2  on t.target=v2.id ", c.connexionPsy)
 
 #variables generales
 nature_2_chaussees=['Route à 2 chaussées','Quasi-autoroute','Autoroute']
@@ -164,27 +164,34 @@ def affecter_troncon(df):
     #appel du dico de resultat
     dico_tronc_elem={}
     #global ligne_traitee_global
-    ligne_traitee_global = np.empty(1, dtype='<U24')
+    #ligne_traitee_global = np.empty(1, dtype='<U24')
+    ligne_traitee_global=set([])
     
     #liste des des lignes
-    liste_ligne=np.array(df.index.tolist())
+    #liste_ligne=df.index.tolist()
+    liste_ligne=(['TRONROUT0000000130923326','TRONROUT0000000109674477','TRONROUT0000000032839287','TRONROUT0000000109674476',
+    'TRONROUT0000000032837041','TRONROUT0000000032837043','TRONROUT0000000032837045','TRONROUT0000000032837069',
+    'TRONROUT0000000032839277','TRONROUT0000000032839278','TRONROUT0000000032839279','TRONROUT0000000032839282',
+    'TRONROUT0000000032839286','TRONROUT0000000032839288','TRONROUT0000000032841957'])
     
     #pour chaque ligne on va creer un id dans le dico, avec les tronon associes
-    for indice, ligne in np.ndenumerate(liste_ligne) :
+    for indice, ligne in enumerate(liste_ligne) :
+        if indice % 1000 == 0 :
+            print (f"{indice}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)}, nb ligne differente={len(set(ligne_traitee_global))}")
+        print (f"{indice}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)}, {ligne_traitee_global}")
         if ligne in ligne_traitee_global :
             continue 
         else:
-            """if indice[0]>=100 : 
+            """if indice>=10 : 
                 break
             #recuperation ds troncons connexes en cas simple"""
-            if indice[0] % 1000 == 0 :
-                print (f"{indice[0]}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)}")
             for liste_troncon in recup_troncon_elementaire(ligne,[]):
-                ligne_traitee_global=np.append(ligne_traitee_global,liste_troncon)
-                #print('lignes : ', liste_troncon)
+                #ligne_traitee_global=np.append(ligne_traitee_global,liste_troncon)
+                ligne_traitee_global.update(liste_troncon)
+                #print('lignes : ', liste_troncon,ligne_traitee_global )
                 #dico_tronc_elem[indice[0]]=liste_troncon
                 for troncon in liste_troncon : 
-                    dico_tronc_elem[troncon]=indice[0]
+                    dico_tronc_elem[troncon]=indice
                 break
                     
             #recuperation des toncons connexes si 2 lignes pour une voie
@@ -195,10 +202,10 @@ def affecter_troncon(df):
                     continue
                 
                 for liste_troncon_para in recup_troncon_elementaire(ligne_parrallele, []):
-                    ligne_traitee_global=np.append(ligne_traitee_global,liste_troncon)
+                    ligne_traitee_global.update(liste_troncon)
                     #print('lignes : ', liste_troncon)
                     for troncon_para in liste_troncon_para : 
-                        dico_tronc_elem[troncon_para]=indice[0]
+                        dico_tronc_elem[troncon_para]=indice
                     break
     return dico_tronc_elem
 
@@ -211,27 +218,30 @@ def affecter_troncon_ligne(ligne):
     #appel du dico de resultat
     dico_tronc_elem={}
     #global ligne_traitee_global
-    ligne_traitee_global = np.empty(1, dtype='<U24')
+    #ligne_traitee_global = np.empty(1, dtype='<U24')
+    ligne_traitee_global=set([])
     
     #liste des des lignes
     liste_ligne=[ligne]
+    #liste_ligne=np.array(df.index.tolist())
     
     #pour chaque ligne on va creer un id dans le dico, avec les tronon associes
-    for indice, ligne in np.ndenumerate(liste_ligne) :
+    for indice, ligne in enumerate(liste_ligne) :
+        if indice % 1000 == 0 :
+            print (f"{indice}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)}, nb ligne differente={len(set(ligne_traitee_global))}")
         if ligne in ligne_traitee_global :
             continue 
         else:
-            """if indice[0]>=100 : 
+            """if indice>=10 : 
                 break
             #recuperation ds troncons connexes en cas simple"""
-            if indice[0] % 1000 == 0 :
-                print (f"{indice[0]}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)}")
             for liste_troncon in recup_troncon_elementaire(ligne,[]):
-                ligne_traitee_global=np.append(ligne_traitee_global,liste_troncon)
-                #print('lignes : ', liste_troncon)
+                #ligne_traitee_global=np.append(ligne_traitee_global,liste_troncon)
+                ligne_traitee_global.update(liste_troncon)
+                #print('lignes : ', liste_troncon,ligne_traitee_global )
                 #dico_tronc_elem[indice[0]]=liste_troncon
                 for troncon in liste_troncon : 
-                    dico_tronc_elem[troncon]=indice[0]
+                    dico_tronc_elem[troncon]=indice
                 break
                     
             #recuperation des toncons connexes si 2 lignes pour une voie
@@ -242,10 +252,10 @@ def affecter_troncon_ligne(ligne):
                     continue
                 
                 for liste_troncon_para in recup_troncon_elementaire(ligne_parrallele, []):
-                    ligne_traitee_global=np.append(ligne_traitee_global,liste_troncon)
+                    ligne_traitee_global.update(liste_troncon)
                     #print('lignes : ', liste_troncon)
                     for troncon_para in liste_troncon_para : 
-                        dico_tronc_elem[troncon_para]=indice[0]
+                        dico_tronc_elem[troncon_para]=indice
                     break
     return dico_tronc_elem
                 
