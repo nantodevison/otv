@@ -128,10 +128,10 @@ def recup_troncon_elementaire (id_ign_ligne, ligne_traite_troncon=[]):
 def recup_troncon_parallele(id_ign_ligne,ligne_traitee_global):  
     """
     Obtenir la ligne parrallele pour les voies decrites par 2 lignes
-    en entree : id de le ligne -> str
+    en entree : id de le ligne -> str 
     en sortie : id de la parrallele -> str
     """ 
-    
+
     #les variables liées à la ligne
     df_ligne = df.loc[id_ign_ligne]
     geom_ligne=df_ligne['geom'][0]
@@ -155,6 +155,7 @@ def recup_troncon_parallele(id_ign_ligne,ligne_traitee_global):
             pass
 
 
+
 def affecter_troncon(df):
     """
     Grouper les troncon par numero arbitraire
@@ -168,17 +169,13 @@ def affecter_troncon(df):
     ligne_traitee_global=set([])
     
     #liste des des lignes
-    #liste_ligne=df.index.tolist()
-    liste_ligne=(['TRONROUT0000000130923326','TRONROUT0000000109674477','TRONROUT0000000032839287','TRONROUT0000000109674476',
-    'TRONROUT0000000032837041','TRONROUT0000000032837043','TRONROUT0000000032837045','TRONROUT0000000032837069',
-    'TRONROUT0000000032839277','TRONROUT0000000032839278','TRONROUT0000000032839279','TRONROUT0000000032839282',
-    'TRONROUT0000000032839286','TRONROUT0000000032839288','TRONROUT0000000032841957'])
+    liste_ligne=df.index.tolist()
     
     #pour chaque ligne on va creer un id dans le dico, avec les tronon associes
     for indice, ligne in enumerate(liste_ligne) :
-        if indice % 1000 == 0 :
+        if indice % 300 == 0 :
             print (f"{indice}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)}, nb ligne differente={len(set(ligne_traitee_global))}")
-        print (f"{indice}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)}, {ligne_traitee_global}")
+        #print (f"{indice}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)}")
         if ligne in ligne_traitee_global :
             continue 
         else:
@@ -261,11 +258,8 @@ def affecter_troncon_ligne(ligne):
                 
 def inserer_dico(conn, dico):
     
-    with conn : 
-        print(conn)
-        #a tester en mettant à jour psycopg2 pg.extras.execute_values(conn.curs, "INSERT INTO referentiel.tronc_elem_bdt17_ed15_l(id_ign,id_tronc_elem) VALUES %s", dico.items())
-        conn.curs.executemany("""INSERT INTO referentiel.tronc_elem_bdt17_ed15_l (id_ign,id_tronc_elem) VALUES (%s, %s)""", dico.items())
-        conn.connexionPsy.commit()
+    conn.curs.executemany("""INSERT INTO referentiel.tronc_elem_bdt17_ed15_l (id_ign,id_tronc_elem) VALUES (%s, %s)""", dico.items())
+    conn.connexionPsy.commit()
 
 if __name__ == '__main__' : 
     #affecter_troncon(['TRONROUT0000000202559719'])
