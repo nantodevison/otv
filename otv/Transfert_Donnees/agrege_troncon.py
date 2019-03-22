@@ -154,7 +154,13 @@ def recup_troncon_parallele(id_ign_ligne,ligne_traitee_global):
         else : 
             pass
 
-
+def recup_troncon_parallele_v2(liste_troncon):
+    
+    #on prend la liste des troncon, on en déduit le df
+    #on agrege les lignes
+    #on recupere le centre de la ligne
+    df_ligne = df.loc[liste_troncon]
+    return df_ligne
 
 def affecter_troncon(df):
     """
