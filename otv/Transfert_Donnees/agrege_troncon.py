@@ -154,13 +154,23 @@ def recup_troncon_parallele(id_ign_ligne,ligne_traitee_global):
         else : 
             pass
 
-def recup_troncon_parallele_v2(liste_troncon):
+def recup_troncon_parallele_v2(df,liste_troncon):
     
     #on prend la liste des troncon, on en déduit le df
     #on agrege les lignes
     #on recupere le centre de la ligne
-    df_ligne = df.loc[liste_troncon]
-    return df_ligne
+    gdf_lignes=gp.GeoDataFrame(df.loc[liste_troncon], geometry='geom') #conversion en geodf
+    gdf_lignes2=gdf_lignes.unary_union #union des geometries
+    xmin,ymin,xmax,ymax=gdf_lignes2.centroid.buffer(200).bounds #centroid de la ligne
+    gdf_global=gp.GeoDataFrame(df, geometry='geom')#donnees de base
+    lignes_possibles=gdf_global.cx[xmin:xmax,ymin:ymax]#recherche des lignes proches du centroid
+    #uniquement les lignes non présentes dans la liste de troncons avec le même nom de voie
+    ligne_filtres=lignes_possibles.loc[(~lignes_possibles.index.isin(liste_troncon)) & (lignes_possibles.loc[:,'numero']==gdf_lignes.iloc[0]['numero'])]
+    #obtenir les distances au centroid
+    ligne_filtres['distance']=ligne_filtres.apply(lambda x : gdf_lignes2.centroid.distance(x.iloc['geom']), axis=1)
+    #garder uniquement la valeur la plus proche du centroid
+    ligne_proche=ligne_filtres.loc[ligne_filtres['distance']==ligne_filtres['distance'].min()].index[0]
+    return ligne_proche
 
 def affecter_troncon(df):
     """
@@ -199,7 +209,7 @@ def affecter_troncon(df):
                     
             #recuperation des toncons connexes si 2 lignes pour une voie
             if ligne in df2_chaussees.index  :
-                ligne_parrallele=recup_troncon_parallele(ligne,ligne_traitee_global)
+                ligne_parrallele=recup_troncon_parallele_v2(df,liste_troncon)
                 #print('parrallele ',ligne_parrallele)
                 if ligne_parrallele==None: #cas où pas de ligne parrallele trouvee
                     continue
