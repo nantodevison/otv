@@ -167,7 +167,7 @@ def recup_troncon_parallele_v2(df,liste_troncon):
     #uniquement les lignes non présentes dans la liste de troncons avec le même nom de voie
     ligne_filtres=lignes_possibles.loc[(~lignes_possibles.index.isin(liste_troncon)) & (lignes_possibles.loc[:,'numero']==gdf_lignes.iloc[0]['numero'])]
     #obtenir les distances au centroid
-    ligne_filtres['distance']=ligne_filtres.apply(lambda x : gdf_lignes2.centroid.distance(x.iloc['geom']), axis=1)
+    ligne_filtres['distance']=ligne_filtres.apply(lambda x : gdf_lignes2.centroid.distance(x['geom']), axis=1)
     #garder uniquement la valeur la plus proche du centroid
     ligne_proche=ligne_filtres.loc[ligne_filtres['distance']==ligne_filtres['distance'].min()].index[0]
     return ligne_proche
