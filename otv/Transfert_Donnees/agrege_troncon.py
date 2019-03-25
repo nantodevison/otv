@@ -8,24 +8,42 @@ Module de creation de troncon homogene
 '''
 import matplotlib
 import geopandas as gp
+import pandas as pd
 import numpy as np
 from datetime import datetime
 import Connexion_Transfert as ct
 from shapely.wkt import loads
+from shapely.ops import polygonize
 import Outils
 #from psycopg2 import extras
 
 # ouvrir connexion, recuperer donnees
 with ct.ConnexionBdd('local_otv') as c : 
-    df = gp.read_postgis("select t.*, v1.cnt nb_intrsct_src, st_astext(v1.geom) as src_geom, v2.cnt as nb_intrsct_tgt, st_astext(v2.geom) as tgt_geom from public.test_agreg_lineaire t left join public.test_agreg_lineaire_vertices_pgr v1 on t.\"source\"=v1.id left join public.test_agreg_lineaire_vertices_pgr v2  on t.target=v2.id ", c.connexionPsy)
+    df = gp.read_postgis("select t.*, v1.cnt nb_intrsct_src, st_astext(v1.the_geom) as src_geom, v2.cnt as nb_intrsct_tgt, st_astext(v2.the_geom) as tgt_geom from public.test_agreg_lineaire t left join public.test_agreg_lineaire_vertices_pgr v1 on t.\"source\"=v1.id left join public.test_agreg_lineaire_vertices_pgr v2  on t.target=v2.id ", c.connexionPsy)
 
 #variables generales
 nature_2_chaussees=['Route à 2 chaussées','Quasi-autoroute','Autoroute']
 #donnees generale du jdd
 df.set_index('id_ign', inplace=True)  # passer l'id_ign commme index ; necessaire sinon pb avec geometrie vu comme texte
+df.crs={'init':'epsg:2154'}
 df2_chaussees=df.loc[df['nature'].isin(nature_2_chaussees)] #isoler les troncon de voies decrits par 2 lignes
 
-
+def identifier_rd_pt(df):
+    """
+    fonction pour modifier la nature des rd points pour identification et y ajouter un id deregroupement
+    """
+    #creer la lsite des rd points selon le critere atmo aura ; creer une gdf avec la liste
+    liste_rd_points=[t.buffer(1) for t in polygonize(df.geometry) if 12<=((t.length**2)/t.area)<=13] # car un cercle à un rappor de ce type entre 12 et 13
+    gdf_rd_point=gp.GeoDataFrame([i for i in range(len(liste_rd_points))], geometry=liste_rd_points)
+    gdf_rd_point.crs={'init':'epsg:2154'}
+    gdf_rd_point.columns=['id_rdpt', 'geometry']   
+    #jointure spataile pour une gdf avec uniquement les rd_points en lignes avec le numéro
+    l_dans_p=gp.sjoin(df,gdf_rd_point,op='within') 
+    #ajouter l'id_rdpt aux données
+    df=pd.concat([df,l_dans_p.loc[:,'id_rdpt']],axis=1, sort=False)
+    #mettre à jour la nature
+    df['nature']=df.apply(lambda x : 'Rd_pt' if x.id_rdpt>=0 else x['nature'], axis=1)
+    return df
 
 def recup_troncon_elementaire (id_ign_ligne, ligne_traite_troncon=[]):
     """
@@ -45,51 +63,58 @@ def recup_troncon_elementaire (id_ign_ligne, ligne_traite_troncon=[]):
     #yield id_ign_ligne 
     liste_ligne_suivantes=[]
     
-    # cas simple de la ligne qui en touche qu'uen seule autre du cote source
-    if df_ligne.loc['nb_intrsct_src'] == 2 : 
-        #print (f' cas = 2 ; src : avant test isin : {datetime.now()}, ligne : {id_ign_ligne} ')
-        df_touches_source = df.loc[(~df.index.isin(ligne_traite_troncon)) & ((df.loc[:, 'source'] == df_ligne.loc['source']) | (df.loc[:, 'target'] == df_ligne.loc['source']))]  # recuperer le troncon qui ouche le point d'origine et qui n'est pas deja traite
-        #print (f' cas = 2 ; src : apres test isin : {datetime.now()}')
-        if len(df_touches_source) > 0:  # car la seule voie touchee peut déjà etre dans les lignes traitees
-            id_ign_suivant = df_touches_source.index.tolist()[0]
-            liste_ligne_suivantes.append(id_ign_suivant)
-            #print (f'fin traitement cas = 2 ; src : apres test isin : {datetime.now()}')
-            ligne_traite_troncon+=[id_ign_ligne,id_ign_suivant] #liste des lignes deja traitees
-            #yield from recup_troncon_elementaire(id_ign_suivant, ligne_traite_troncon) #on boucle pour chercher la suivante
-            yield id_ign_suivant 
-    elif df_ligne.loc['nb_intrsct_src'] == 3 :  # cas plus complexe d'une ligne a un carrefour. soit c'est la meme voie qui se divise, soit ce sont d'autre voie qui touche
-        #print (f' cas = 3 ; src : avant test isin : {datetime.now()}')
-        df_touches_source = df.loc[(~df.index.isin(ligne_traite_troncon)) & ((df.loc[:, 'source'] == df_ligne.loc['source']) | (df.loc[:, 'target'] == df_ligne.loc['source']))]  # recuperer le troncon qui ouche le point d'origine
-        #print (f' cas = 3 ; src : apres test isin : {datetime.now()}')
-        if len(df_touches_source) > 0:  # si les voies touchees n'on pas ete traiees
-            if (df_ligne.loc['numero'] == df_touches_source['numero']).all() == 1 : #♠si eelles ont le mm nom on prend toutes les lignes
-                for id_ign_suivant in df_touches_source.index.tolist():
-                    #print (f'fin traitement cas = 3 mm numero ; src : apres test isin : {datetime.now()}')
-                    liste_ligne_suivantes.append(id_ign_suivant)
-                    ligne_traite_troncon+=[id_ign_ligne,id_ign_suivant]
-                    #yield from recup_troncon_elementaire(id_ign_suivant, ligne_traite_troncon) 
-                    yield id_ign_suivant 
-            else: #si toute les voies n'ont pas le même nom
-                if nature in ['Autoroute', 'Quasi-autoroute'] :
-                    df_ligne_autre=df_touches_source.loc[df_touches_source.loc[:,'numero']!=df_ligne.loc['numero']]
-                    if len(df_touches_source)-len(df_ligne_autre)>0 : #sinon ce veut dire que le troncon suivant est deja traite
-                        df_ligne_pt_avant_src=df_ligne['geom'][0].coords[1] #point avant le point  target
-                        coord_source_arrondi=[round(i,1) for i in list(loads(df_ligne['src_geom']).coords)[0]] #coordonnees du point target
-                        #trouver le point de df_ligne autre juste aprs le point source
-                        coord_ligne_arrondi=[[round(coord[0],1),round(coord[1],1)] for coord in list((df_ligne_autre.geometry.iloc[0])[0].coords)] #(df_ligne_autre.geometry.iloc[0]) la geometryde la 1ere ligne
-                        pt_suivant_src_ligne_autre=coord_ligne_arrondi[-2] if coord_ligne_arrondi[-1]==coord_source_arrondi else coord_ligne_arrondi[1]
-                        #recuperer l'angle
-                        angle=Outils.angle_entre_2_ligne(coord_source_arrondi, pt_suivant_src_ligne_autre, df_ligne_pt_avant_src)
-                        #si l'angle estdans les 90°, on ignor et on continue sur la l'autre ligne
-                        if 55 < angle < 135 :
-                            id_ign_suivant=df_touches_source.loc[~df.id.isin(df_ligne_autre.id)].index.values.tolist()[0]
-                            liste_ligne_suivantes.append(id_ign_suivant)
-                            yield id_ign_suivant  
-                            #print (f'fin traitement cas = 3 ; src : apres test isin : {datetime.now()}')
-                            ligne_traite_troncon+=[id_ign_ligne,id_ign_suivant]
-                            #yield from recup_troncon_elementaire(id_ign_suivant, ligne_traite_troncon)  
+    for key, value in {'nb_intrsct_src':['source', 'src_geom'],'nb_intrsct_tgt':['target', 'tgt_geom']}.items() : 
+        # cas simple de la ligne qui en touche qu'uen seule autre du cote source
+        if df_ligne.loc[key] == 2 : 
+            #print (f' cas = 2 ; src : avant test isin : {datetime.now()}, ligne : {id_ign_ligne} ')
+            df_touches_source = df.loc[(~df.index.isin(ligne_traite_troncon)) & ((df['source'] == df_ligne[value[0]]) | (df['target'] == df_ligne[value[0]]))]  # recuperer le troncon qui ouche le point d'origine et qui n'est pas deja traite
+            #print (f' cas = 2 ; src : apres test isin : {datetime.now()}')
+            if len(df_touches_source) > 0:  # car la seule voie touchee peut déjà etre dans les lignes traitees
+                id_ign_suivant = df_touches_source.index.tolist()[0]
+                liste_ligne_suivantes.append(id_ign_suivant)
+                #print (f'fin traitement cas = 2 ; src : apres test isin : {datetime.now()}')
+                ligne_traite_troncon+=[id_ign_ligne,id_ign_suivant] #liste des lignes deja traitees
+                #yield from recup_troncon_elementaire(id_ign_suivant, ligne_traite_troncon) #on boucle pour chercher la suivante
+                yield id_ign_suivant 
+        elif df_ligne.loc[key] >= 3 :  # cas plus complexe d'une ligne a un carrefour. soit c'est la meme voie qui se divise, soit ce sont d'autre voie qui touche
+            #print (f' cas = 3 ; src : avant test isin : {datetime.now()}')
+            df_touches_source = df.loc[(~df.index.isin(ligne_traite_troncon)) & ((df['source'] == df_ligne[value[0]]) | (df['target'] == df_ligne[value[0]]))]  # recuperer le troncon qui ouche le point d'origine
+            #print (f' cas = 3 ; src : apres test isin : {datetime.now()}')
+            
+            #gestion des bretelles
+            if nature == 'Bretelle' or df_touches_source['nature'].all()=='Bretelle': #comme ça les bretelles sont séparrées des sections courantes, si on dispose de données de ccomptage dessus (type dira)
+                break
+            
+            
+            if len(df_touches_source) > 0:  # si les voies touchees n'on pas ete traiees
+                if (df_ligne.loc['numero'] == df_touches_source['numero']).all() == 1 : #♠si eelles ont le mm nom on prend toutes les lignes
+                    for id_ign_suivant in df_touches_source.index.tolist():
+                        #print (f'fin traitement cas = 3 mm numero ; src : apres test isin : {datetime.now()}')
+                        liste_ligne_suivantes.append(id_ign_suivant)
+                        ligne_traite_troncon+=[id_ign_ligne,id_ign_suivant]
+                        #yield from recup_troncon_elementaire(id_ign_suivant, ligne_traite_troncon) 
+                        yield id_ign_suivant 
+                else: #si toute les voies n'ont pas le même nom
+                    if nature in ['Autoroute', 'Quasi-autoroute'] :
+                        df_ligne_autre=df_touches_source.loc[df_touches_source['numero']!=df_ligne['numero']]
+                        if len(df_touches_source)-len(df_ligne_autre)>0 : #sinon ce veut dire que le troncon suivant est deja traite
+                            df_ligne_pt_avant_src=df_ligne['geom'][0].coords[1] #point avant le point  target
+                            coord_source_arrondi=[round(i,1) for i in list(loads(df_ligne[value[1]]).coords)[0]] #coordonnees du point target
+                            #trouver le point de df_ligne autre juste aprs le point source
+                            coord_ligne_arrondi=[[round(coord[0],1),round(coord[1],1)] for coord in list((df_ligne_autre.geometry.iloc[0])[0].coords)] #(df_ligne_autre.geometry.iloc[0]) la geometryde la 1ere ligne
+                            pt_suivant_src_ligne_autre=coord_ligne_arrondi[-2] if coord_ligne_arrondi[-1]==coord_source_arrondi else coord_ligne_arrondi[1]
+                            #recuperer l'angle
+                            angle=Outils.angle_entre_2_ligne(coord_source_arrondi, pt_suivant_src_ligne_autre, df_ligne_pt_avant_src)
+                            #si l'angle estdans les 90°, on ignor et on continue sur la l'autre ligne
+                            if 55 < angle < 135 :
+                                id_ign_suivant=df_touches_source.loc[~df.id.isin(df_ligne_autre.id)].index.values.tolist()[0]
+                                liste_ligne_suivantes.append(id_ign_suivant)
+                                yield id_ign_suivant  
+                                #print (f'fin traitement cas = 3 ; src : apres test isin : {datetime.now()}')
+                                ligne_traite_troncon+=[id_ign_ligne,id_ign_suivant]
+                                #yield from recup_troncon_elementaire(id_ign_suivant, ligne_traite_troncon)  
 
-
+    """
     #cas simple de la ligne qui en touche qu'uen seule autre du cote target
     if df_ligne.loc['nb_intrsct_tgt'] == 2 :  
         #print (f' cas = 2 ; tgt : avant test isin : {datetime.now()}, ligne : {id_ign_ligne}') 
@@ -134,6 +159,7 @@ def recup_troncon_elementaire (id_ign_ligne, ligne_traite_troncon=[]):
                             #print (f'fin traitement cas = 3 ; tgt : apres test isin : {datetime.now()}')
                             ligne_traite_troncon+=[id_ign_ligne,id_ign_suivant]
                             #yield from recup_troncon_elementaire(id_ign_suivant, ligne_traite_troncon)
+    """
     #print(f'ligne : {id_ign_ligne}, liste a traiter : {liste_ligne_suivantes}' ) 
     for ligne_a_traiter in liste_ligne_suivantes :
         yield from recup_troncon_elementaire(ligne_a_traiter, ligne_traite_troncon)
@@ -305,7 +331,8 @@ def inserer_dico(conn, dico):
 if __name__ == '__main__' : 
     #affecter_troncon(['TRONROUT0000000202559719'])
     print ('debut : ',datetime.now().strftime('%H:%M:%S'))
-    dico=affecter_troncon(df)
+    df_rd_pt=identifier_rd_pt(df)
+    dico=affecter_troncon(df_rd_pt)
     with ct.ConnexionBdd('local_otv') as c :
         inserer_dico(c, dico)
     print ('fin : ',datetime.now().strftime('%H:%M:%S'), dico)
