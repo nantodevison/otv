@@ -19,7 +19,7 @@ import Outils
 
 # ouvrir connexion, recuperer donnees
 with ct.ConnexionBdd('local_otv') as c : 
-    df = gp.read_postgis("select t.*, v1.cnt nb_intrsct_src, st_astext(v1.the_geom) as src_geom, v2.cnt as nb_intrsct_tgt, st_astext(v2.the_geom) as tgt_geom from public.test_agreg_lineaire t left join public.test_agreg_lineaire_vertices_pgr v1 on t.\"source\"=v1.id left join public.test_agreg_lineaire_vertices_pgr v2  on t.target=v2.id ", c.connexionPsy)
+    df = gp.read_postgis("select t.*, v1.cnt nb_intrsct_src, st_astext(v1.geom) as src_geom, v2.cnt as nb_intrsct_tgt, st_astext(v2.geom) as tgt_geom from public.test_agreg_lineaire t left join public.test_agreg_lineaire_vertices_pgr v1 on t.\"source\"=v1.id left join public.test_agreg_lineaire_vertices_pgr v2  on t.target=v2.id ", c.connexionPsy)
 
 #variables generales
 nature_2_chaussees=['Route à 2 chaussées','Quasi-autoroute','Autoroute']
@@ -39,10 +39,27 @@ def identifier_rd_pt(df):
     gdf_rd_point.columns=['id_rdpt', 'geometry']   
     #jointure spataile pour une gdf avec uniquement les rd_points en lignes avec le numéro
     l_dans_p=gp.sjoin(df,gdf_rd_point,op='within') 
+    print(l_dans_p.columns)
+    
+    #lignes qui touchent rd points
+    #1.ligne qui intersectent avec id_rdpt
+    l_intersct_rdpt=gp.sjoin(df,l_dans_p.drop('index_right', axis=1), how='inner',op='intersects')
+    #2.filtre de celle contenue dans le rd points 
+    l_intersct_rdpt=l_intersct_rdpt.loc[~l_intersct_rdpt.index.isin(l_dans_p.index.tolist())][['id_rdpt','numero_left']]
+    
+    #trouver le nb de voies qui intersectent chaque rd point et leur noms. renomer les colonnes
+    carac_rd_pt=(pd.concat([l_intersct_rdpt.groupby('id_rdpt').numero_left.nunique(),
+    l_intersct_rdpt.groupby('id_rdpt')['numero_left'].apply(lambda x: ','.join(set(x)))], axis=1))
+    carac_rd_pt.columns=['nb_rte_rdpt', 'nom_rte_rdpt']
+    
     #ajouter l'id_rdpt aux données
     df=pd.concat([df,l_dans_p.loc[:,'id_rdpt']],axis=1, sort=False)
     #mettre à jour la nature
     df['nature']=df.apply(lambda x : 'Rd_pt' if x.id_rdpt>=0 else x['nature'], axis=1)
+    
+    #ajouter les infos du rd point (nb voies différentes et nom)
+    df=df.merge(carac_rd_pt, how='left',left_on='id_rdpt', right_index=True)
+    
     return df
 
 def recup_troncon_elementaire (id_ign_ligne, ligne_traite_troncon=[]):
@@ -79,16 +96,18 @@ def recup_troncon_elementaire (id_ign_ligne, ligne_traite_troncon=[]):
         elif df_ligne.loc[key] >= 3 :  # cas plus complexe d'une ligne a un carrefour. soit c'est la meme voie qui se divise, soit ce sont d'autre voie qui touche
             #print (f' cas = 3 ; src : avant test isin : {datetime.now()}')
             df_touches_source = df.loc[(~df.index.isin(ligne_traite_troncon)) & ((df['source'] == df_ligne[value[0]]) | (df['target'] == df_ligne[value[0]]))]  # recuperer le troncon qui ouche le point d'origine
+            liste_ligne_touchees=df_touches_source.index.tolist()
             #print (f' cas = 3 ; src : apres test isin : {datetime.now()}')
             
             #gestion des bretelles
             if nature == 'Bretelle' or df_touches_source['nature'].all()=='Bretelle': #comme ça les bretelles sont séparrées des sections courantes, si on dispose de données de ccomptage dessus (type dira)
                 break
             
-            
-            if len(df_touches_source) > 0:  # si les voies touchees n'on pas ete traiees
+            if len(liste_ligne_touchees) > 0:  # si les voies touchees n'on pas ete traiees
                 if (df_ligne.loc['numero'] == df_touches_source['numero']).all() == 1 : #♠si eelles ont le mm nom on prend toutes les lignes
-                    for id_ign_suivant in df_touches_source.index.tolist():
+                    if df_touches_source['nature'].any()=='Rd_pt' : #si une des lignes touchées est un rd point on prend toutes les autres du m^me rd point
+                        liste_ligne_touchees.append(df.loc[df['id_rdpt']==df_touches_source['id_rdpt']].index.to_list())
+                    for id_ign_suivant in liste_ligne_touchees:
                         #print (f'fin traitement cas = 3 mm numero ; src : apres test isin : {datetime.now()}')
                         liste_ligne_suivantes.append(id_ign_suivant)
                         ligne_traite_troncon+=[id_ign_ligne,id_ign_suivant]
