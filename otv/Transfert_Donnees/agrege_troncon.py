@@ -33,11 +33,11 @@ def identifier_rd_pt(df):
     fonction pour modifier la nature des rd points pour identification et y ajouter un id deregroupement
     """
     #creer la lsite des rd points selon le critere atmo aura ; creer une gdf avec la liste
-    liste_rd_points=[t.buffer(1) for t in polygonize(df.geometry) if 12<=((t.length**2)/t.area)<=13] # car un cercle à un rappor de ce type entre 12 et 13
+    liste_rd_points=[t.buffer(1) for t in polygonize(df.geometry) if 12<=((t.length**2)/t.area)<=14] # car un cercle à un rappor de ce type entre 12 et 13
     gdf_rd_point=gp.GeoDataFrame([i for i in range(len(liste_rd_points))], geometry=liste_rd_points)
     gdf_rd_point.crs={'init':'epsg:2154'}
     gdf_rd_point.columns=['id_rdpt', 'geometry']   
-    #jointure spataile pour une gdf avec uniquement les rd_points en lignes avec le numéro
+    #jointure spataile pour une gdf avec uniquement les lignes des rd_points avec le numéro
     l_dans_p=gp.sjoin(df,gdf_rd_point,op='within') 
     
     #lignes qui touchent rd points
@@ -50,6 +50,7 @@ def identifier_rd_pt(df):
     carac_rd_pt=(pd.concat([l_intersct_rdpt.groupby('id_rdpt').numero_left.nunique(),
     l_intersct_rdpt.groupby('id_rdpt')['numero_left'].apply(lambda x: ','.join(set(x)))], axis=1))
     carac_rd_pt.columns=['nb_rte_rdpt', 'nom_rte_rdpt']
+    carac_rd_pt['nb_rte_rdpt']=carac_rd_pt.apply(lambda x : x.nb_rte_rdpt if x.nom_rte_rdpt!='NC' else 2.0, axis=1) #pour les voies communales je considere tous les rond points comme avec au moins 2 routes, pour que les troncons s'arrete au rd points
     
     #ajouter l'id_rdpt aux données
     df=pd.concat([df,l_dans_p.loc[:,'id_rdpt']],axis=1, sort=False)
@@ -103,9 +104,7 @@ def recup_troncon_elementaire (id_ign_ligne,df, ligne_traite_troncon=[]):
                 break
             
             if len(liste_ligne_touchees) > 0:  # si les voies touchees n'on pas ete traiees
-                if (((df_ligne.loc['numero'] == df_touches_source['numero']).all() == 1 and (df_ligne.loc['numero']!='NC')) or(
-                       (df_ligne.loc['nom_voie_g'] in df_touches_source['nom_voie_g'].values().tolist()+df_touches_source['nom_voie_d'].values().tolist()) and
-                         df_ligne.loc['numero']!='NC')): # pour les voies hors voies communales si eelles ont le mm nom on prend toutes les lignes
+                if ((df_ligne.loc['numero'] == df_touches_source['numero']).all() == 1 and (df_ligne.loc['numero']!='NC')): # pour les voies hors voies communales si elles ont le mm nom on prend toutes les lignes, pour les voies communales dont les nom_voie_g sont equivalent c'est pareil
                     #gestion des rd points
                     if df_touches_source['nature'].any()=='Rd_pt' : #si une des lignes touchées est un rd point on prend toutes les autres du m^me rd point
                         id_rdpt=df_touches_source.iloc[0]['id_rdpt'] #recuperer l'id du rd pt
@@ -127,7 +126,51 @@ def recup_troncon_elementaire (id_ign_ligne,df, ligne_traite_troncon=[]):
                             liste_ligne_suivantes.append(id_ign_suivant)
                             ligne_traite_troncon.append(id_ign_suivant)
                             #yield from recup_troncon_elementaire(id_ign_suivant, ligne_traite_troncon) 
-                            yield id_ign_suivant 
+                            yield id_ign_suivant  
+                elif ((df_ligne.loc['codevoie_d'] == df_touches_source['codevoie_d']).all() == 1 and (df_ligne.loc['numero']=='NC')) : #si les voies qui se croisent sont les memes
+                    if df_touches_source['nature'].any()=='Rd_pt' : #si une des lignes touchées est un rd point on prend toutes les autres du m^me rd point
+                            id_rdpt=df_touches_source.iloc[0]['id_rdpt'] #recuperer l'id du rd pt
+                            liste_ligne_touchees+=df.loc[(df['id_rdpt']==id_rdpt) & (~df.index.isin(liste_ligne_touchees))].index.tolist() #recuperer les lignes de cet id_drpt non deja recuperee
+                            #print(f'ligne{id_ign_ligne} rd point {liste_ligne_touchees}, nb rroute rd pt {nb_rte_rdpt}')
+                            for id_ign_suivant in liste_ligne_touchees :
+                                liste_ligne_suivantes.append(id_ign_suivant)
+                                ligne_traite_troncon.append(id_ign_suivant)
+                                yield id_ign_suivant
+                    else :
+                        for id_ign_suivant in liste_ligne_touchees:
+                            #print (f'fin traitement cas = 3 mm numero ; src : apres test isin : {datetime.now()}') 
+                            liste_ligne_suivantes.append(id_ign_suivant)
+                            ligne_traite_troncon.append(id_ign_suivant)
+                            #yield from recup_troncon_elementaire(id_ign_suivant, ligne_traite_troncon) 
+                            yield id_ign_suivant  
+                elif (df_ligne.loc['numero']=='NC' and len(set(df_touches_source['codevoie_d'].values.tolist()))==2
+                       and 'NR' in df_touches_source['codevoie_d'].values.tolist() and 
+                       df_ligne.loc['codevoie_d'] in df_touches_source['codevoie_d'].values.tolist() ) :   #si les voies croisés ont un nom pour ue d'entre elle et l'autre non  
+                    df_touches_source = df_touches_source.loc[df_touches_source['codevoie_d']==df_ligne['codevoie_d']] #on limite le df touche sources aux voies qui ont le même nom
+                    liste_ligne_touchees=df_touches_source.index.tolist()
+                    if df_touches_source['nature'].any()=='Rd_pt' : #si une des lignes touchées est un rd point on prend toutes les autres du m^me rd point
+                            id_rdpt=df_touches_source.iloc[0]['id_rdpt'] #recuperer l'id du rd pt
+                            liste_ligne_touchees+=df.loc[(df['id_rdpt']==id_rdpt) & (~df.index.isin(liste_ligne_touchees))].index.tolist() #recuperer les lignes de cet id_drpt non deja recuperee
+                            #print(f'ligne{id_ign_ligne} rd point {liste_ligne_touchees}, nb rroute rd pt {nb_rte_rdpt}')
+                            for id_ign_suivant in liste_ligne_touchees :
+                                liste_ligne_suivantes.append(id_ign_suivant)
+                                ligne_traite_troncon.append(id_ign_suivant)
+                                yield id_ign_suivant
+                    else :
+                        for id_ign_suivant in liste_ligne_touchees:
+                            #print (f'fin traitement cas = 3 mm numero ; src : apres test isin : {datetime.now()}') 
+                            liste_ligne_suivantes.append(id_ign_suivant)
+                            ligne_traite_troncon.append(id_ign_suivant)
+                            #yield from recup_troncon_elementaire(id_ign_suivant, ligne_traite_troncon) 
+                            yield id_ign_suivant
+                elif (df_ligne.loc['numero']=='NC' and df_touches_source['nature'].all()=='Rd_pt' 
+                      and df_touches_source['codevoie_d'].all()=='NR') : #si on touche un rond point sans nom, on va lui affecter un id arbitraire
+                    id_rdpt=df_touches_source.iloc[0]['id_rdpt']
+                    liste_ligne_touchees+=df.loc[(df['id_rdpt']==id_rdpt) & (~df.index.isin(liste_ligne_touchees))].index.tolist()
+                    for id_ign_suivant in liste_ligne_touchees :
+                                liste_ligne_suivantes.append(id_ign_suivant)
+                                ligne_traite_troncon.append(id_ign_suivant)
+                                yield id_ign_suivant
                 else: #si toute les voies n'ont pas le même nom
                     if nature in ['Autoroute', 'Quasi-autoroute'] :
                         df_ligne_autre=df_touches_source.loc[df_touches_source['numero']!=df_ligne['numero']]
@@ -189,7 +232,7 @@ def recup_troncon_parallele_v2(df,liste_troncon):
     #on recupere le centre de la ligne
     gdf_lignes=gp.GeoDataFrame(df.loc[liste_troncon], geometry='geom') #conversion en geodf
     gdf_lignes2=gdf_lignes.unary_union #union des geometries
-    xmin,ymin,xmax,ymax=gdf_lignes2.interpolate(0.5, normalized=True).buffer(100).bounds #centroid de la ligne
+    xmin,ymin,xmax,ymax=gdf_lignes2.interpolate(0.5, normalized=True).buffer(50).bounds #centroid de la ligne
     gdf_global=gp.GeoDataFrame(df, geometry='geom')#donnees de base
     lignes_possibles=gdf_global.cx[xmin:xmax,ymin:ymax]#recherche des lignes proches du centroid
     #uniquement les lignes non présentes dans la liste de troncons avec le même nom de voie
