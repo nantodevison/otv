@@ -19,7 +19,7 @@ import Outils
 
 # ouvrir connexion, recuperer donnees
 with ct.ConnexionBdd('local_otv') as c : 
-    df = gp.read_postgis("select t.*, v1.cnt nb_intrsct_src, st_astext(v1.geom) as src_geom, v2.cnt as nb_intrsct_tgt, st_astext(v2.geom) as tgt_geom from public.test_agreg_lineaire t left join public.test_agreg_lineaire_vertices_pgr v1 on t.\"source\"=v1.id left join public.test_agreg_lineaire_vertices_pgr v2  on t.target=v2.id ", c.connexionPsy)
+    df = gp.read_postgis("select t.*, v1.cnt nb_intrsct_src, st_astext(v1.the_geom) as src_geom, v2.cnt as nb_intrsct_tgt, st_astext(v2.the_geom) as tgt_geom from public.test_agreg_lineaire t left join public.test_agreg_lineaire_vertices_pgr v1 on t.\"source\"=v1.id left join public.test_agreg_lineaire_vertices_pgr v2  on t.target=v2.id ", c.connexionPsy)
 
 #variables generales
 nature_2_chaussees=['Route à 2 chaussées','Quasi-autoroute','Autoroute']
@@ -39,7 +39,6 @@ def identifier_rd_pt(df):
     gdf_rd_point.columns=['id_rdpt', 'geometry']   
     #jointure spataile pour une gdf avec uniquement les rd_points en lignes avec le numéro
     l_dans_p=gp.sjoin(df,gdf_rd_point,op='within') 
-    print(l_dans_p.columns)
     
     #lignes qui touchent rd points
     #1.ligne qui intersectent avec id_rdpt
@@ -106,13 +105,26 @@ def recup_troncon_elementaire (id_ign_ligne,df, ligne_traite_troncon=[]):
             if len(liste_ligne_touchees) > 0:  # si les voies touchees n'on pas ete traiees
                 if (df_ligne.loc['numero'] == df_touches_source['numero']).all() == 1 : #♠si eelles ont le mm nom on prend toutes les lignes
                     if df_touches_source['nature'].any()=='Rd_pt' : #si une des lignes touchées est un rd point on prend toutes les autres du m^me rd point
-                        df.loc[df['id_rdpt']==df_touches_source[:,'id_rdpt']].index.to_list()
-                    for id_ign_suivant in liste_ligne_touchees:
-                        #print (f'fin traitement cas = 3 mm numero ; src : apres test isin : {datetime.now()}')
-                        liste_ligne_suivantes.append(id_ign_suivant)
-                        ligne_traite_troncon+=[id_ign_ligne,id_ign_suivant]
-                        #yield from recup_troncon_elementaire(id_ign_suivant, ligne_traite_troncon) 
-                        yield id_ign_suivant 
+                        id_rdpt=df_touches_source.iloc[0]['id_rdpt'] #recuperer l'id du rd pt
+                        nb_rte_rdpt=df_touches_source.iloc[0]['nb_rte_rdpt'] #recuperer le nb de route qui croise le rd point
+                        liste_ligne_touchees+=df.loc[(df['id_rdpt']==id_rdpt) & (~df.index.isin(liste_ligne_touchees))].index.tolist() #recuperer les lignes de cet id_drpt non deja recuperee
+                        #print(f'ligne{id_ign_ligne} rd point {liste_ligne_touchees}, nb rroute rd pt {nb_rte_rdpt}')
+                        if nb_rte_rdpt > 1 :
+                            for id_ign_suivant in liste_ligne_touchees :
+                                ligne_traite_troncon.append(id_ign_suivant)
+                                yield id_ign_suivant
+                        else : 
+                            for id_ign_suivant in liste_ligne_touchees :
+                                liste_ligne_suivantes.append(id_ign_suivant)
+                                ligne_traite_troncon.append(id_ign_suivant)
+                                yield id_ign_suivant
+                    else :
+                        for id_ign_suivant in liste_ligne_touchees:
+                            #print (f'fin traitement cas = 3 mm numero ; src : apres test isin : {datetime.now()}') 
+                            liste_ligne_suivantes.append(id_ign_suivant)
+                            ligne_traite_troncon.append(id_ign_suivant)
+                            #yield from recup_troncon_elementaire(id_ign_suivant, ligne_traite_troncon) 
+                            yield id_ign_suivant 
                 else: #si toute les voies n'ont pas le même nom
                     if nature in ['Autoroute', 'Quasi-autoroute'] :
                         df_ligne_autre=df_touches_source.loc[df_touches_source['numero']!=df_ligne['numero']]
