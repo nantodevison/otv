@@ -13,7 +13,7 @@ import numpy as np
 from datetime import datetime
 import Connexion_Transfert as ct
 from shapely.wkt import loads
-from shapely.ops import polygonize
+from shapely.ops import polygonize, linemerge
 import Outils
 #from psycopg2 import extras
 
@@ -37,7 +37,7 @@ def identifier_rd_pt(df):
         pour savoir si le rond point a un numrro ou un code_voie correle a une des voies enetrantes
         """ 
         if id_rdpt >=0 :
-            if (numero in liste_num) or (codevoie in liste_code) :
+            if (numero !='NC' and numero in liste_num.split(',')) or (numero =='NC' and codevoie in liste_code.split(',')) :
                 return True
             else : 
                 return False
@@ -63,7 +63,7 @@ def identifier_rd_pt(df):
     #1.ligne qui intersectent avec id_rdpt
     l_intersct_rdpt=gp.sjoin(df,l_dans_p_final.drop('index_right', axis=1), how='inner',op='intersects')
     #2.filtre de celle contenue dans le rd points 
-    l_intersct_rdpt=l_intersct_rdpt.loc[~l_intersct_rdpt.index.isin(l_dans_p_final.index.tolist())][['id_rdpt','numero_left']]
+    l_intersct_rdpt=l_intersct_rdpt.loc[~l_intersct_rdpt.index.isin(l_dans_p_final.index.tolist())][['id_rdpt','numero_left','codevoie_d_left']]
     
     #trouver le nb de voies qui intersectent chaque rd point et leur noms. renomer les colonnes
     carac_rd_pt=(pd.concat([l_intersct_rdpt.groupby('id_rdpt').numero_left.nunique(),
@@ -76,11 +76,11 @@ def identifier_rd_pt(df):
     df=pd.concat([df,l_dans_p_final.loc[:,'id_rdpt']],axis=1, sort=False)
     #mettre à jour la nature
     df['nature']=df.apply(lambda x : 'Rd_pt' if x.id_rdpt>=0 else x['nature'], axis=1)
-    #ajouter la'ttribut pour savoir si le rd point peut etre assigne
-    df['assigne_rdpt']=df.apply(lambda x : assigne_rdpt(x['id_rdpt'],x['numero'], x['nom_rte_rdpt_y'], x['codevoie_d'],x['codevoie_rdpt']),axis=1)
     
     #ajouter les infos du rd point (nb voies différentes et nom)
     df=df.merge(carac_rd_pt, how='left',left_on='id_rdpt', right_index=True)
+    #ajouter la'ttribut pour savoir si le rd point peut etre assigne
+    df['assigne_rdpt']=df.apply(lambda x : assigne_rdpt(x['id_rdpt'],x['numero'], x['nom_rte_rdpt'], x['codevoie_d'],x['codevoie_rdpt']),axis=1)
     
     return df
 
@@ -96,6 +96,7 @@ def recup_troncon_elementaire (id_ign_ligne,df, ligne_traite_troncon=[]):
     
     #donnees de la ligne
     df_ligne = df.loc[id_ign_ligne]
+    #print(df_ligne)
     nature=df_ligne.loc['nature']
     #print('ligne_traite_troncon : ',ligne_traite_troncon)
     ligne_traite_troncon.append(id_ign_ligne)
@@ -103,9 +104,11 @@ def recup_troncon_elementaire (id_ign_ligne,df, ligne_traite_troncon=[]):
     liste_ligne_suivantes=[]   
     
     for key, value in {'nb_intrsct_src':['source', 'src_geom'],'nb_intrsct_tgt':['target', 'tgt_geom']}.items() : 
+        #print(id_ign_ligne,key, value)
         # cas simple de la ligne qui en touche qu'uen seule autre du cote source
         if df_ligne.loc[key] == 2 : 
             #print (f' cas = 2 ; src : avant test isin : {datetime.now()}, ligne : {id_ign_ligne} ')
+            #print(id_ign_ligne,key, value)
             df_touches_source = df.loc[(~df.index.isin(ligne_traite_troncon)) & ((df['source'] == df_ligne[value[0]]) | (df['target'] == df_ligne[value[0]]))]  # recuperer le troncon qui ouche le point d'origine et qui n'est pas deja traite
             #print (f' cas = 2 ; src : apres test isin : {datetime.now()}')
             if len(df_touches_source) > 0:  # car la seule voie touchee peut déjà etre dans les lignes traitees
@@ -123,7 +126,7 @@ def recup_troncon_elementaire (id_ign_ligne,df, ligne_traite_troncon=[]):
             
             #gestion des bretelles et des rond points  : si la ligne qui est traitée est dessus et que plusieurs voies en partent : on ne traite pas la ligne, elle sera traitee avec les voies qui arrivent sur le rd point
             if nature == 'Bretelle' or df_touches_source['nature'].all()=='Bretelle' or (nature=='Rd_pt' and df_ligne['nb_rte_rdpt']>1): #comme ça les bretelles sont séparrées des sections courantes, si on dispose de données de ccomptage dessus (type dira)
-                break
+                continue
             
             if len(liste_ligne_touchees) > 0:  # si les voies touchees n'on pas ete traiees
                 if ((df_ligne.loc['numero'] == df_touches_source['numero']).all() == 1 and (df_ligne.loc['numero']!='NC')): # pour les voies hors voies communales si elles ont le mm nom on prend toutes les lignes, pour les voies communales dont les nom_voie_g sont equivalent c'est pareil
@@ -175,7 +178,7 @@ def recup_troncon_elementaire (id_ign_ligne,df, ligne_traite_troncon=[]):
                             liste_ligne_touchees+=df.loc[(df['id_rdpt']==id_rdpt) & (~df.index.isin(liste_ligne_touchees))].index.tolist() #recuperer les lignes de cet id_drpt non deja recuperee
                             #print(f'ligne{id_ign_ligne} rd point {liste_ligne_touchees}, nb rroute rd pt {nb_rte_rdpt}')
                             for id_ign_suivant in liste_ligne_touchees :
-                                liste_ligne_suivantes.append(id_ign_suivant)
+                                #liste_ligne_suivantes.append(id_ign_suivant)
                                 ligne_traite_troncon.append(id_ign_suivant)
                                 yield id_ign_suivant
                     else :
@@ -186,20 +189,13 @@ def recup_troncon_elementaire (id_ign_ligne,df, ligne_traite_troncon=[]):
                             #yield from recup_troncon_elementaire(id_ign_suivant, ligne_traite_troncon) 
                             yield id_ign_suivant
                 elif (df_ligne.loc['numero']=='NC' and df_touches_source['nature'].all()=='Rd_pt' 
-                      and df_touches_source['codevoie_d'].all()=='NR') : #si on touche un rond point sans nom, on va lui affecter un id arbitraire
+                      and df_touches_source['assigne_rdpt'].all()==False) : #si on touche un rond point dont on ne peut pas affecter le nom, on va lui affecter un id arbitraire, mais pas au lignes suivantes
                     id_rdpt=df_touches_source.iloc[0]['id_rdpt']
                     liste_ligne_touchees+=df.loc[(df['id_rdpt']==id_rdpt) & (~df.index.isin(liste_ligne_touchees))].index.tolist()
                     for id_ign_suivant in liste_ligne_touchees :
-                                liste_ligne_suivantes.append(id_ign_suivant)
+                                #liste_ligne_suivantes.append(id_ign_suivant)
                                 ligne_traite_troncon.append(id_ign_suivant)
                                 yield id_ign_suivant
-                elif (df_ligne.loc['numero']=='NC' and df_touches_source['nature'].all()=='Rd_pt'
-                      and df_touches_source['codevoie_d'].all()=='NR'): #cas d'une voie qui touvhe un rd point nomme avec aucune voie entrante qui poprte ce nom
-                    #on va cjrecher les codes voie des autres voies qui entre sur le rd point
-                    df_rd_pt=df.loc[df['id_rdpt']==df_touches_source.iloc[0]['id_rdpt']] #les voies qui composent le rond point
-                    l_df_rd_pt=df.loc[(gp.sjoin(df,df_rd_pt, how='inner',op='intersects').index.unique().tolist())] # les lignes qui intersectent une lignes rd point
-                    l_df_rd_pt2=l_df_rd_pt.loc[~l_df_rd_pt.index.isin(df_rd_pt.index.tolist())].index.unique().tolist() #on eneleve les lignes du rd point
-                    l_df_rd_pt3=df.loc[df.index.isin(l_df_rd_pt2),'codevoie_d'].unique().tolist() #liste des code_voie entrant sur le rd point
                     
                 else: #si toute les voies n'ont pas le même nom
                     if nature in ['Autoroute', 'Quasi-autoroute'] :
@@ -215,10 +211,10 @@ def recup_troncon_elementaire (id_ign_ligne,df, ligne_traite_troncon=[]):
                             #si l'angle estdans les 90°, on ignor et on continue sur la l'autre ligne
                             if 55 < angle < 135 :
                                 id_ign_suivant=df_touches_source.loc[~df.id.isin(df_ligne_autre.id)].index.values.tolist()[0]
-                                liste_ligne_suivantes.append(id_ign_suivant)
-                                yield id_ign_suivant  
+                                liste_ligne_suivantes.append(id_ign_suivant)  
                                 #print (f'fin traitement cas = 3 ; src : apres test isin : {datetime.now()}')
                                 ligne_traite_troncon.append(id_ign_suivant)
+                                yield id_ign_suivant
                                 #yield from recup_troncon_elementaire(id_ign_suivant, ligne_traite_troncon)  
 
     #print(f'ligne : {id_ign_ligne}, liste a traiter : {liste_ligne_suivantes}' ) 
@@ -261,7 +257,10 @@ def recup_troncon_parallele_v2(df,liste_troncon):
     #on agrege les lignes
     #on recupere le centre de la ligne
     gdf_lignes=gp.GeoDataFrame(df.loc[liste_troncon], geometry='geom') #conversion en geodf
-    gdf_lignes2=gdf_lignes.unary_union #union des geometries
+    try : #union des geometries, si possible en linestring sinon en multi
+        gdf_lignes2=linemerge(gdf_lignes.unary_union) #union des geometries
+    except ValueError :
+        gdf_lignes2=gdf_lignes.unary_union
     xmin,ymin,xmax,ymax=gdf_lignes2.interpolate(0.5, normalized=True).buffer(50).bounds #centroid de la ligne
     gdf_global=gp.GeoDataFrame(df, geometry='geom')#donnees de base
     lignes_possibles=gdf_global.cx[xmin:xmax,ymin:ymax]#recherche des lignes proches du centroid
@@ -281,7 +280,8 @@ def affecter_troncon(df):
     en entree : liste d'id de ligne -> lite de str
     """
     #appel du dico de resultat
-    dico_tronc_elem={}
+    #dico_tronc_elem={}
+    liste_finale=[]
     #global ligne_traitee_global
     #ligne_traitee_global = np.empty(1, dtype='<U24')
     ligne_traitee_global=set([]) #pour avoir une liste de valuer unique
@@ -291,7 +291,7 @@ def affecter_troncon(df):
     
     #pour chaque ligne on va creer un id dans le dico, avec les tronon associes
     for indice, ligne in enumerate(liste_ligne) :
-        if indice % 300 == 0 :
+        if indice % 1000 == 0 :
             print (f"{indice}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)}, nb ligne differente={len(set(ligne_traitee_global))}")
         #print (f"{indice}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)}")
         if ligne in ligne_traitee_global :
@@ -300,14 +300,26 @@ def affecter_troncon(df):
             """if indice>=10 : 
                 break
             #recuperation ds troncons connexes en cas simple"""
+            liste_param_troncon=[]
+            liste_troncon2=[]
+            liste_param_troncon.append(ligne)
+            liste_param_troncon.append('oui')
+            liste_param_troncon.append(indice)
+            liste_finale.append(liste_param_troncon)
             liste_troncon=list(recup_troncon_elementaire(ligne,df,[]))
-            liste_troncon.append(ligne)
-            ligne_traitee_global.update(liste_troncon)
+            liste_troncon2+=liste_troncon
+            #print(liste_param_troncon, liste_troncon, liste_troncon2 )
+            ligne_traitee_global.update(liste_troncon2)
             for troncon in liste_troncon:
                 #ligne_traitee_global=np.append(ligne_traitee_global,liste_troncon)
                 #print('lignes : ', liste_troncon,ligne_traitee_global )
                 #dico_tronc_elem[indice[0]]=liste_troncon
-                dico_tronc_elem[troncon]=indice
+                #dico_tronc_elem[troncon]=indice
+                liste_param_troncon=[]
+                liste_param_troncon.append(troncon)
+                liste_param_troncon.append('non')
+                liste_param_troncon.append(indice)
+                liste_finale.append(liste_param_troncon)
             #print(f'ligne : {ligne} , liste : {liste_troncon} ')
 
             #recuperation des toncons connexes si 2 lignes pour une voie
@@ -317,19 +329,29 @@ def affecter_troncon(df):
                     ligne_parrallele=recup_troncon_parallele_v2(df,liste_troncon)
                     if ligne_parrallele==None: #cas où pas de ligne parrallele trouvee
                         continue
-                    dico_tronc_elem[ligne_parrallele]=indice
+                    #dico_tronc_elem[ligne_parrallele]=indice
+                    liste_param_troncon=[]
+                    liste_param_troncon.append(ligne_parrallele)
+                    liste_param_troncon.append('oui')
+                    liste_param_troncon.append(indice)
+                    liste_finale.append(liste_param_troncon)
                     liste_troncon_para=list(recup_troncon_elementaire(ligne_parrallele,df,[]))
                     ligne_traitee_global.update(liste_troncon_para)
                     for troncon_para in liste_troncon_para :
                         #print('lignes : ', liste_troncon)
-                        dico_tronc_elem[troncon_para]=indice
+                        #dico_tronc_elem[troncon_para]=indice
+                        liste_param_troncon=[]
+                        liste_param_troncon.append(troncon_para)
+                        liste_param_troncon.append('non')
+                        liste_param_troncon.append(indice)
+                        liste_finale.append(liste_param_troncon)
                 except IndexError :
                     pass
                     #print(f"erreur index a ligne ligne : {ligne}")
                 #print('parrallele ',ligne_parrallele)
                 
             
-    return dico_tronc_elem
+    return liste_finale
 
 def affecter_troncon_ligne(ligne):
     """
@@ -388,7 +410,7 @@ def affecter_troncon_ligne(ligne):
                 
 def inserer_dico(conn, dico):
     
-    conn.curs.executemany("""INSERT INTO referentiel.tronc_elem_bdt17_ed15_l (id_ign,id_tronc_elem) VALUES (%s, %s)""", dico.items())
+    conn.curs.executemany("""INSERT INTO referentiel.tronc_elem_bdt17_ed15_l (id_ign,tronc_ref,id_tronc_elem) VALUES (%s, %s,%s)""", dico)
     conn.connexionPsy.commit()
 
 if __name__ == '__main__' : 
