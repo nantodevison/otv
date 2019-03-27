@@ -33,18 +33,27 @@ def identifier_rd_pt(df):
     fonction pour modifier la nature des rd points pour identification et y ajouter un id deregroupement
     """
     #creer la lsite des rd points selon le critere atmo aura ; creer une gdf avec la liste
-    liste_rd_points=[t.buffer(1) for t in polygonize(df.geometry) if 12<=((t.length**2)/t.area)<=14] # car un cercle à un rappor de ce type entre 12 et 13
-    gdf_rd_point=gp.GeoDataFrame([i for i in range(len(liste_rd_points))], geometry=liste_rd_points)
+    liste_rd_points=[t.buffer(0.1) for t in polygonize(df.geometry) if 12<=((t.length**2)/t.area)<=14] # car un cercle à un rappor de ce type entre 12 et 13
+    dico_rd_pt=[[i, ((t.length**2)/t.area)] for i,t in enumerate(polygonize(df.geometry)) if 12<=((t.length**2)/t.area)<=14]
+    gdf_rd_point=gp.GeoDataFrame(dico_rd_pt, geometry=liste_rd_points)
     gdf_rd_point.crs={'init':'epsg:2154'}
-    gdf_rd_point.columns=['id_rdpt', 'geometry']   
+    gdf_rd_point.columns=['id_rdpt', 'facteur','geometry']
+    #on créer aussi la meme donnees avec un buffer interiuer, pour ne garder que les lignes dans le buffer exteriuer et hors buffer interieur (cas de rond point enjmabeant uine 2*2 et prenant la 2*2 voie qui est dans le polygone
+    liste_rd_points_int=[t.buffer(-0.1) for t in polygonize(df.geometry) if 12<=((t.length**2)/t.area)<=14]
+    dico_rd_pt_int=[[i, ((t.length**2)/t.area)] for i,t in enumerate(polygonize(df.geometry)) if 12<=((t.length**2)/t.area)<=14]
+    gdf_rd_point_int=gp.GeoDataFrame(dico_rd_pt_int, geometry=liste_rd_points_int)
+    gdf_rd_point_int.crs={'init':'epsg:2154'}
+    gdf_rd_point_int.columns=['id_rdpt', 'facteur','geometry'] 
     #jointure spataile pour une gdf avec uniquement les lignes des rd_points avec le numéro
     l_dans_p=gp.sjoin(df,gdf_rd_point,op='within') 
+    l_dans_p_int=gp.sjoin(df,gdf_rd_point_int,op='within')
+    l_dans_p_final=l_dans_p.loc[~l_dans_p.index.isin(l_dans_p_int.index.tolist())] 
     
     #lignes qui touchent rd points
     #1.ligne qui intersectent avec id_rdpt
-    l_intersct_rdpt=gp.sjoin(df,l_dans_p.drop('index_right', axis=1), how='inner',op='intersects')
+    l_intersct_rdpt=gp.sjoin(df,l_dans_p_final.drop('index_right', axis=1), how='inner',op='intersects')
     #2.filtre de celle contenue dans le rd points 
-    l_intersct_rdpt=l_intersct_rdpt.loc[~l_intersct_rdpt.index.isin(l_dans_p.index.tolist())][['id_rdpt','numero_left']]
+    l_intersct_rdpt=l_intersct_rdpt.loc[~l_intersct_rdpt.index.isin(l_dans_p_final.index.tolist())][['id_rdpt','numero_left']]
     
     #trouver le nb de voies qui intersectent chaque rd point et leur noms. renomer les colonnes
     carac_rd_pt=(pd.concat([l_intersct_rdpt.groupby('id_rdpt').numero_left.nunique(),
@@ -53,7 +62,7 @@ def identifier_rd_pt(df):
     carac_rd_pt['nb_rte_rdpt']=carac_rd_pt.apply(lambda x : x.nb_rte_rdpt if x.nom_rte_rdpt!='NC' else 2.0, axis=1) #pour les voies communales je considere tous les rond points comme avec au moins 2 routes, pour que les troncons s'arrete au rd points
     
     #ajouter l'id_rdpt aux données
-    df=pd.concat([df,l_dans_p.loc[:,'id_rdpt']],axis=1, sort=False)
+    df=pd.concat([df,l_dans_p_final.loc[:,'id_rdpt']],axis=1, sort=False)
     #mettre à jour la nature
     df['nature']=df.apply(lambda x : 'Rd_pt' if x.id_rdpt>=0 else x['nature'], axis=1)
     
