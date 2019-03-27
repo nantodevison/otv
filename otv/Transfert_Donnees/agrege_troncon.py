@@ -32,6 +32,16 @@ def identifier_rd_pt(df):
     """
     fonction pour modifier la nature des rd points pour identification et y ajouter un id deregroupement
     """
+    def assigne_rdpt(id_rdpt,numero, liste_num, codevoie, liste_code) :
+        """
+        pour savoir si le rond point a un numrro ou un code_voie correle a une des voies enetrantes
+        """ 
+        if id_rdpt >=0 :
+            if (numero in liste_num) or (codevoie in liste_code) :
+                return True
+            else : 
+                return False
+        
     #creer la lsite des rd points selon le critere atmo aura ; creer une gdf avec la liste
     liste_rd_points=[t.buffer(0.1) for t in polygonize(df.geometry) if 12<=((t.length**2)/t.area)<=14] # car un cercle à un rappor de ce type entre 12 et 13
     dico_rd_pt=[[i, ((t.length**2)/t.area)] for i,t in enumerate(polygonize(df.geometry)) if 12<=((t.length**2)/t.area)<=14]
@@ -57,14 +67,17 @@ def identifier_rd_pt(df):
     
     #trouver le nb de voies qui intersectent chaque rd point et leur noms. renomer les colonnes
     carac_rd_pt=(pd.concat([l_intersct_rdpt.groupby('id_rdpt').numero_left.nunique(),
-    l_intersct_rdpt.groupby('id_rdpt')['numero_left'].apply(lambda x: ','.join(set(x)))], axis=1))
-    carac_rd_pt.columns=['nb_rte_rdpt', 'nom_rte_rdpt']
+        l_intersct_rdpt.groupby('id_rdpt')['numero_left'].apply(lambda x: ','.join(set(x))),
+        l_intersct_rdpt.groupby('id_rdpt')['codevoie_d_left'].apply(lambda x: ','.join(set(x)))], axis=1))
+    carac_rd_pt.columns=['nb_rte_rdpt', 'nom_rte_rdpt','codevoie_rdpt']
     carac_rd_pt['nb_rte_rdpt']=carac_rd_pt.apply(lambda x : x.nb_rte_rdpt if x.nom_rte_rdpt!='NC' else 2.0, axis=1) #pour les voies communales je considere tous les rond points comme avec au moins 2 routes, pour que les troncons s'arrete au rd points
     
     #ajouter l'id_rdpt aux données
     df=pd.concat([df,l_dans_p_final.loc[:,'id_rdpt']],axis=1, sort=False)
     #mettre à jour la nature
     df['nature']=df.apply(lambda x : 'Rd_pt' if x.id_rdpt>=0 else x['nature'], axis=1)
+    #ajouter la'ttribut pour savoir si le rd point peut etre assigne
+    df['assigne_rdpt']=df.apply(lambda x : assigne_rdpt(x['id_rdpt'],x['numero'], x['nom_rte_rdpt_y'], x['codevoie_d'],x['codevoie_rdpt']),axis=1)
     
     #ajouter les infos du rd point (nb voies différentes et nom)
     df=df.merge(carac_rd_pt, how='left',left_on='id_rdpt', right_index=True)
@@ -180,6 +193,14 @@ def recup_troncon_elementaire (id_ign_ligne,df, ligne_traite_troncon=[]):
                                 liste_ligne_suivantes.append(id_ign_suivant)
                                 ligne_traite_troncon.append(id_ign_suivant)
                                 yield id_ign_suivant
+                elif (df_ligne.loc['numero']=='NC' and df_touches_source['nature'].all()=='Rd_pt'
+                      and df_touches_source['codevoie_d'].all()=='NR'): #cas d'une voie qui touvhe un rd point nomme avec aucune voie entrante qui poprte ce nom
+                    #on va cjrecher les codes voie des autres voies qui entre sur le rd point
+                    df_rd_pt=df.loc[df['id_rdpt']==df_touches_source.iloc[0]['id_rdpt']] #les voies qui composent le rond point
+                    l_df_rd_pt=df.loc[(gp.sjoin(df,df_rd_pt, how='inner',op='intersects').index.unique().tolist())] # les lignes qui intersectent une lignes rd point
+                    l_df_rd_pt2=l_df_rd_pt.loc[~l_df_rd_pt.index.isin(df_rd_pt.index.tolist())].index.unique().tolist() #on eneleve les lignes du rd point
+                    l_df_rd_pt3=df.loc[df.index.isin(l_df_rd_pt2),'codevoie_d'].unique().tolist() #liste des code_voie entrant sur le rd point
+                    
                 else: #si toute les voies n'ont pas le même nom
                     if nature in ['Autoroute', 'Quasi-autoroute'] :
                         df_ligne_autre=df_touches_source.loc[df_touches_source['numero']!=df_ligne['numero']]
@@ -303,7 +324,8 @@ def affecter_troncon(df):
                         #print('lignes : ', liste_troncon)
                         dico_tronc_elem[troncon_para]=indice
                 except IndexError :
-                    print(f"erreur index a ligne ligne : {ligne}")
+                    pass
+                    #print(f"erreur index a ligne ligne : {ligne}")
                 #print('parrallele ',ligne_parrallele)
                 
             
@@ -328,7 +350,7 @@ def affecter_troncon_ligne(ligne):
     #pour chaque ligne on va creer un id dans le dico, avec les tronon associes
     for indice, ligne in enumerate(liste_ligne) :
         dico_tronc_elem[ligne]=indice
-        if indice % 300 == 0 :
+        if indice % 1000 == 0 :
             print (f"{indice}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)}, nb ligne differente={len(set(ligne_traitee_global))}")
         #print (f"{indice}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)}")
         if ligne in ligne_traitee_global :
@@ -350,7 +372,8 @@ def affecter_troncon_ligne(ligne):
             try : 
                 ligne_parrallele=recup_troncon_parallele_v2(df,liste_troncon.append(ligne))
             except IndexError :
-                print(f"ligne : {ligne}, liste troncon : {liste_troncon}")
+                pass
+                #print(f"ligne : {ligne}, liste troncon : {liste_troncon}")
             #print('parrallele ',ligne_parrallele)
             if ligne_parrallele==None: #cas où pas de ligne parrallele trouvee
                 continue
