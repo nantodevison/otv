@@ -87,7 +87,7 @@ def recup_troncon_elementaire (id_ign_ligne,df, ligne_traite_troncon=[]):
     #print('ligne_traite_troncon : ',ligne_traite_troncon)
     ligne_traite_troncon.append(id_ign_ligne)
     #yield id_ign_ligne 
-    liste_ligne_suivantes=[] 
+    liste_ligne_suivantes=[]  
     
     for key, value in {'nb_intrsct_src':['source', 'src_geom'],'nb_intrsct_tgt':['target', 'tgt_geom']}.items() : 
         # cas simple de la ligne qui en touche qu'uen seule autre du cote source
