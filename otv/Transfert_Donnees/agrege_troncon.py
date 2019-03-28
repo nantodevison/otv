@@ -294,6 +294,7 @@ def affecter_troncon(df):
     
     #pour chaque ligne on va creer un id dans le dico, avec les tronon associes
     for indice, ligne in enumerate(liste_ligne) :
+        if len(ligne_traitee_global)==len(liste_ligne) : break
         if indice % 1000 == 0 :
             print (f"{indice}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)}, nb ligne differente={len(set(ligne_traitee_global))}")
         #print (f"{indice}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)}")
@@ -322,6 +323,7 @@ def affecter_troncon(df):
                         continue
                     dico_tronc_elem[ligne_parrallele]=indice
                     liste_troncon_para=list(recup_troncon_elementaire(ligne_parrallele,df,[]))
+                    liste_troncon_para.append(ligne_parrallele)
                     ligne_traitee_global.update(liste_troncon_para)
                     for troncon_para in liste_troncon_para :
                         #print('lignes : ', liste_troncon)
