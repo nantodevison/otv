@@ -125,8 +125,11 @@ def recup_troncon_elementaire (id_ign_ligne,df, ligne_traite_troncon=[]):
             #print (f' cas = 3 ; src : apres test isin : {datetime.now()}')
             
             #gestion des bretelles et des rond points  : si la ligne qui est traitée est dessus et que plusieurs voies en partent : on ne traite pas la ligne, elle sera traitee avec les voies qui arrivent sur le rd point
-            if nature == 'Bretelle' or df_touches_source['nature'].all()=='Bretelle' or (nature=='Rd_pt' and df_ligne['nb_rte_rdpt']>1): #comme ça les bretelles sont séparrées des sections courantes, si on dispose de données de ccomptage dessus (type dira)
+            if nature == 'Bretelle' or df_touches_source['nature'].all()=='Bretelle' : #comme ça les bretelles sont séparrées des sections courantes, si on dispose de données de ccomptage dessus (type dira)
                 continue
+            elif nature=='Rd_pt' and df_ligne['nb_rte_rdpt']>1 : 
+                ligne_traite_troncon,liste_ligne_suivantes=[],[]
+                break
             
             if len(liste_ligne_touchees) > 0:  # si les voies touchees n'on pas ete traiees
                 if ((df_ligne.loc['numero'] == df_touches_source['numero']).all() == 1 and (df_ligne.loc['numero']!='NC')): # pour les voies hors voies communales si elles ont le mm nom on prend toutes les lignes, pour les voies communales dont les nom_voie_g sont equivalent c'est pareil
@@ -189,7 +192,7 @@ def recup_troncon_elementaire (id_ign_ligne,df, ligne_traite_troncon=[]):
                             ligne_traite_troncon.append(id_ign_suivant)
                             #yield from recup_troncon_elementaire(id_ign_suivant, ligne_traite_troncon) 
                             yield id_ign_suivant
-                elif (df_ligne.loc['numero']=='NC' and df_touches_source['nature'].all()=='Rd_pt' 
+                elif (df_ligne.loc['numero']=='NC' and (df_touches_source['nature']=='Rd_pt').all()
                       and df_touches_source['assigne_rdpt'].all()==False) : #si on touche un rond point dont on ne peut pas affecter le nom, on va lui affecter un id arbitraire, mais pas au lignes suivantes
                     id_rdpt=df_touches_source.iloc[0]['id_rdpt']
                     liste_ligne_touchees+=df.loc[(df['id_rdpt']==id_rdpt) & (~df.index.isin(liste_ligne_touchees))].index.tolist()
@@ -331,7 +334,7 @@ def affecter_troncon(df):
             
     return dico_tronc_elem
 
-def affecter_troncon_ligne(ligne):
+def affecter_troncon_ligne(ligne,df):
     """
     Grouper les troncon par numero arbitraire
     baser sur recup_troncon_elementaire et recup_troncon_parallele
@@ -346,10 +349,8 @@ def affecter_troncon_ligne(ligne):
     #liste des des lignes
     liste_ligne=[ligne]
     #liste_ligne=np.array(df.index.tolist())
-    
     #pour chaque ligne on va creer un id dans le dico, avec les tronon associes
     for indice, ligne in enumerate(liste_ligne) :
-        dico_tronc_elem[ligne]=indice
         if indice % 1000 == 0 :
             print (f"{indice}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)}, nb ligne differente={len(set(ligne_traitee_global))}")
         #print (f"{indice}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)}")
@@ -359,30 +360,34 @@ def affecter_troncon_ligne(ligne):
             """if indice>=10 : 
                 break
             #recuperation ds troncons connexes en cas simple"""
-            liste_troncon=list(recup_troncon_elementaire(ligne,[]))
+            liste_troncon=list(recup_troncon_elementaire(ligne,df,[]))
+            liste_troncon.append(ligne)
             ligne_traitee_global.update(liste_troncon)
             for troncon in liste_troncon:
                 #ligne_traitee_global=np.append(ligne_traitee_global,liste_troncon)
                 #print('lignes : ', liste_troncon,ligne_traitee_global )
                 #dico_tronc_elem[indice[0]]=liste_troncon
                 dico_tronc_elem[troncon]=indice
-            
+            #print(f'ligne : {ligne} , liste : {liste_troncon} ')
+
             #recuperation des toncons connexes si 2 lignes pour une voie
-            #if ligne in df2_chaussees.index  :
-            try : 
-                ligne_parrallele=recup_troncon_parallele_v2(df,liste_troncon.append(ligne))
-            except IndexError :
-                pass
-                #print(f"ligne : {ligne}, liste troncon : {liste_troncon}")
-            #print('parrallele ',ligne_parrallele)
-            if ligne_parrallele==None: #cas où pas de ligne parrallele trouvee
-                continue
-            dico_tronc_elem[ligne_parrallele]=indice
-            liste_troncon_para=list(recup_troncon_elementaire(ligne_parrallele,[]))
-            ligne_traitee_global.update(liste_troncon_para)
-            for troncon_para in liste_troncon_para :
-                #print('lignes : ', liste_troncon)
-                dico_tronc_elem[troncon_para]=indice
+            if ligne in df2_chaussees.index  :
+                #print(f'ligne : {ligne} , liste : {liste_troncon.append(ligne)} ')
+                try : 
+                    ligne_parrallele=recup_troncon_parallele_v2(df,liste_troncon)
+                    if ligne_parrallele==None: #cas où pas de ligne parrallele trouvee
+                        continue
+                    dico_tronc_elem[ligne_parrallele]=indice
+                    liste_troncon_para=list(recup_troncon_elementaire(ligne_parrallele,df,[]))
+                    ligne_traitee_global.update(liste_troncon_para)
+                    for troncon_para in liste_troncon_para :
+                        #print('lignes : ', liste_troncon)
+                        dico_tronc_elem[troncon_para]=indice
+                except IndexError :
+                    pass
+                    #print(f"erreur index a ligne ligne : {ligne}")
+                #print('parrallele ',ligne_parrallele)
+    
             
     return dico_tronc_elem
                 
