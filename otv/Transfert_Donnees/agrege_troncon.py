@@ -56,8 +56,13 @@ def identifier_rd_pt(df):
     gdf_rd_point_int.columns=['id_rdpt', 'facteur','geometry'] 
     #jointure spataile pour une gdf avec uniquement les lignes des rd_points avec le numéro
     l_dans_p=gp.sjoin(df,gdf_rd_point,op='within') 
+    # attention, une ligne peut etre dans plusieurs rd point ! suppression du doublon
+    l_dans_p_ss_doublon=l_dans_p.reset_index().rename(columns={'index':'id_ign'}).drop_duplicates('id_ign').set_index('id_ign')
+    #print (f'loongueur l_dans_p : {len(l_dans_p)} ')
     l_dans_p_int=gp.sjoin(df,gdf_rd_point_int,op='within')
-    l_dans_p_final=l_dans_p.loc[~l_dans_p.index.isin(l_dans_p_int.index.tolist())] 
+    #print (f'loongueur l_dans_p_int : {len(l_dans_p_int)} ')
+    l_dans_p_final=l_dans_p_ss_doublon.loc[~l_dans_p_ss_doublon.index.isin(l_dans_p_int.index.tolist())]
+    #print (f'loongueur l_dans_p_final : {len(l_dans_p_final)}')
     
     #lignes qui touchent rd points
     #1.ligne qui intersectent avec id_rdpt
