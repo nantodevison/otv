@@ -19,7 +19,7 @@ import Outils
 
 # ouvrir connexion, recuperer donnees
 with ct.ConnexionBdd('local_otv') as c : 
-    df = gp.read_postgis("select t.*, v1.cnt nb_intrsct_src, st_astext(v1.the_geom) as src_geom, v2.cnt as nb_intrsct_tgt, st_astext(v2.the_geom) as tgt_geom from public.test_agreg_lineaire t left join public.test_agreg_lineaire_vertices_pgr v1 on t.\"source\"=v1.id left join public.test_agreg_lineaire_vertices_pgr v2  on t.target=v2.id ", c.connexionPsy)
+    df = gp.read_postgis("select t.*, v1.cnt nb_intrsct_src, st_astext(v1.the_geom) as src_geom, v2.cnt as nb_intrsct_tgt, st_astext(v2.the_geom) as tgt_geom from public.traf2015_bdt17_ed15_l t left join public.traf2015_bdt17_ed15_l_vertices_pgr v1 on t.\"source\"=v1.id left join public.traf2015_bdt17_ed15_l_vertices_pgr v2  on t.target=v2.id ", c.connexionPsy)
 
 #variables generales
 nature_2_chaussees=['Route à 2 chaussées','Quasi-autoroute','Autoroute']
@@ -299,7 +299,7 @@ def affecter_troncon(df,df2_chaussees):
     
     #pour chaque ligne on va creer un id dans le dico, avec les tronon associes
     for indice, ligne in enumerate(liste_ligne) :
-        if indice >285 : break
+        #if indice >285 : break
         if len(ligne_traitee_global)==len(liste_ligne) : break
         if indice % 5000 == 0 :
             print (f"{indice}eme occurence : {ligne} à {datetime.now().strftime('%H:%M:%S')} nb ligne traite : {len(ligne_traitee_global)}, nb ligne differente={len(set(ligne_traitee_global))}")
