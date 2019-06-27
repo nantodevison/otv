@@ -12,7 +12,6 @@ import os
 import Connexion_Transfert as ct
 import Outils as O
 
-
 #lire les fichiers
 for chemin, dossier, files in os.walk(r"Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA\Doc_travail\Donnees_source\CD40\Trafics 2018 Landes\comptage_B152") :
     for fichier in files : 
