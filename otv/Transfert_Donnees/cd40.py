@@ -58,13 +58,13 @@ def import_comptage_2018():
                 
                 #inserer les donn�es
                 with ct.ConnexionBdd('gti_otv') as c : 
-                    c.curs.execute("select distinct id_comptag from comptage.na_2010_2017_p")
+                    c.curs.execute("select distinct id_comptag from comptage.na_2010_2018_p")
                     if id_comptag in [record[0] for record in c.curs] :
-                        c.curs.execute("update comptage.na_2010_2017_p set tmja_2018=%s, pc_pl_2018=%s, id_cpt=%s, ann_cpt=%s where id_comptag=%s",(tmja, pc_pl,compteur,annee_cpt,id_comptag))
+                        c.curs.execute("update comptage.na_2010_2018_p set tmja_2018=%s, pc_pl_2018=%s, id_cpt=%s, ann_cpt=%s where id_comptag=%s",(tmja, pc_pl,compteur,annee_cpt,id_comptag))
                     else : 
-                        c.curs.execute("insert into comptage.na_2010_2017_p (id_comptag, dep, route, pr, abs, reseau, gestionnai, concession,type_poste, id_cpt, ann_cpt, tmja_2018, pc_pl_2018) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",(id_comptag,dep,voie,pr,absice,reseau,gest,concession,type_poste,compteur,annee_cpt, tmja, pc_pl))
+                        c.curs.execute("insert into comptage.na_2010_2018_p (id_comptag, dep, route, pr, abs, reseau, gestionnai, concession,type_poste, id_cpt, ann_cpt, tmja_2018, pc_pl_2018) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",(id_comptag,dep,voie,pr,absice,reseau,gest,concession,type_poste,compteur,annee_cpt, tmja, pc_pl))
                     c.connexionPsy.commit()
-                    donnees.to_sql('na_2010_2017_mensuel', c.sqlAlchemyConn,schema='comptage',if_exists='append',index=False)
+                    donnees.to_sql('na_2010_2018_mensuel', c.sqlAlchemyConn,schema='comptage',if_exists='append',index=False)
                     
                 
                 
