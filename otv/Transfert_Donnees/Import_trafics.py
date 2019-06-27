@@ -119,3 +119,40 @@ def cd17(fichier):
             for i in range(len(voie)) :
                 c.curs.execute("INSERT INTO comptage.na_2010_2017_p (id_comptag,dep, route, pr, abs, reseau, gestionnai, concession,type_poste, tmja_2015, pc_pl_2015, obs_2015) VALUES ('17-'||%s||'-'||%s||'+'||%s,'17', %s, %s,%s,'RD','CD17','N','ponctuel',%s,%s,'nouveau point,'||%s||',v85_tv '||%s)", (voie[i], pr[i], abscisse[i], voie[i], pr[i], abscisse[i], tmj[i], pc_pl[i], periode[i], v85[i]))
                 c.connexionPsy.commit()
+
+def cd23(fichier):
+    """
+    Import des données de la creuse
+    en entree : 
+        fichier : raw string le nom du tableur excel contenant les données
+    """
+    # ouvrir le classeur
+    df_excel=pd.read_excel(r'Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA\Doc_travail\Donnees_source\CD23\2018_CD23_trafics.xls',skiprows=11)
+    # renomer les champs
+    df_excel_rennome=df_excel.rename(columns={'1er trimestre  du 01 janvier au 31 mars':'1er_trim_TV', 'Unnamed: 9':'1er_trim_pc_pl',
+                             '2ème trimestre du 01 avril au 30 juin':'2eme_trim_TV', 'Unnamed: 11':'2eme_trim_pc_pl',
+                             '3ème trimestre du 01 juillet au 30 septembre':'3eme_trim_TV', 'Unnamed: 13':'3eme_trim_pc_pl',
+                             '4ème trimestre du 01 octobre au 31 décembre':'4eme_trim_TV', 'Unnamed: 15':'4eme_trim_pc_pl',
+                             'Unnamed: 17':'pc_pl_2018'})
+    #supprimer la 1ere ligne
+    df_excel_filtre=df_excel_rennome.loc[1:,:].copy()
+    #mise en forme attribut
+    df_excel_filtre['Route']=df_excel_filtre.apply(lambda x : str(x['Route']).upper(), axis=1)
+    #attribut id_comptag
+    for i in ['DEP','PR','ABS'] : 
+        df_excel_filtre[i]=df_excel_filtre.apply(lambda x : str(int(x[i])),axis=1)
+    df_excel_filtre['id_comptag']=df_excel_filtre.apply(lambda x : '-'.join([x['DEP'],'D'+str(x['Route']),
+                                                                             x['PR']+'+'+x['ABS']]),axis=1)
+    #test sur presence dans bdd
+    with ct.ConnexionBdd('gti_otv') as c :
+        c.curs.execute("select distinct id_comptag from comptage.na_2010_2018_p where dep='23' order by id_comptag")
+        listerecord=[record[0] for record in c.curs]
+        for id_comptag in df_excel_filtre.id_comptag.tolist() : 
+            if id_comptag in listerecord :
+                print (f'{id_comptag} ok')
+            else : 
+                print (f'{id_comptag} nouveau')
+    
+    
+    
+    
