@@ -20,7 +20,6 @@ def import_comptage_2018():
     for chemin, dossier, files in os.walk(r"Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA\Doc_travail\Donnees_source\CD40\Trafics 2018 Landes\comptage_B152") :
         for fichier in files : 
             if fichier.endswith('.xls') :
-                print(chemin,fichier)
                 path_donnees=os.path.join(chemin,fichier)
                 df_fichier_xls=df=pd.read_excel(path_donnees,headers=None, skiprows=1) #les 1eres lignes mettent le bordel dans la definition des colonnes
                 
@@ -60,9 +59,11 @@ def import_comptage_2018():
                 with ct.ConnexionBdd('gti_otv') as c : 
                     c.curs.execute("select distinct id_comptag from comptage.na_2010_2018_p")
                     if id_comptag in [record[0] for record in c.curs] :
+                        print(f'update {chemin+fichier}')
                         c.curs.execute("update comptage.na_2010_2018_p set tmja_2018=%s, pc_pl_2018=%s, id_cpt=%s, ann_cpt=%s where id_comptag=%s",(tmja, pc_pl,compteur,annee_cpt,id_comptag))
                     else : 
                         c.curs.execute("insert into comptage.na_2010_2018_p (id_comptag, dep, route, pr, abs, reseau, gestionnai, concession,type_poste, id_cpt, ann_cpt, tmja_2018, pc_pl_2018) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",(id_comptag,dep,voie,pr,absice,reseau,gest,concession,type_poste,compteur,annee_cpt, tmja, pc_pl))
+                        print(f'insert {chemin+fichier}')                    
                     c.connexionPsy.commit()
                     donnees.to_sql('na_2010_2018_mensuel', c.sqlAlchemyConn,schema='comptage',if_exists='append',index=False)
                     
