@@ -8,7 +8,7 @@ P:\DAIT\TI\Donnees\1-ROUTIER\3 - Poitou-Charentes\17 - Charente-Maritime\2016\Br
 '''
 
 import re
-from Martin_Perso import Connexion_Transfert as ct
+import Connexion_Transfert as ct
 
 
 def extraction_comptages_ponctuel(fichier):
