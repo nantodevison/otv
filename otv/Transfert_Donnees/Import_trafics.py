@@ -120,39 +120,61 @@ def cd17(fichier):
                 c.curs.execute("INSERT INTO comptage.na_2010_2017_p (id_comptag,dep, route, pr, abs, reseau, gestionnai, concession,type_poste, tmja_2015, pc_pl_2015, obs_2015) VALUES ('17-'||%s||'-'||%s||'+'||%s,'17', %s, %s,%s,'RD','CD17','N','ponctuel',%s,%s,'nouveau point,'||%s||',v85_tv '||%s)", (voie[i], pr[i], abscisse[i], voie[i], pr[i], abscisse[i], tmj[i], pc_pl[i], periode[i], v85[i]))
                 c.connexionPsy.commit()
 
-def cd23(fichier):
+def cd23(fichier=r'Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA\Doc_travail\Donnees_source\CD23\2018_CD23_trafics.xls'):
     """
     Import des données de la creuse
+    attention : pour le point de comptage D941 6+152 à Aubusson, le pR est 32 et non 6. il faut donc corriger à la main le fihcier excel
+    Pour le moment tous les points sont déjà dans  la base, dc pas de traitement de type insert prévus
     en entree : 
         fichier : raw string le nom du tableur excel contenant les données
     """
     # ouvrir le classeur
-    df_excel=pd.read_excel(r'Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA\Doc_travail\Donnees_source\CD23\2018_CD23_trafics.xls',skiprows=11)
+    df_excel=pd.read_excel(fichier,skiprows=11)
     # renomer les champs
-    df_excel_rennome=df_excel.rename(columns={'1er trimestre  du 01 janvier au 31 mars':'1er_trim_TV', 'Unnamed: 9':'1er_trim_pc_pl',
-                             '2ème trimestre du 01 avril au 30 juin':'2eme_trim_TV', 'Unnamed: 11':'2eme_trim_pc_pl',
-                             '3ème trimestre du 01 juillet au 30 septembre':'3eme_trim_TV', 'Unnamed: 13':'3eme_trim_pc_pl',
-                             '4ème trimestre du 01 octobre au 31 décembre':'4eme_trim_TV', 'Unnamed: 15':'4eme_trim_pc_pl',
-                             'Unnamed: 17':'pc_pl_2018'})
+    df_excel_rennome=df_excel.rename(columns={'1er trimestre  du 01 janvier au 31 mars':'trim1_TV', 'Unnamed: 9':'trim1_pcpl',
+                             '2ème trimestre du 01 avril au 30 juin':'trim2_TV', 'Unnamed: 11':'trim2_pcpl',
+                             '3ème trimestre du 01 juillet au 30 septembre':'trim3_TV', 'Unnamed: 13':'trim3_pcpl',
+                             '4ème trimestre du 01 octobre au 31 décembre':'trim4_TV', 'Unnamed: 15':'trim4_pcpl',
+                             'Unnamed: 17':'pc_pl', 'TMJA 2018':'tmja'})
     #supprimer la 1ere ligne
     df_excel_filtre=df_excel_rennome.loc[1:,:].copy()
     #mise en forme attribut
     df_excel_filtre['Route']=df_excel_filtre.apply(lambda x : str(x['Route']).upper(), axis=1)
+    annee_cpt='2018'
     #attribut id_comptag
     for i in ['DEP','PR','ABS'] : 
         df_excel_filtre[i]=df_excel_filtre.apply(lambda x : str(int(x[i])),axis=1)
     df_excel_filtre['id_comptag']=df_excel_filtre.apply(lambda x : '-'.join([x['DEP'],'D'+str(x['Route']),
-                                                                             x['PR']+'+'+x['ABS']]),axis=1)
-    #test sur presence dans bdd
+                                                                         x['PR']+'+'+x['ABS']]),axis=1)
+    
+    #donnees_mensuelles
+    list_id_comptag=[val for val in df_excel_filtre.id_comptag.tolist() for _ in (0, 1)]
+    donnees_type=['tmja','pc_pl']*len(df_excel_filtre.id_comptag.tolist())
+    annee_df=['2018']*2*len(df_excel_filtre.id_comptag.tolist())
+    janv, fev, mars,avril,mai,juin,juil,aout,sept,octo,nov,dec=[],[],[],[],[],[],[],[],[],[],[],[]
+    for i in range(len(df_excel_filtre.id_comptag.tolist())) :
+        for j in (janv, fev, mars) :
+            j.extend([df_excel_filtre.trim1_TV.tolist()[i],df_excel_filtre.trim1_pcpl.tolist()[i]])
+        for k in (avril,mai,juin) :
+            k.extend([df_excel_filtre.trim2_TV.tolist()[i],df_excel_filtre.trim2_pcpl.tolist()[i]])
+        for l in (juil,aout,sept) :
+            l.extend([df_excel_filtre.trim3_TV.tolist()[i],df_excel_filtre.trim3_pcpl.tolist()[i]])
+        for m in (octo,nov,dec) :
+            m.extend([df_excel_filtre.trim4_TV.tolist()[i],df_excel_filtre.trim4_pcpl.tolist()[i]])
+    donnees_mens=pd.DataFrame({'id_comptag':list_id_comptag,'donnees_type':donnees_type,'annee':annee_df,'janv':janv,'fevr':fev,'mars':mars,'avri':avril,
+                  'mai':mai,'juin':juin,'juil':juil,'aout':aout,'sept':sept,'octo':octo,'nove':nov,'dece':dec})
+    
+    #Mise à jour bdd
     with ct.ConnexionBdd('gti_otv') as c :
         c.curs.execute("select distinct id_comptag from comptage.na_2010_2018_p where dep='23' order by id_comptag")
         listerecord=[record[0] for record in c.curs]
-        for id_comptag in df_excel_filtre.id_comptag.tolist() : 
+        for id_comptag,tmja, pc_pl  in zip(df_excel_filtre.id_comptag.tolist(), df_excel_filtre.tmja.tolist(),df_excel_filtre.pc_pl.tolist()) : 
             if id_comptag in listerecord :
-                print (f'{id_comptag} ok')
+                c.curs.execute("update comptage.na_2010_2018_p set tmja_2018=%s, pc_pl_2018=%s, ann_cpt=%s where id_comptag=%s",(tmja, pc_pl,annee_cpt,id_comptag))
             else : 
-                print (f'{id_comptag} nouveau')
-    
-    
+                print (f'{id_comptag} nouveau, à traiter')
+        print('fini')
+        c.connexionPsy.commit()
+        donnees_mens.to_sql('na_2010_2018_mensuel', c.sqlAlchemyConn,schema='comptage',if_exists='append',index=False)
     
     
