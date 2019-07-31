@@ -57,9 +57,74 @@ def lignes_rd_pts(df) :
     #trouver les lignes Bdtopo contenues dans les rd points ext et non contenues ds les rds points int
     lignes_ds_rd_pt_ext=gp.sjoin(df.drop('id_tronc_elem',axis=1),gdf_rd_point_ext,op='within') #contenues ds rd_points ext (le drop est pour éviter un runtimeWarning du aux NaN)
     lignes_ds_rd_pt_int=gp.sjoin(df.drop('id_tronc_elem',axis=1),gdf_rd_point_int,op='within') #contenues ds rd_points int
-    lignes_ds_rd_pt_ext_ss_doublon=lignes_ds_rd_pt_ext.reset_index().rename(columns={'index':'id_ign'}).drop_duplicates('id_ign').set_index('id_ign') #nettoyage doublons
+    lignes_ds_rd_pt_ext_ss_doublon=lignes_ds_rd_pt_ext.drop_duplicates('id_ign') #nettoyage doublons
     lignes_rd_pt=lignes_ds_rd_pt_ext_ss_doublon.loc[~lignes_ds_rd_pt_ext_ss_doublon.index.isin(lignes_ds_rd_pt_int.index.tolist())].drop('index_right',axis=1)
     return lignes_rd_pt
+
+def lign_entrant_rd_pt(df, df_lgn_rd_pt):
+    """
+    trouver les lignes qui arrivent sur un rond point sans en faire partie
+    en entree : 
+        df : dataframe bdtopo
+        df_lgn_rd_pt : dataframe des lignes qui constituent les rd-points
+    en sortie : 
+        ligne_entrant_rd_pt : dataframe des lignes qui arrivent sur un rd point
+    """
+    #trouver les lignes entrantes sur les rd points : celle qui intersectent le poly ext mais pas le poly int d'un rd pt et qui ne sont pas ds ligne rd pt
+    poly_ext=df_rond_point(df,0.1)
+    poly_int=df_rond_point(df,-0.1)
+    ligne_inter_poly_ext=gp.sjoin(df.drop('id_tronc_elem',axis=1),poly_ext,op='intersects')
+    ligne_inter_poly_int=gp.sjoin(df.drop('id_tronc_elem',axis=1),poly_int,op='intersects')
+    ligne_entrant_rd_pt=ligne_inter_poly_ext.loc[~ligne_inter_poly_ext.id_ign.isin(ligne_inter_poly_int.id_ign.tolist()+df_lgn_rd_pt.id_ign.tolist())].copy()
+    ligne_entrant_rd_pt.drop_duplicates('id_ign', inplace=True) #cas des ignes qui touchent plusieurs rdpoint
+    return ligne_entrant_rd_pt
+
+def carac_rond_point(df_lign_entrant_rdpt) : 
+    """
+    caractériser les rd points en fonction du nombre de noms de voies entrant, du nom et codevoie_d de ces voies
+    en entree : 
+        df_lign_entrant_rdpt : dataframe des lignes qui arrivent sur les rond points. issus de lign_entrant_rd_pt
+    en sortie : 
+        carac_rd_pt : dataframe des ronds points avec comme index leur id issu de df_rond_point et comme attribut nb_rte_rdpt(integer), 
+                    nom_rte_rdpt(tuple de string), codevoie_rdpt(tuple de string)
+    """
+    def nb_routes_entree_rdpt(nb_obj_sig_entrant, valeur_sens, nom_rte_rdpt, codevoie_rdpt, nb_rte_rdpt) : 
+        """
+        nombre de voie différentes entrant sur un rond point pour le cas particulier du rd point avec 1 seul nom de voie entrant
+        en entree : 
+            nb_obj_sig_entrant : integer : nb de ligne toucahnat le rd point
+            valeur_sens : tuple de set de l'attribut sens des lignes touchant le rd point
+            nom_rte_rdpt : tuple de set de l'attribut numero des lignes touchant le rd point
+            codevoie_rdpt : tuple de set de l'attribut codevoie_d des lignes touchant le rd point
+            nb_rte_rdpt : nombre de voie entrante au rd point à l'origine
+        en sortie : 
+            nb_rte_rdpt_corr : integer : nb de voie differentes arrivant sur le rd point
+        """
+        if nom_rte_rdpt != ('NC',) :
+            return nb_rte_rdpt
+        elif codevoie_rdpt !=('NR',) :
+            return len(codevoie_rdpt)
+        elif nb_obj_sig_entrant==1 or (nb_obj_sig_entrant==2  and all([a !='Double' for a in valeur_sens])):
+            return 1
+        elif all([a =='Double' for a in valeur_sens]) and nb_obj_sig_entrant>=2 : 
+            return nb_obj_sig_entrant
+        elif any([a=='Double' for a in valeur_sens]) and nb_obj_sig_entrant>=2 : 
+            return (nb_obj_sig_entrant//2)+1
+        elif all([a!='Double' for a in valeur_sens]) and nb_obj_sig_entrant>2 and nb_obj_sig_entrant%2==0 :    
+            return (nb_obj_sig_entrant//2)
+        elif all([a!='Double' for a in valeur_sens]) and nb_obj_sig_entrant>2 and nb_obj_sig_entrant%2!=0 :    
+            return (nb_obj_sig_entrant//2)+1
+    #rgrouper par id
+    carac_rd_pt=(pd.concat([df_lign_entrant_rdpt.groupby('id_rdpt').numero.nunique(),#compter les nom de voi uniques
+                df_lign_entrant_rdpt.groupby('id_rdpt').agg({'numero': lambda x: tuple((set(x))), #agereges les noms de voie et codevoie_d dans des tuples
+                                                            'codevoie_d' : lambda x: tuple((set(x))),
+                                                            'id_ign':'count',
+                                                            'sens': lambda x: tuple((set(x)))})], axis=1))
+    carac_rd_pt.columns=['nb_rte_rdpt', 'nom_rte_rdpt','codevoie_rdpt','nb_obj_sig_entrant','valeur_sens']#noms d'attriuts explicite
+    #pour les rd point avec 1 seul nom de voie entrant on vérifie bien qu'il n'y ai pas plusieurs voies différentes mais non connues par l'IGN
+    carac_rd_pt.loc[carac_rd_pt['nb_rte_rdpt']==1,'nb_rte_rdpt']=(carac_rd_pt.loc[carac_rd_pt['nb_rte_rdpt']==1].apply(
+        lambda x : nb_routes_entree_rdpt(x['nb_obj_sig_entrant'], x['valeur_sens'], x['nom_rte_rdpt'], x['codevoie_rdpt'], x['nb_rte_rdpt'] ),axis=1))
+    return carac_rd_pt
 
 def identifier_rd_pt(df):
     """
@@ -75,48 +140,16 @@ def identifier_rd_pt(df):
             else : 
                 return False
         
-    #creer la lsite des rd points selon le critere atmo aura ; creer une gdf avec la liste
-    liste_rd_points=[t.buffer(0.1) for t in polygonize(df.geometry) if 12<=((t.length**2)/t.area)<=14] # car un cercle à un rappor de ce type entre 12 et 13
-    dico_rd_pt=[[i, ((t.length**2)/t.area)] for i,t in enumerate(polygonize(df.geometry)) if 12<=((t.length**2)/t.area)<=14]
-    gdf_rd_point=gp.GeoDataFrame(dico_rd_pt, geometry=liste_rd_points)
-    gdf_rd_point.crs={'init':'epsg:2154'}
-    gdf_rd_point.columns=['id_rdpt', 'facteur','geometry']
-    #on créer aussi la meme donnees avec un buffer interiuer, pour ne garder que les lignes dans le buffer exteriuer et hors buffer interieur (cas de rond point enjmabeant uine 2*2 et prenant la 2*2 voie qui est dans le polygone
-    liste_rd_points_int=[t.buffer(-0.1) for t in polygonize(df.geometry) if 12<=((t.length**2)/t.area)<=14]
-    dico_rd_pt_int=[[i, ((t.length**2)/t.area)] for i,t in enumerate(polygonize(df.geometry)) if 12<=((t.length**2)/t.area)<=14]
-    gdf_rd_point_int=gp.GeoDataFrame(dico_rd_pt_int, geometry=liste_rd_points_int)
-    gdf_rd_point_int.crs={'init':'epsg:2154'}
-    gdf_rd_point_int.columns=['id_rdpt', 'facteur','geometry'] 
-    #jointure spataile pour une gdf avec uniquement les lignes des rd_points avec le numéro
-    l_dans_p=gp.sjoin(df,gdf_rd_point,op='within') 
-    # attention, une ligne peut etre dans plusieurs rd point ! suppression du doublon
-    l_dans_p_ss_doublon=l_dans_p.reset_index().rename(columns={'index':'id_ign'}).drop_duplicates('id_ign').set_index('id_ign')
-    #print (f'loongueur l_dans_p : {len(l_dans_p)} ')
-    l_dans_p_int=gp.sjoin(df,gdf_rd_point_int,op='within')
-    #print (f'loongueur l_dans_p_int : {len(l_dans_p_int)} ')
-    l_dans_p_final=l_dans_p_ss_doublon.loc[~l_dans_p_ss_doublon.index.isin(l_dans_p_int.index.tolist())]
-    #print (f'loongueur l_dans_p_final : {len(l_dans_p_final)}')
-    
-    #recuperer les lignes formant les rd pts
+    #recuperer les lignes qui constituent les rd points
     lgn_rd_pt=lignes_rd_pts(df)
+    #trouver les lignes entrantes sur les rd points : celle qui intersectent le poly ext mais pas le poly int d'un rd pt et qui ne sont pas ds ligne rd pt
+    ligne_entrant_rd_pt=lign_entrant_rd_pt(df,lgn_rd_pt)#caractériser les rd points
+    carac_rd_pt=carac_rond_point(ligne_entrant_rd_pt)
+    #ajouter l'identifiant du rd point aux données BdTopo
+    df_avec_rd_pt=df.merge(lgn_rd_pt[['id_ign', 'id_rdpt']], how='left', on='id_ign').fillna(value={'id_rdpt':'NC'})
     
-    #lignes qui touchent rd points
-    #1.ligne qui intersectent avec id_rdpt
-    l_intersct_rdpt=gp.sjoin(df,l_dans_p_final.drop('index_right', axis=1), how='inner',op='intersects')
-    #2.filtre de celle contenue dans le rd points 
-    l_intersct_rdpt=l_intersct_rdpt.loc[~l_intersct_rdpt.index.isin(l_dans_p_final.index.tolist())][['id_rdpt','numero_left','codevoie_d_left']]
     
-    #trouver le nb de voies qui intersectent chaque rd point et leur noms. renomer les colonnes
-    carac_rd_pt=(pd.concat([l_intersct_rdpt.groupby('id_rdpt').numero_left.nunique(),
-        l_intersct_rdpt.groupby('id_rdpt')['numero_left'].apply(lambda x: ','.join(set(x))),
-        l_intersct_rdpt.groupby('id_rdpt')['codevoie_d_left'].apply(lambda x: ','.join(set(x)))], axis=1))
-    carac_rd_pt.columns=['nb_rte_rdpt', 'nom_rte_rdpt','codevoie_rdpt']
-    carac_rd_pt['nb_rte_rdpt']=carac_rd_pt.apply(lambda x : x.nb_rte_rdpt if x.nom_rte_rdpt!='NC' else 2.0, axis=1) #pour les voies communales je considere tous les rond points comme avec au moins 2 routes, pour que les troncons s'arrete au rd points
-    
-    #ajouter l'id_rdpt aux données
-    df=pd.concat([df,l_dans_p_final.loc[:,'id_rdpt']],axis=1, sort=False)
-    #mettre à jour la nature
-    df['nature']=df.apply(lambda x : 'Rd_pt' if x.id_rdpt>=0 else x['nature'], axis=1)
+    # A REPRENDRE LA SUITE !!!!!!!
     
     #ajouter les infos du rd point (nb voies différentes et nom)
     df=df.merge(carac_rd_pt, how='left',left_on='id_rdpt', right_index=True)
