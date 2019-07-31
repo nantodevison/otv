@@ -17,6 +17,7 @@ from shapely.ops import polygonize, linemerge
 import Outils
 #from psycopg2 import extras
 
+
 # ouvrir connexion, recuperer donnees
 with ct.ConnexionBdd('local_otv') as c : 
     df = gp.read_postgis("select t.*, v1.cnt nb_intrsct_src, st_astext(v1.the_geom) as src_geom, v2.cnt as nb_intrsct_tgt, st_astext(v2.the_geom) as tgt_geom from public.traf2015_bdt17_ed15_l t left join public.traf2015_bdt17_ed15_l_vertices_pgr v1 on t.\"source\"=v1.id left join public.traf2015_bdt17_ed15_l_vertices_pgr v2  on t.target=v2.id ", c.connexionPsy)
@@ -27,6 +28,38 @@ nature_2_chaussees=['Route à 2 chaussées','Quasi-autoroute','Autoroute']
 df.set_index('id_ign', inplace=True)  # passer l'id_ign commme index ; necessaire sinon pb avec geometrie vu comme texte
 df.crs={'init':'epsg:2154'}
 df2_chaussees=df.loc[df['nature'].isin(nature_2_chaussees)] #isoler les troncon de voies decrits par 2 lignes
+
+def df_rond_point(df, taille_buffer=0):
+    """
+    creer une dataframe de polygone aux rond point a partir d'une df issue des routes de la Bdtopo
+    en entree : 
+        df : geodataframe issues des route des la Bdtopo
+        taille buffer : integer : taille du buffer pour créer le polygone (par defaut 0)
+    en sortie : 
+        gdf_rd_point : geodataframe des rond points avec id_rdpt(integer), rapport_aire(float), geometry(polygon, 2154)
+    """
+    #créer une liste de rd points selon le rapport longueur eu carré sur aire et créer la geodtaframe qui va bien
+    dico_rd_pt=[[i, ((t.length**2)/t.area),t.buffer(taille_buffer)] for i,t in enumerate(polygonize(df.geometry)) if 12<=((t.length**2)/t.area)<=14] # car un cercle à un rappor de ce type entre 12 et 13
+    gdf_rd_point=gp.GeoDataFrame([(a[0],a[1]) for a in dico_rd_pt], geometry=[a[2] for a in dico_rd_pt], columns=['id_rdpt', 'rapport_aire'])
+    gdf_rd_point.crs={'init':'epsg:2154'} #mise à jour du systeme de projection
+    return gdf_rd_point
+
+def lignes_rd_pts(df) :
+    """
+    obtenir les lignes qui forment les rd points
+    en entree : 
+       df : geodataframe issues des route des la Bdtopo
+    en sortie : 
+        lignes_rd_pt : geodataframe des lignes composant les rd points, contenat les attributs id_rdtpt(integer) et rapport_aire(float)
+    """
+    gdf_rd_point_ext=df_rond_point(df,0.1) #polygone extereiur des rond points
+    gdf_rd_point_int=df_rond_point(df,-0.1) #polygone interieur des ronds points
+    #trouver les lignes Bdtopo contenues dans les rd points ext et non contenues ds les rds points int
+    lignes_ds_rd_pt_ext=gp.sjoin(df.drop('id_tronc_elem',axis=1),gdf_rd_point_ext,op='within') #contenues ds rd_points ext (le drop est pour éviter un runtimeWarning du aux NaN)
+    lignes_ds_rd_pt_int=gp.sjoin(df.drop('id_tronc_elem',axis=1),gdf_rd_point_int,op='within') #contenues ds rd_points int
+    lignes_ds_rd_pt_ext_ss_doublon=lignes_ds_rd_pt_ext.reset_index().rename(columns={'index':'id_ign'}).drop_duplicates('id_ign').set_index('id_ign') #nettoyage doublons
+    lignes_rd_pt=lignes_ds_rd_pt_ext_ss_doublon.loc[~lignes_ds_rd_pt_ext_ss_doublon.index.isin(lignes_ds_rd_pt_int.index.tolist())].drop('index_right',axis=1)
+    return lignes_rd_pt
 
 def identifier_rd_pt(df):
     """
@@ -63,6 +96,9 @@ def identifier_rd_pt(df):
     #print (f'loongueur l_dans_p_int : {len(l_dans_p_int)} ')
     l_dans_p_final=l_dans_p_ss_doublon.loc[~l_dans_p_ss_doublon.index.isin(l_dans_p_int.index.tolist())]
     #print (f'loongueur l_dans_p_final : {len(l_dans_p_final)}')
+    
+    #recuperer les lignes formant les rd pts
+    lgn_rd_pt=lignes_rd_pts(df)
     
     #lignes qui touchent rd points
     #1.ligne qui intersectent avec id_rdpt
