@@ -145,6 +145,51 @@ def identifier_rd_pt(df):
     
     return df_avec_rd_pt
 
+def liste_troncon_base(id_ligne,df_lignes,ligne_traite_troncon=[]):
+    """
+    recupérer les troncons qui se suivent sans point de jonction à  + de 2 lignes
+    en entree : 
+        id_ligne : string : id_ign de la ligne a etudier
+        df_lignes : df des lignes avec rd points
+        ligne_traite_troncon : liste des ligne traitees dans le cadre de ce troncon elementaire -> liste de str
+    en sortie
+        fonction génératrice
+    """
+    ligne=df_lignes.loc[id_ligne]#df pour la ligne
+    ligne_traite_troncon.append(ligne.name)#on met le num de base de la ligne dans la liste 
+    liste_ligne_suivantes=[]  
+    for key, value in {'nb_intrsct_src':['source', 'src_geom'],'nb_intrsct_tgt':['target', 'tgt_geom']}.items() : 
+            # cas simple de la ligne qui en touche qu'uen seule autre du cote source
+            if ligne.loc[key] == 2 : 
+                # recuperer le troncon qui ouche le point d'origine et qui n'est pas deja traite
+                df_touches_source = df_lignes.loc[(~df_lignes.index.isin(ligne_traite_troncon)) & 
+                                                  ((df_lignes['source'] == ligne[value[0]]) | 
+                                                   (df_lignes['target'] == ligne[value[0]]))]  
+                if len(df_touches_source) > 0:  # car la seule voie touchee peut déjà etre dans les lignes traitees
+                    id_ign_suivant = df_touches_source.index.tolist()[0]
+                    ligne_traite_troncon.append(id_ign_suivant) #liste des lignes deja traitees
+                    liste_ligne_suivantes.append(id_ign_suivant)
+                    yield id_ign_suivant
+    for ligne_a_traiter in liste_ligne_suivantes :
+        yield from liste_troncon_base(ligne_a_traiter, df_lignes, ligne_traite_troncon)
+
+def troncon_base_deb_fin(liste_tronc_base, df_lignes):   
+    """
+    trouver les troncon aux extremites d'un troncon de base
+    en entree : 
+        liste_tronc_base : list de string d'id_ign
+        df_lignes
+    en sortie : 
+        liste_tronc_base : list de string d'id_ign    
+    """
+    lignes_troncon=df_lignes.loc[liste_tronc_base]
+    tronc_deb_fin=lignes_troncon.loc[(lignes_troncon['nb_intrsct_src']>2)|(lignes_troncon['nb_intrsct_tgt']>2)].index.tolist()
+    return tronc_deb_fin
+
+
+    
+    
+
 def recup_troncon_elementaire (id_ign_ligne,df, ligne_traite_troncon=[]):
     """
     Fonction generatrice
