@@ -128,35 +128,22 @@ def carac_rond_point(df_lign_entrant_rdpt) :
 
 def identifier_rd_pt(df):
     """
-    fonction pour modifier la nature des rd points pour identification et y ajouter un id deregroupement
+    ajouter les identifiant de rd pt aux lignes bdtopo
+    en entree : 
+        df : datafrmae isssu des routes de la bdttopo
+    en sortie 
+        df_avec_rd_pt : dataframe initiale + attributs rd pt
     """
-    def assigne_rdpt(id_rdpt,numero, liste_num, codevoie, liste_code) :
-        """
-        pour savoir si le rond point a un numrro ou un code_voie correle a une des voies enetrantes
-        """ 
-        if id_rdpt >=0 :
-            if (numero !='NC' and numero in liste_num.split(',')) or (numero =='NC' and codevoie in liste_code.split(',')) :
-                return True
-            else : 
-                return False
         
     #recuperer les lignes qui constituent les rd points
     lgn_rd_pt=lignes_rd_pts(df)
     #trouver les lignes entrantes sur les rd points : celle qui intersectent le poly ext mais pas le poly int d'un rd pt et qui ne sont pas ds ligne rd pt
     ligne_entrant_rd_pt=lign_entrant_rd_pt(df,lgn_rd_pt)#caractériser les rd points
     carac_rd_pt=carac_rond_point(ligne_entrant_rd_pt)
-    #ajouter l'identifiant du rd point aux données BdTopo
-    df_avec_rd_pt=df.merge(lgn_rd_pt[['id_ign', 'id_rdpt']], how='left', on='id_ign').fillna(value={'id_rdpt':'NC'})
+    #ajouter l'identifiant et attibuts du rd point aux données BdTopo
+    df_avec_rd_pt=df.merge(lgn_rd_pt[['id_ign', 'id_rdpt']], how='left', on='id_ign').merge(carac_rd_pt.reset_index(), how='left', on='id_rdpt')
     
-    
-    # A REPRENDRE LA SUITE !!!!!!!
-    
-    #ajouter les infos du rd point (nb voies différentes et nom)
-    df=df.merge(carac_rd_pt, how='left',left_on='id_rdpt', right_index=True)
-    #ajouter la'ttribut pour savoir si le rd point peut etre assigne
-    df['assigne_rdpt']=df.apply(lambda x : assigne_rdpt(x['id_rdpt'],x['numero'], x['nom_rte_rdpt'], x['codevoie_d'],x['codevoie_rdpt']),axis=1)
-    
-    return df
+    return df_avec_rd_pt
 
 def recup_troncon_elementaire (id_ign_ligne,df, ligne_traite_troncon=[]):
     """
