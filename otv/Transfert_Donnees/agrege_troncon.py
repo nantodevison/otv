@@ -29,6 +29,26 @@ df.set_index('id_ign', inplace=True)  # passer l'id_ign commme index ; necessair
 df.crs={'init':'epsg:2154'}
 df2_chaussees=df.loc[df['nature'].isin(nature_2_chaussees)] #isoler les troncon de voies decrits par 2 lignes
 
+def import_donnes_base(ref_connexion):
+    """
+    OUvrir une connexion vers le servuer de reference et recuperer les données
+    en entree : 
+       ref_connexion : string de reference de la connexion, selon le midule Outils , fichier Id_connexions, et module Connexion_transferts
+    en sortie : 
+        df : dataframe telle que telchargées depuis la bdd
+    """
+    with ct.ConnexionBdd('local_otv') as c : 
+        requete="""with jointure as (
+            select t.*, v1.cnt nb_intrsct_src, st_astext(v1.the_geom) as src_geom, v2.cnt as nb_intrsct_tgt, st_astext(v2.the_geom) as tgt_geom 
+             from public.traf2015_bdt17_ed15_l t 
+            left join public.traf2015_bdt17_ed15_l_vertices_pgr v1 on t.source=v1.id 
+            left join public.traf2015_bdt17_ed15_l_vertices_pgr v2  on t.target=v2.id
+            )
+            select j.* from jointure j, zone_test_agreg z
+            where st_intersects(z.geom, j.geom)"""
+        df = gp.read_postgis(requete, c.connexionPsy)
+        return df
+
 def df_rond_point(df, taille_buffer=0):
     """
     creer une dataframe de polygone aux rond point a partir d'une df issue des routes de la Bdtopo
@@ -118,9 +138,10 @@ def carac_rond_point(df_lign_entrant_rdpt) :
     carac_rd_pt=(pd.concat([df_lign_entrant_rdpt.groupby('id_rdpt').numero.nunique(),#compter les nom de voi uniques
                 df_lign_entrant_rdpt.groupby('id_rdpt').agg({'numero': lambda x: tuple((set(x))), #agereges les noms de voie et codevoie_d dans des tuples
                                                             'codevoie_d' : lambda x: tuple((set(x))),
-                                                            'id_ign':'count',
-                                                            'sens': lambda x: tuple((set(x)))})], axis=1))
-    carac_rd_pt.columns=['nb_rte_rdpt', 'nom_rte_rdpt','codevoie_rdpt','nb_obj_sig_entrant','valeur_sens']#noms d'attriuts explicite
+                                                            'id':'count',
+                                                            'sens': lambda x: tuple((set(x))),
+                                                            'id_ign':lambda x: tuple((set(x)))})], axis=1))
+    carac_rd_pt.columns=['nb_rte_rdpt', 'nom_rte_rdpt','codevoie_rdpt','nb_obj_sig_entrant','valeur_sens','id_ign_entrant']#noms d'attriuts explicite
     #pour les rd point avec 1 seul nom de voie entrant on vérifie bien qu'il n'y ai pas plusieurs voies différentes mais non connues par l'IGN
     carac_rd_pt.loc[carac_rd_pt['nb_rte_rdpt']==1,'nb_rte_rdpt']=(carac_rd_pt.loc[carac_rd_pt['nb_rte_rdpt']==1].apply(
         lambda x : nb_routes_entree_rdpt(x['nb_obj_sig_entrant'], x['valeur_sens'], x['nom_rte_rdpt'], x['codevoie_rdpt'], x['nb_rte_rdpt'] ),axis=1))
@@ -128,11 +149,12 @@ def carac_rond_point(df_lign_entrant_rdpt) :
 
 def identifier_rd_pt(df):
     """
-    ajouter les identifiant de rd pt aux lignes bdtopo
+    ajouter les identifiant de rd pt aux lignes bdtopo et creer une df des rd pt
     en entree : 
         df : datafrmae isssu des routes de la bdttopo
     en sortie 
         df_avec_rd_pt : dataframe initiale + attributs rd pt
+        carac_rd_pt : df des rd points avec nb voies entrantes, nom voies entrantes et num voie du rdpt
     """
         
     #recuperer les lignes qui constituent les rd points
@@ -142,8 +164,13 @@ def identifier_rd_pt(df):
     carac_rd_pt=carac_rond_point(ligne_entrant_rd_pt)
     #ajouter l'identifiant et attibuts du rd point aux données BdTopo
     df_avec_rd_pt=df.merge(lgn_rd_pt[['id_ign', 'id_rdpt']], how='left', on='id_ign').merge(carac_rd_pt.reset_index(), how='left', on='id_rdpt')
+    #grouper les données bdtopo par dr point por recup la liste des lignes et des noms de voies par rd_pt
+    ligne_et_num_rdpt=df_avec_rd_pt.groupby('id_rdpt').agg({'numero': lambda x: tuple((set(x))),
+                                                            'id_ign': lambda x: tuple((set(x)))}).reset_index()
+    ligne_et_num_rdpt.columns=['id_rdpt','numero_rdpt','id_ign_rdpt']                                                        
+    carac_rd_pt=carac_rd_pt.reset_index().merge(ligne_et_num_rdpt, on='id_rdpt' ).set_index('id_rdpt')
     
-    return df_avec_rd_pt
+    return df_avec_rd_pt, carac_rd_pt
 
 def liste_troncon_base(id_ligne,df_lignes,ligne_traite_troncon=[]):
     """
@@ -156,39 +183,114 @@ def liste_troncon_base(id_ligne,df_lignes,ligne_traite_troncon=[]):
         fonction génératrice
     """
     ligne=df_lignes.loc[id_ligne]#df pour la ligne
-    ligne_traite_troncon.append(ligne.name)#on met le num de base de la ligne dans la liste 
+    ligne_traitee=list(set(ligne_traite_troncon+[ligne.name]))#on met le num de base de la ligne dans la liste 
     liste_ligne_suivantes=[]  
     for key, value in {'nb_intrsct_src':['source', 'src_geom'],'nb_intrsct_tgt':['target', 'tgt_geom']}.items() : 
             # cas simple de la ligne qui en touche qu'uen seule autre du cote source
             if ligne.loc[key] == 2 : 
                 # recuperer le troncon qui ouche le point d'origine et qui n'est pas deja traite
-                df_touches_source = df_lignes.loc[(~df_lignes.index.isin(ligne_traite_troncon)) & 
+                df_touches_source = df_lignes.loc[(~df_lignes.index.isin(ligne_traitee)) & 
                                                   ((df_lignes['source'] == ligne[value[0]]) | 
                                                    (df_lignes['target'] == ligne[value[0]]))]  
                 if len(df_touches_source) > 0:  # car la seule voie touchee peut déjà etre dans les lignes traitees
                     id_ign_suivant = df_touches_source.index.tolist()[0]
-                    ligne_traite_troncon.append(id_ign_suivant) #liste des lignes deja traitees
+                    ligne_traitee.append(id_ign_suivant) #liste des lignes deja traitees
                     liste_ligne_suivantes.append(id_ign_suivant)
                     yield id_ign_suivant
     for ligne_a_traiter in liste_ligne_suivantes :
-        yield from liste_troncon_base(ligne_a_traiter, df_lignes, ligne_traite_troncon)
-
-def troncon_base_deb_fin(liste_tronc_base, df_lignes):   
+        yield from liste_troncon_base(ligne_a_traiter, df_lignes, ligne_traitee)
+        
+def liste_complete_tronc_base(id_ligne,df_lignes,ligne_traite_troncon):
     """
-    trouver les troncon aux extremites d'un troncon de base
+    simplement ajouter l'id de laligne de depart au générateur de la fonction liste_troncon_base
     en entree : 
-        liste_tronc_base : list de string d'id_ign
-        df_lignes
+        id_ligne : string : id_ign de la ligne a etudier
+        df_lignes : df des lignes avec rd points
+        ligne_traite_troncon : list des trocnons deja traites. vide si debut
     en sortie : 
-        liste_tronc_base : list de string d'id_ign    
+        list_troncon : liste des ligne traitees dans le cadre de ce troncon elementaire -> liste de str
     """
-    lignes_troncon=df_lignes.loc[liste_tronc_base]
-    tronc_deb_fin=lignes_troncon.loc[(lignes_troncon['nb_intrsct_src']>2)|(lignes_troncon['nb_intrsct_tgt']>2)].index.tolist()
-    return tronc_deb_fin
+    return [id_ligne]+[a for a in liste_troncon_base(id_ligne,df_lignes,ligne_traite_troncon)]
+
+def deb_fin_liste_tronc_base(df_lignes, list_troncon):
+    """
+    dico des lignes d debut et de fin des troncon de base
+    le dico contient l'id_ign, si le noeud de fin est source ou target, le numero de noeud, le nom de la voie, le codevoie
+    en entree : 
+        df_lignes :  df des lignes avec rd points
+        list_troncon : list des troncons creant le troncon de base, issue de liste_complete_tronc_base
+    en sortie : 
+        dico_deb_fin : dico avec comme key l'id_ign, puis en item un noveau dico avec les key 'type', 'num_node', 'voie', 'codevoie'
+    """
+    lignes_troncon=df_lignes.loc[list_troncon]
+    tronc_deb_fin=lignes_troncon.loc[(lignes_troncon['nb_intrsct_src']>2)|(lignes_troncon['nb_intrsct_tgt']>2)]
+    dico_deb_fin={}
+    for e in tronc_deb_fin.itertuples() :
+        dico_deb_fin[e[0]]={'type':'source','num_node':e[54],'voie':e[4],'codevoie':e[58]} if e[61]==3 else {
+            'type':'target','num_node':e[55],'voie':e[4],'codevoie':e[58]}
+    return dico_deb_fin
+
+def verif_touche_rdpt(lignes_adj):
+    """
+    vérifier si une ligne touche un rd point
+    en entree : 
+        lignes_adj : lignes issues de df_lignes : df des lignes avec rd points
+    en sortie 
+        True ou False ; si la ligne touche un rd point ou non
+        num_rdpt : float ou np.NaN
+    """
+    num_rdpt=lignes_adj.id_rdpt.unique()
+    if not np.isnan(num_rdpt) :
+        return True, num_rdpt
+    else : 
+        return False, np.NaN
+
+def recup_lignes_rdpt(carac_rd_pt,num_rdpt,list_troncon,num_voie ):
+    """
+    obtenir les lignes qui composent un rd pt et les lignes suivantes s'il n'est pas une fin de troncon
+    en entree : 
+        carac_rd_pt : df des caractereistiques des rdpt, issu de identifier_rd_pt
+        num_rdpt : float, issu de verif_touche_rdpt
+        list_troncon : list des lignes du troncon arrivant sur le rd pt, issu de liste_complete_tronc_base
+        num_voie : string : numero de la voie entrante (ex : D113)
+    en sortie : 
+        ligne_rdpt : liste des id_ign qui composent le rd point, ou liste vide si le rd pt n'est pas a ssocier a cette voie
+        lignes_sortantes : liste des id_ign qui continue apres le rd pt si le troncon elementaire n'est pas delimite par celui-ci, liste vide sinon
+    """
+    num_rdpt=int(num_rdpt[0])
+    nb_voie_rdpt=carac_rd_pt.loc[num_rdpt].nb_rte_rdpt
+    ligne_rdpt=list(carac_rd_pt.loc[num_rdpt].id_ign_rdpt)
+    #dans le cas ou 1 ou 2 routes arrivent sur le rd point on doit aussi prevoir de continuer à chercher des lignes qui continue, car le troncon reste le même, dc on recupère
+    # les lignes sortantes 
+    if  nb_voie_rdpt<=2 :
+        lignes_sortantes=[a for a in filter(lambda x : x not in list_troncon,carac_rd_pt.loc[num_rdpt].id_ign_entrant)]
+        return ligne_rdpt, lignes_sortantes   
+    #sinon, si le numero de la voie de la ligne qui touchent le rd pt est le même et different de NC, on retourne les lignes du rd pt
+    # mais pas le suivantes car plus de 2 voies entrent sur le rd pont
+    else :
+        lignes_sortantes=[]
+        if num_voie in carac_rd_pt.loc[num_rdpt].numero_rdpt : 
+            return ligne_rdpt, lignes_sortantes
+        else : 
+            
+            return [], lignes_sortantes
+
+def recup_route_split(voie, lignes_adj):
+    """
+    récupérer les id_ign des voies adjacentes qui sont de la mm voie que la ligne de depart
+    en entree : 
+        voie : nom de la voie de la ligne de depart
+        lignes_adj : df des lignes qui touchent, issues de identifier_rd_pt avec id_ign en index
+    """
+    if voie==lignes_adj.numero.all() : 
+        ligne_mm_voie=lignes_adj.index.tolist()
+        return ligne_mm_voie
+    else : 
+        return []
+        
+    
 
 
-    
-    
 
 def recup_troncon_elementaire (id_ign_ligne,df, ligne_traite_troncon=[]):
     """
