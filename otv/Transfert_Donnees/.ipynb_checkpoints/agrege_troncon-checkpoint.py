@@ -217,7 +217,7 @@ def deb_fin_liste_tronc_base(df_lignes, list_troncon):
     dico des lignes d debut et de fin des troncon de base
     le dico contient l'id_ign, si le noeud de fin est source ou target, le numero de noeud, le nom de la voie, le codevoie
     en entree : 
-        df_lignes :  df des lignes avec rd points et id_ign en index
+        df_lignes :  df des lignes avec rd points
         list_troncon : list des troncons creant le troncon de base, issue de liste_complete_tronc_base
     en sortie : 
         dico_deb_fin : dico avec comme key l'id_ign, puis en item un noveau dico avec les key 'type', 'num_node', 'voie', 'codevoie'
@@ -226,7 +226,7 @@ def deb_fin_liste_tronc_base(df_lignes, list_troncon):
     tronc_deb_fin=lignes_troncon.loc[(lignes_troncon['nb_intrsct_src']>2)|(lignes_troncon['nb_intrsct_tgt']>2)]
     dico_deb_fin={}
     for e in tronc_deb_fin.itertuples() :
-        dico_deb_fin[e[0]]={'type':'source','num_node':e[54],'voie':e[4],'codevoie':e[58]} if e[60]>=3 else {
+        dico_deb_fin[e[0]]={'type':'source','num_node':e[54],'voie':e[4],'codevoie':e[58]} if e[61]==3 else {
             'type':'target','num_node':e[55],'voie':e[4],'codevoie':e[58]}
     return dico_deb_fin
 
@@ -240,8 +240,7 @@ def verif_touche_rdpt(lignes_adj):
         num_rdpt : float ou np.NaN
     """
     num_rdpt=lignes_adj.id_rdpt.unique()
-    #print(f'num rdpt : {num_rdpt}, lignes adj : {lignes_adj.index.tolist()}')
-    if not np.isnan(num_rdpt).any() :
+    if not np.isnan(num_rdpt) :
         return True, num_rdpt
     else : 
         return False, np.NaN
@@ -263,7 +262,7 @@ def recup_lignes_rdpt(carac_rd_pt,num_rdpt,list_troncon,num_voie ):
     ligne_rdpt=list(carac_rd_pt.loc[num_rdpt].id_ign_rdpt)
     #dans le cas ou 1 ou 2 routes arrivent sur le rd point on doit aussi prevoir de continuer à chercher des lignes qui continue, car le troncon reste le même, dc on recupère
     # les lignes sortantes 
-    if  nb_voie_rdpt==1 :
+    if  nb_voie_rdpt<=2 :
         lignes_sortantes=[a for a in filter(lambda x : x not in list_troncon,carac_rd_pt.loc[num_rdpt].id_ign_entrant)]
         return ligne_rdpt, lignes_sortantes   
     #sinon, si le numero de la voie de la ligne qui touchent le rd pt est le même et different de NC, on retourne les lignes du rd pt
@@ -276,55 +275,21 @@ def recup_lignes_rdpt(carac_rd_pt,num_rdpt,list_troncon,num_voie ):
             
             return [], lignes_sortantes
 
-def recup_route_split(voie,codevoie, lignes_adj):
+def recup_route_split(voie, lignes_adj):
     """
     récupérer les id_ign des voies adjacentes qui sont de la mm voie que la ligne de depart
     en entree : 
         voie : nom de la voie de la ligne de depart
-        codevoie : codevoie_d de la ligne de depart
         lignes_adj : df des lignes qui touchent, issues de identifier_rd_pt avec id_ign en index
     """
-    if (voie==lignes_adj.numero).all() and voie!='NC' : 
-        ligne_mm_voie=lignes_adj.index.tolist()
-        return ligne_mm_voie
-    elif voie=='NC' and codevoie!='NR' and (codevoie==lignes_adj.codevoie_d).all(): 
+    if voie==lignes_adj.numero.all() : 
         ligne_mm_voie=lignes_adj.index.tolist()
         return ligne_mm_voie
     else : 
         return []
         
-def trouver_chaussees_separee(list_troncon, df_avec_rd_pt):
-    """
-    Trouver la ligne parrallele de la voie représentée par 2 chaussées
-    en entree : 
-       list_troncon : list des troncon elementaire de l'idligne recherché, issu de  liste_complete_tronc_base
-       df_avec_rd_pt  :df des lignes vace rd point, issu de identifier_rd_pt
-    en sortie : 
-        ligne_proche : string : id_ign de la ligne la plus proche
-        ligne_filtres : df des lignes proches avec distance au repere
-        longueur_base : longueur du troncon elementaire servant de base
-    """    
-    lgn_tron_e=df_avec_rd_pt.loc[df_avec_rd_pt['id_ign'].isin(list_troncon)]
-    try : #union des geometries, si possible en linestring sinon en multi
-        lgn_agrege=linemerge(lgn_tron_e.unary_union) #union des geometries
-    except ValueError :
-        lgn_agrege=lgn_tron_e.unary_union
-    longueur_base=lgn_agrege.length
-    xmin,ymin,xmax,ymax=lgn_agrege.interpolate(0.5, normalized=True).buffer(50).bounds #limtes du carre englobant du buffer 50 m du centroid de la ligne
-    #gdf_global=gp.GeoDataFrame(df, geometry='geom')#donnees de base
-    lignes_possibles=df_avec_rd_pt.cx[xmin:xmax,ymin:ymax]#recherche des lignes proches du centroid
-    #uniquement les lignes non présentes dans la liste de troncons avec le même nom de voie
-    ligne_filtres=lignes_possibles.loc[(~lignes_possibles.id_ign.isin(list_troncon)) & (lignes_possibles.loc[:,'numero']==lgn_tron_e.iloc[0]['numero'])].copy()
-    #obtenir les distances au centroid
-    ligne_filtres['distance']=ligne_filtres.geom.apply(lambda x : lgn_agrege.centroid.distance(x))
-    #garder uniquement la valeur la plus proche du centroid
-    ligne_proche=ligne_filtres.loc[ligne_filtres['distance']==ligne_filtres['distance'].min()].id_ign.tolist()[0]
-    return ligne_proche, ligne_filtres, longueur_base
     
-    
-    
-    
-    
+
 
 
 def recup_troncon_elementaire (id_ign_ligne,df, ligne_traite_troncon=[]):
