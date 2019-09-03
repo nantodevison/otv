@@ -305,11 +305,7 @@ def trouver_chaussees_separee(list_troncon, df_avec_rd_pt):
         longueur_base : longueur du troncon elementaire servant de base
     """    
     lgn_tron_e=df_avec_rd_pt.loc[df_avec_rd_pt['id_ign'].isin(list_troncon)]
-    try : #union des geometries, si possible en linestring sinon en multi
-        lgn_agrege=linemerge(lgn_tron_e.unary_union) #union des geometries
-    except ValueError :
-        lgn_agrege=lgn_tron_e.unary_union
-    longueur_base=lgn_agrege.length
+    lgn_agrege, longueur_base=fusion_ligne_calc_lg(lgn_tron_e)
     xmin,ymin,xmax,ymax=lgn_agrege.interpolate(0.5, normalized=True).buffer(50).bounds #limtes du carre englobant du buffer 50 m du centroid de la ligne
     #gdf_global=gp.GeoDataFrame(df, geometry='geom')#donnees de base
     lignes_possibles=df_avec_rd_pt.cx[xmin:xmax,ymin:ymax]#recherche des lignes proches du centroid
@@ -320,7 +316,22 @@ def trouver_chaussees_separee(list_troncon, df_avec_rd_pt):
     #garder uniquement la valeur la plus proche du centroid
     ligne_proche=ligne_filtres.loc[ligne_filtres['distance']==ligne_filtres['distance'].min()].id_ign.tolist()[0]
     return ligne_proche, ligne_filtres, longueur_base
-    
+
+def fusion_ligne_calc_lg(gdf): 
+    """
+    créer une ligne ou une multi si pb à partir de plusieurs lignes d'une gdf
+    en entre : 
+        gdf : une geodataframe faite de ligne
+    en sortie 
+        lgn_agrege : une shpely geometrie
+        longueur_base : un float decrivant la longuer
+    """
+    try : #union des geometries, si possible en linestring sinon en multi
+        lgn_agrege=linemerge(gdf.unary_union) #union des geometries
+    except ValueError :
+        lgn_agrege=gdf.unary_union
+    longueur_base=lgn_agrege.length
+    return lgn_agrege, longueur_base
     
     
     
