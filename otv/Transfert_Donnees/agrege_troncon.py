@@ -283,6 +283,8 @@ def recup_route_split(voie,codevoie, lignes_adj):
         voie : nom de la voie de la ligne de depart
         codevoie : codevoie_d de la ligne de depart
         lignes_adj : df des lignes qui touchent, issues de identifier_rd_pt avec id_ign en index
+    en sortie : 
+        ligne_mm_voie : list d'id_ign ou liste vide
     """
     if (voie==lignes_adj.numero).all() and voie!='NC' : 
         ligne_mm_voie=lignes_adj.index.tolist()
@@ -292,7 +294,40 @@ def recup_route_split(voie,codevoie, lignes_adj):
         return ligne_mm_voie
     else : 
         return []
-        
+    
+def recup_triangle(voie, lignes_adj, noeud, df_lignes):
+    """
+    récuperer un bout de voe coincé entre 2 lignes de carrefourd'une voie perpendiculaire
+    en entree : 
+        voie : nom de la voie de la ligne de depart
+        lignes_adj : df des lignes qui touchent, issues de identifier_rd_pt avec id_ign en index
+        noeud : integer noeud de depart du triangle
+        df_lignes : df globale des lignes
+    en sortie :
+        id_rattache : list id_ign de bout a recuperer ou liste vide
+    """
+    if (voie==lignes_adj.numero).any() :
+        # on isole les lignes et on calcule les noeud du triangle
+        lgn_cote_1=lignes_adj.loc[(lignes_adj['numero']!=voie)]
+        noeud_centre = lgn_cote_1['source'].values[0] if lgn_cote_1['source'].values[0] != noeud else lgn_cote_1['target'].values[0]
+        lgn_suiv=lignes_adj.loc[~lignes_adj.index.isin(lgn_cote_1.index.tolist())]
+        noeud_suiv=lgn_suiv['source'].values[0] if lgn_suiv['source'].values[0] != noeud else lgn_suiv['target'].values[0]
+        id_rattache=lgn_suiv.index.tolist()
+
+        if noeud_centre==noeud_suiv : #ça veut dire une seule et mm lign qui fait 2 cote du triangle, dc on peu de suite garder la ligne suiv car 1 seule route non coupe l'intersec
+            return id_rattache
+        else : # on cherche si une ligne touche ces 2 noeuds, a le mme nom de voie que la ligne de cote  et un sens direct ou inverse
+            ligne_a_rattacher=df_lignes.loc[((df_lignes['source']==noeud_centre) | (df_lignes['target']==noeud_centre)) & 
+                      (df_lignes['numero']==lgn_cote_1['numero'].values[0]) & (~df_lignes.index.isin(lgn_cote_1.index.tolist())) & 
+                      ((df_lignes['source']==noeud_suiv) | (df_lignes['target']==noeud_suiv))]
+            if not ligne_a_rattacher.empty : 
+                return id_rattache
+            else :
+                return [] 
+    else : 
+        return []
+    
+       
 def trouver_chaussees_separee(list_troncon, df_avec_rd_pt):
     """
     Trouver la ligne parrallele de la voie représentée par 2 chaussées
@@ -310,9 +345,14 @@ def trouver_chaussees_separee(list_troncon, df_avec_rd_pt):
     #gdf_global=gp.GeoDataFrame(df, geometry='geom')#donnees de base
     lignes_possibles=df_avec_rd_pt.cx[xmin:xmax,ymin:ymax]#recherche des lignes proches du centroid
     #uniquement les lignes non présentes dans la liste de troncons avec le même nom de voie
+    
+    # A FAIRE : GESTION DES VOIES COMMUNALESS AVEC NUMERO = 'NC' et CODEVOIE DIFFRENT DE NR
+    
     ligne_filtres=lignes_possibles.loc[(~lignes_possibles.id_ign.isin(list_troncon)) & (lignes_possibles.loc[:,'numero']==lgn_tron_e.iloc[0]['numero'])].copy()
     #obtenir les distances au centroid
     ligne_filtres['distance']=ligne_filtres.geom.apply(lambda x : lgn_agrege.centroid.distance(x))
+    if ligne_filtres.empty : 
+        raise ParralleleError(list_troncon)
     #garder uniquement la valeur la plus proche du centroid
     ligne_proche=ligne_filtres.loc[ligne_filtres['distance']==ligne_filtres['distance'].min()].id_ign.tolist()[0]
     return ligne_proche, ligne_filtres, longueur_base
@@ -333,9 +373,43 @@ def fusion_ligne_calc_lg(gdf):
     longueur_base=lgn_agrege.length
     return lgn_agrege, longueur_base
     
+def gestion_voie_2_chaussee(list_troncon, df_avec_rd_pt): 
+    """
+    fonction de dteremination des tronc elem de voie à chaussees separees
+    en entree : 
+       list_troncon : list des troncon elementaire de l'idligne recherché, issu de  liste_complete_tronc_base
+       df_avec_rd_pt  :df des lignes vace rd point, issu de identifier_rd_pt
+    en sortie : 
+        list_troncon_comp : liste des id_ign complementaire si le lien est ok, sinon liste vide 
+        ligne_proche : string : id_ign de la liste la plus proche
+        ligne_filtres : df des lignes proches avec distance au repere
+        longueur_base : float longueur du troncon elementaire servant de base
+        long_comp : float longueur du troncon elementaire compare
+    """  
+    ligne_proche, ligne_filtres, longueur_base=trouver_chaussees_separee(list_troncon, df_avec_rd_pt)
+    df_lignes=df_avec_rd_pt.set_index('id_ign')#mettre l'id_ign en index
+    #recherche des troncon du mm tronc elem
+    list_troncon_comp=liste_complete_tronc_base(ligne_proche,df_lignes,[])
+    #cacul de la longueur
+    long_comp=fusion_ligne_calc_lg(df_avec_rd_pt.loc[df_avec_rd_pt['id_ign'].isin(list_troncon_comp)])[1]
+    #verif que les longueurs coincident
+    if min(long_comp,longueur_base)*100/max(long_comp,longueur_base) >50 : #si c'est le cas il gfaut transférer list_troncon_comp dans la liste des troncon du tronc elem 
+        return list_troncon_comp, ligne_proche, ligne_filtres, longueur_base, long_comp
+    else : #on affecte personne
+        return [],ligne_proche, ligne_filtres, longueur_base, long_comp
     
     
     
+class ParralleleError(Exception):  
+    """
+    Exception levee si la recherched'une parrallele ne donne rien
+    """     
+    def __init__(self, id_ign):
+        Exception.__init__(self,f'pas de parrallele trouvee pour les troncons {id_ign}')
+        
+        
+        
+        
 
 
 def recup_troncon_elementaire (id_ign_ligne,df, ligne_traite_troncon=[]):
@@ -662,3 +736,9 @@ if __name__ == '__main__' :
     with ct.ConnexionBdd('local_otv') as c :
         inserer_dico(c, dico)
     print ('fin : ',datetime.now().strftime('%H:%M:%S'), dico)
+    
+    
+    
+    
+    
+
