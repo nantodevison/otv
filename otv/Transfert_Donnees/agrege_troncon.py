@@ -357,6 +357,35 @@ def trouver_chaussees_separee(list_troncon, df_avec_rd_pt):
     ligne_proche=ligne_filtres.loc[ligne_filtres['distance']==ligne_filtres['distance'].min()].id_ign.tolist()[0]
     return ligne_proche, ligne_filtres, longueur_base
 
+def chercher_chaussee_proche(ligne, ligne_proche, df_avec_rd_pt):
+    """
+    Pour trouver la partie de route proche du troncon le plus proche du trocnon d'une voie a 2*2 voie dont la rechreche de troncon parrallele a foiree
+    en entree : 
+        ligne : string id_ign de la ligne d'analyse de depart
+        ligne_proche : id de a ligne proche de la voie de base
+        df_avec_rd_pt  :df des lignes vace rd point, issu de identifier_rd_pt
+    """
+    df_lignes=df_avec_rd_pt.set_index('id_ign')
+    voie=df_lignes.loc[ligne_proche].numero
+    #tronc elem de la ligne proche
+    te_ligne_proche=liste_complete_tronc_base(ligne_proche,df_lignes,[])
+    #debut et fin
+    te_dico_deb_fin=deb_fin_liste_tronc_base(df_lignes, te_ligne_proche)
+    #trouver le troncon plus proche de la ligne de départ
+    tronc_deb_fin=list(te_dico_deb_fin.keys())
+    tronc_proche=tronc_deb_fin[0] if (df_lignes.loc[tronc_deb_fin[0]]['geom'].distance(df_lignes.loc[ligne]['geom']) < 
+                                      df_lignes.loc[tronc_deb_fin[1]]['geom'].distance(df_lignes.loc[ligne]['geom'])) else tronc_deb_fin[1]
+    #trouver les troncon qui touchent et qui ont le mm nom
+    noeuds_tch=[df_lignes.loc[tronc_proche]['source'],df_lignes.loc[tronc_proche]['target']]
+    lignes_adj=df_lignes.loc[((df_lignes['source'].isin(noeuds_tch))|(df_lignes['target'].isin(noeuds_tch)))&(~df_lignes.index.isin(te_ligne_proche))&
+                            (df_lignes['numero']==voie)]
+    # tronc eleme de cette ligne
+    tronc_final=liste_complete_tronc_base(lignes_adj.index[0],df_lignes,[])
+    #regroupement et longeuer
+    tronc_final_agrg, longueur_final_agreg=fusion_ligne_calc_lg(df_lignes.loc[tronc_final])
+    return tronc_final, longueur_final_agreg
+    
+
 def fusion_ligne_calc_lg(gdf): 
     """
     créer une ligne ou une multi si pb à partir de plusieurs lignes d'une gdf
@@ -373,12 +402,13 @@ def fusion_ligne_calc_lg(gdf):
     longueur_base=lgn_agrege.length
     return lgn_agrege, longueur_base
     
-def gestion_voie_2_chaussee(list_troncon, df_avec_rd_pt): 
+def gestion_voie_2_chaussee(list_troncon, df_avec_rd_pt, ligne): 
     """
     fonction de dteremination des tronc elem de voie à chaussees separees
     en entree : 
        list_troncon : list des troncon elementaire de l'idligne recherché, issu de  liste_complete_tronc_base
        df_avec_rd_pt  :df des lignes vace rd point, issu de identifier_rd_pt
+       ligne : ligne d'analyse de depart
     en sortie : 
         list_troncon_comp : liste des id_ign complementaire si le lien est ok, sinon liste vide 
         ligne_proche : string : id_ign de la liste la plus proche
@@ -396,7 +426,11 @@ def gestion_voie_2_chaussee(list_troncon, df_avec_rd_pt):
     if min(long_comp,longueur_base)*100/max(long_comp,longueur_base) >50 : #si c'est le cas il gfaut transférer list_troncon_comp dans la liste des troncon du tronc elem 
         return list_troncon_comp, ligne_proche, ligne_filtres, longueur_base, long_comp
     else : #on affecte personne
-        return [],ligne_proche, ligne_filtres, longueur_base, long_comp
+        lignes_suivante, long_suivante=chercher_chaussee_proche(ligne, ligne_proche, df_avec_rd_pt)
+        if min(long_suivante,longueur_base)*100/max(long_suivante,longueur_base) >50 :
+            return lignes_suivante,ligne_proche, [], longueur_base, long_suivante
+        else :
+            return [],ligne_proche, ligne_filtres, longueur_base, long_comp
     
     
     
