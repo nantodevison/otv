@@ -40,7 +40,7 @@ def import_donnes_base(ref_connexion):
              from public.traf2015_bdt17_ed15_l t 
             left join public.traf2015_bdt17_ed15_l_vertices_pgr v1 on t.source=v1.id 
             left join public.traf2015_bdt17_ed15_l_vertices_pgr v2  on t.target=v2.id"""
-        df = gp.read_postgis(requete2, c.connexionPsy)
+        df = gp.read_postgis(requete1, c.connexionPsy)
         return df
 
 def df_rond_point(df, taille_buffer=0):
@@ -251,7 +251,7 @@ def verif_touche_rdpt(lignes_adj):
     else : 
         return False, np.NaN
 
-def recup_lignes_rdpt(carac_rd_pt,num_rdpt,list_troncon,num_voie ):
+def recup_lignes_rdpt(carac_rd_pt,num_rdpt,list_troncon,num_voie,codevoie):
     """
     obtenir les lignes qui composent un rd pt et les lignes suivantes s'il n'est pas une fin de troncon
     en entree : 
@@ -259,6 +259,7 @@ def recup_lignes_rdpt(carac_rd_pt,num_rdpt,list_troncon,num_voie ):
         num_rdpt : float, issu de verif_touche_rdpt
         list_troncon : list des lignes du troncon arrivant sur le rd pt, issu de liste_complete_tronc_base
         num_voie : string : numero de la voie entrante (ex : D113)
+        codevoie : string codevoie_d de la ligne de depart
     en sortie : 
         ligne_rdpt : liste des id_ign qui composent le rd point, ou liste vide si le rd pt n'est pas a ssocier a cette voie
         lignes_sortantes : liste des id_ign qui continue apres le rd pt si le troncon elementaire n'est pas delimite par celui-ci, liste vide sinon
@@ -275,11 +276,21 @@ def recup_lignes_rdpt(carac_rd_pt,num_rdpt,list_troncon,num_voie ):
     # mais pas le suivantes car plus de 2 voies entrent sur le rd pont
     else :
         lignes_sortantes=[]
-        if num_voie in carac_rd_pt.loc[num_rdpt].numero_rdpt : 
-            return ligne_rdpt, lignes_sortantes
+        if num_voie != 'NC' :
+            if num_voie in carac_rd_pt.loc[num_rdpt].numero_rdpt : 
+                return ligne_rdpt, lignes_sortantes
+            else : return [], lignes_sortantes
         else : 
-            
-            return [], lignes_sortantes
+            if codevoie !='NR' : 
+                if codevoie in carac_rd_pt.loc[num_rdpt].codevoie_rdpt : 
+                    return ligne_rdpt, lignes_sortantes
+                else : return [], lignes_sortantes
+            else : 
+                if len(set(carac_rd_pt.loc[num_rdpt].codevoie_rdpt))==1 and 'NR' in carac_rd_pt.loc[num_rdpt].codevoie_rdpt :
+                    return ligne_rdpt, lignes_sortantes
+                else : 
+                    return [], lignes_sortantes
+                
 
 def recup_route_split(ligne_depart,voie,codevoie, lignes_adj,noeud,geom_noeud, type_noeud, df_lignes):
     """
@@ -296,14 +307,19 @@ def recup_route_split(ligne_depart,voie,codevoie, lignes_adj,noeud,geom_noeud, t
     en sortie : 
         ligne_mm_voie : list d'id_ign ou liste vide
     """
-    if len(lignes_adj)<2 : 
+    if len(lignes_adj)!=2 : 
         return []
-    if (voie==lignes_adj.numero).all() and voie!='NC' : 
-        ligne_mm_voie=lignes_adj.index.tolist()
-        return ligne_mm_voie
-    elif voie=='NC' and codevoie!='NR' and (codevoie==lignes_adj.codevoie_d).all(): 
-        ligne_mm_voie=lignes_adj.index.tolist()
-        return ligne_mm_voie
+    if len(set(lignes_adj.source.tolist()+lignes_adj.target.tolist()))==2 : #cas d'une ligne qui separe pour se reconnecter ensuite
+       return lignes_adj.index.tolist()
+    if voie!='NC' : 
+        if (voie==lignes_adj.numero).all() : 
+            ligne_mm_voie=lignes_adj.index.tolist()
+            return ligne_mm_voie
+    elif voie=='NC' and codevoie!='NR' :
+        if (codevoie==lignes_adj.codevoie_d).all(): 
+            ligne_mm_voie=lignes_adj.index.tolist()
+            return ligne_mm_voie
+        else : return []
     else : 
         lignes_adj_tot=lignes_adj.copy()
         lignes_adj_tot['tronc_supp']=lignes_adj_tot.apply(lambda x : liste_complete_tronc_base(x.name,df_lignes,[ligne_depart]), axis=1)
@@ -339,7 +355,9 @@ def recup_triangle(ligne_depart,voie,codevoie, lignes_adj, noeud,geom_noeud,type
     en sortie :
         id_rattache : list id_ign de bout a recuperer ou liste vide
     """
-    if len(lignes_adj)<2 : 
+    if df_lignes.loc[ligne_depart].nature in ['Autoroute', 'Quasi-autoroute'] : 
+        return []
+    if len(lignes_adj)!=2 : 
         return []
                 
     if voie != 'NC' : 
@@ -351,6 +369,20 @@ def recup_triangle(ligne_depart,voie,codevoie, lignes_adj, noeud,geom_noeud,type
         if lgn_suiv.empty : 
             return []
         noeud_suiv=lgn_suiv['source'].values[0] if lgn_suiv['source'].values[0] != noeud else lgn_suiv['target'].values[0]
+        
+       #dans le cas ou plusieurs ligne a la suite forme le cote du triangle que l'on veut récupérer on veut connaitre le nb de ligne qui touchent le noeud_suiv
+        if lgn_suiv['source'].values[0] != noeud : 
+            noeud_suiv=lgn_suiv['source'].values[0]
+            nb_intersect_noeud_suiv=df_lignes.loc[lgn_suiv.index.values[0]].nb_intrsct_src
+        else : 
+            noeud_suiv=lgn_suiv['target'].values[0]
+            nb_intersect_noeud_suiv=df_lignes.loc[lgn_suiv.index.values[0]].nb_intrsct_tgt
+    
+        if  nb_intersect_noeud_suiv==2 : 
+            lgn_suiv=df_lignes.loc[liste_complete_tronc_base(lgn_suiv.index.values[0],df_lignes,[])] 
+            noeud_ss_suite=Counter(lgn_suiv.source.tolist()+lgn_suiv.target.tolist())
+            noeud_suiv=[k for k,v in noeud_ss_suite.items() if v==1 and v!=noeud][0]
+
         id_rattache=lgn_suiv.index.tolist()
         if noeud_centre==noeud_suiv : #ça veut dire une seule et mm lign qui fait 2 cote du triangle, dc on peu de suite garder la ligne suiv car 1 seule route non coupe l'intersec
             return id_rattache
@@ -385,10 +417,15 @@ def recup_triangle(ligne_depart,voie,codevoie, lignes_adj, noeud,geom_noeud,type
     else : #normalement un seul cas : voie=='NC' et codevoie=='NR'
         lgn_cote_1, lgn_cote2,angle_1,angle_2=angle_3_lignes(ligne_depart, lignes_adj, noeud,geom_noeud, type_noeud, df_lignes)[:4]
         # la ligne la dont l'écart avec 180 est le plus eleve est la ligne qui part
-        lgn_cote_1=lgn_cote_1 if angle_1<angle_2 else lgn_cote2
-        lgn_suiv=lgn_cote2 if angle_1<angle_2 else lgn_cote_1
+        if 170<angle_1<190 : 
+            lgn_suiv, lgn_cote=lgn_cote_1, lgn_cote2
+        elif 170<angle_2<190 :
+            lgn_suiv, lgn_cote=lgn_cote2,lgn_cote_1
+        else : 
+            return []   
+        
         try :
-            noeud_centre = lgn_cote_1['source'] if lgn_cote_1['source'] != noeud else lgn_cote_1['target']
+            noeud_centre = lgn_cote['source'] if lgn_cote['source'] != noeud else lgn_cote['target']
         except IndexError :
             return []
         noeud_suiv=lgn_suiv['source'] if lgn_suiv['source'] != noeud else lgn_suiv['target']
@@ -397,7 +434,7 @@ def recup_triangle(ligne_depart,voie,codevoie, lignes_adj, noeud,geom_noeud,type
             return id_rattache
         else : # on cherche si une ligne touche ces 2 noeuds
             ligne_a_rattacher=df_lignes.loc[((df_lignes['source']==noeud_centre) | (df_lignes['target']==noeud_centre)) & 
-                               (~df_lignes.index.isin(lgn_cote_1.index.tolist())) & ((df_lignes['source']==noeud_suiv) | (df_lignes['target']==noeud_suiv))]
+                               (~df_lignes.index.isin(lgn_cote.index.tolist())) & ((df_lignes['source']==noeud_suiv) | (df_lignes['target']==noeud_suiv))]
             if not ligne_a_rattacher.empty : 
                 return id_rattache
             else :
@@ -714,7 +751,7 @@ def recup_troncon_elementaire (id_ign_ligne,df, ligne_traite_troncon=[]):
         yield from recup_troncon_elementaire(ligne_a_traiter, df, ligne_traite_troncon)
     #yield ligne_traite_troncon
 
-def recup_troncon_parallele(id_ign_ligne,ligne_traitee_global):  
+def recup_troncon_parallele(id_ign_ligne,ligne_traitee_global,df,df2_chaussees):  
     """
     Obtenir la ligne parrallele pour les voies decrites par 2 lignes
     en entree : id de le ligne -> str 
@@ -887,7 +924,7 @@ def inserer_dico(conn, dico):
     
     conn.curs.executemany("""INSERT INTO referentiel.tronc_elem_bdt17_ed15_l (id_ign,id_tronc_elem) VALUES (%s, %s)""", dico.items())
     conn.connexionPsy.commit()
-
+"""
 if __name__ == '__main__' : 
     #affecter_troncon(['TRONROUT0000000202559719'])
     print ('debut : ',datetime.now().strftime('%H:%M:%S'))
@@ -896,6 +933,7 @@ if __name__ == '__main__' :
     with ct.ConnexionBdd('local_otv') as c :
         inserer_dico(c, dico)
     print ('fin : ',datetime.now().strftime('%H:%M:%S'), dico)
+"""
     
     
     
