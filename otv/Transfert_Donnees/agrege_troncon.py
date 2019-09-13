@@ -40,7 +40,7 @@ def import_donnes_base(ref_connexion):
              from public.traf2015_bdt17_ed15_l t 
             left join public.traf2015_bdt17_ed15_l_vertices_pgr v1 on t.source=v1.id 
             left join public.traf2015_bdt17_ed15_l_vertices_pgr v2  on t.target=v2.id"""
-        df = gp.read_postgis(requete2, c.connexionPsy)
+        df = gp.read_postgis(requete1, c.connexionPsy)
         return df
 
 def df_rond_point(df, taille_buffer=0):
@@ -223,7 +223,7 @@ def deb_fin_liste_tronc_base(df_lignes, list_troncon):
     if len(tronc_deb_fin)==0 : # cas des autoroutes : au bout elle ne croise personnes dc tronc_deb_fin=rien
         noeud_ss_suite=Counter(lignes_troncon.source.tolist()+lignes_troncon.target.tolist())
         noeuds_fin=[k for k,v in noeud_ss_suite.items() if v==1]
-        tronc_deb_fin=lignes_troncon.loc[lignes_troncon['source'].isin(noeuds_fin) | lignes_troncon['target'].isin(noeuds_fin)]
+        tronc_deb_fin=lignes_troncon.loc[(lignes_troncon['source'].isin(noeuds_fin)) | (lignes_troncon['target'].isin(noeuds_fin))]
     dico_deb_fin={}
     if len(tronc_deb_fin)>1 :
         for i, e in enumerate(tronc_deb_fin.itertuples()) :
@@ -661,7 +661,58 @@ def angle_3_lignes(ligne_depart, lignes_adj, noeud,geom_noeud_central, type_noeu
     angle_3=360-(angle_1+angle_2)
 
     return lgn_cote_1, lgn_cote_2, angle_1,angle_2,angle_3    
-    
+
+def regrouper_troncon(list_troncon, df_avec_rd_pt, carac_rd_pt,df2_chaussees):
+    """
+    Premier run de regroupement des id_ign. il reste des erreurs à la fin
+    en entree : 
+        list_troncon : list de string des id_ign a regrouper
+        df_avec_rd_pt : df des lignes Bdtopo issu de identifier_rd_pt()
+        carac_rd_pt : df des caractéristiques des rd points, issus de carac_rond_point
+        df2_chaussees : df des lignes ayant une nature = 'Autoroute', Quasi-autoroute ou Route à 2 chaussées
+    en sortie : 
+        lignes_traitees : np array des id_ign affecte à un troncon elementaire
+        lignes_non_traitees : list des id_ign non affectes a un troncon elementaires
+        dico_erreur : dico des erreurs survenue pendant le traietement
+        df_affectation : df de correspondance id_ign <-> id troncon elementaire
+        
+    """
+    dico_fin={}
+    dico_erreur={}
+    liste_id_ign_base=np.array(list_troncon)
+    lignes_traitees=np.array([],dtype='<U24')
+    for i,l in enumerate(liste_id_ign_base) :
+        if len(lignes_traitees)>=len(liste_id_ign_base) : break
+        if i%300==0 : 
+            print(i, datetime.now(), f'nb lignes traitees : {len(lignes_traitees)}')
+        if l in lignes_traitees : 
+            continue
+        #critère d'exclusion : si la ligne est une bretelle ou si la ligne à un nb de lignes qui intersecte debut et fin >2, ou si c'est un rd pt
+        ligne=df_avec_rd_pt.set_index('id_ign').loc[l]
+        if ~np.isnan(ligne['id_rdpt']):
+            continue
+        else : 
+            try : 
+                liste_ligne=lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, l) 
+                liste_ligne=[x for x in liste_ligne if x not in lignes_traitees] #filtre des lignes deja affectees
+                #print(f'liste tronc base : {liste_ligne}')
+                if any([x in df2_chaussees.id_ign.tolist() for x in liste_ligne]) :  
+                    try : 
+                        liste_ligne+=gestion_voie_2_chaussee(liste_ligne, df_avec_rd_pt, l)[0]
+                    except ParralleleError as Pe:
+                        dico_erreur[Pe.id_ign]=Pe.erreur_type
+                lignes_traitees=np.unique(np.append(lignes_traitees,liste_ligne))
+            except Exception as e : 
+                dico_erreur[l]=e
+        for ligne in liste_ligne : 
+            dico_fin[ligne]=i
+    print('fin : ', datetime.now(), f'nb lignes traitees : {len(lignes_traitees)}')    
+    df_affectation=pd.DataFrame.from_dict(dico_fin, orient='index').reset_index()
+    df_affectation.columns=['id', 'idtronc']
+    lignes_non_traitees=[x for x in df_affectation.id.tolist() if x not in lignes_traitees]
+    return df_affectation, dico_erreur, lignes_traitees, lignes_non_traitees
+
+
 class ParralleleError(Exception):  
     """
     Exception levee si la recherched'une parrallele ne donne rien
