@@ -233,8 +233,9 @@ def deb_fin_liste_tronc_base(df_lignes, list_troncon):
     dico_deb_fin={}
     if len(tronc_deb_fin)>1 :
         for i, e in enumerate(tronc_deb_fin.itertuples()) :
-            dico_deb_fin[i]={'id':e[0],'type':'source','num_node':e[54],'geom_node':e[61],'voie':e[4],'codevoie':e[58]} if e[60]>=3 else {'id':e[0],
-                'type':'target','num_node':e[55],'geom_node':e[63],'voie':e[4],'codevoie':e[58]}
+            #print(e)
+            dico_deb_fin[i]={'id':e[0],'type':'source','num_node':e[54],'geom_node':e[62],'voie':e[4],'codevoie':e[58]} if e[61]>=3 else {'id':e[0],
+                'type':'target','num_node':e[55],'geom_node':e[64],'voie':e[4],'codevoie':e[58]}
     else  : #pour tester les 2 cotés de la ligne
         dico_deb_fin[0]={'id':tronc_deb_fin.index.values[0],'type':'source','num_node':tronc_deb_fin['source'].values[0],'geom_node':tronc_deb_fin['src_geom'].values[0]
                          ,'voie':tronc_deb_fin['numero'].values[0],'codevoie':tronc_deb_fin['codevoie_d'].values[0]}
@@ -321,7 +322,7 @@ def recup_route_split(ligne_depart,list_troncon,voie,codevoie, lignes_adj,noeud,
     if len(lignes_adj)!=2 : 
         return []
     if len(set(lignes_adj.source.tolist()+lignes_adj.target.tolist()))==2 : #cas d'une ligne qui separe pour se reconnecter ensuite
-       return lignes_adj.index.tolist()
+        return lignes_adj.index.tolist()
     if voie!='NC' : 
         if (voie==lignes_adj.numero).all() : 
             return lignes_adj.index.tolist()
@@ -330,7 +331,7 @@ def recup_route_split(ligne_depart,list_troncon,voie,codevoie, lignes_adj,noeud,
             return lignes_adj.index.tolist()
         else : return []
     else : # cas des nc / nr qui se sépare : ont réflechi en angle et longueurs eéquivalente, avec si besoin comparaiosn des lignes qui touvhent
-        if (lignes_adj.nature=='Bretelle').all()==1 : #une bretelle qui se separe on garde le mm identifiant
+        if (lignes_adj.nature=='Bretelle').any()==1 : #une bretelle qui se separe on garde le mm identifiant
             return lignes_adj.index.tolist()
         if (lignes_adj.id_rdpt>0).any()==1  :#si une des lignes qui se separent fait partie d'un rd point on passe 
             return []
@@ -345,8 +346,10 @@ def recup_route_split(ligne_depart,list_troncon,voie,codevoie, lignes_adj,noeud,
         tt_tronc=[x for y in lignes_adj_tot.tronc_supp.tolist() for x in y ]
         noeuds_fin=[k for k,v in Counter(df_lignes.loc[tt_tronc].source.tolist()+df_lignes.loc[tt_tronc].target.tolist()).items() if v==1]
         if (min(lg_l1, lg_l2) / max(lg_l1, lg_l2)) > 0.66 : # soit les lignes qui se separent ont a peu pres la mm longueur et un angle entre elle faible et une ligne les touchent toute les deux (dans ce cas la ligne de depart est la grandee ligne qui arrive)
+            #print('longueur ok')
             lignes_jointure=df_lignes.loc[(df_lignes.source.isin(noeuds_fin)) & (df_lignes.target.isin(noeuds_fin))]
             if not lignes_jointure.empty : 
+                #print(lignes_jointure)
                 if angle_3<75 :
                     return tt_tronc
                 else :
@@ -705,18 +708,19 @@ def regrouper_troncon(list_troncon, df_avec_rd_pt, carac_rd_pt,df2_chaussees):
         if ~np.isnan(ligne['id_rdpt']):
             continue
         else : 
-            try : 
-                liste_ligne=lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, l) 
-                liste_ligne=[x for x in liste_ligne if x not in lignes_traitees] #filtre des lignes deja affectees
-                #print(f'liste tronc base : {liste_ligne}')
-                if any([x in df2_chaussees.id_ign.tolist() for x in liste_ligne]) :  
-                    try : 
-                        liste_ligne+=gestion_voie_2_chaussee(liste_ligne, df_avec_rd_pt, l)[0]
-                    except ParralleleError as Pe:
-                        dico_erreur[Pe.id_ign]=Pe.erreur_type
-                lignes_traitees=np.unique(np.append(lignes_traitees,liste_ligne))
-            except Exception as e : 
-                dico_erreur[l]=e
+            #try : 
+            liste_ligne=lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, l) 
+            liste_ligne=[x for x in liste_ligne if x not in lignes_traitees] #filtre des lignes deja affectees
+            #print(f'liste tronc base : {liste_ligne}')
+            if any([x in df2_chaussees.id_ign.tolist() for x in liste_ligne]) :  
+                try : 
+                    liste_ligne+=gestion_voie_2_chaussee(liste_ligne, df_avec_rd_pt, l)[0]
+                except ParralleleError as Pe:
+                    dico_erreur[Pe.id_ign]=Pe.erreur_type
+            lignes_traitees=np.unique(np.append(lignes_traitees,liste_ligne))
+            #except Exception as e : 
+                #print(e)
+                #dico_erreur[l]=e
         for ligne_tronc in liste_ligne : 
             dico_fin[ligne_tronc]=i
     print('fin : ', datetime.now(), f'nb lignes traitees : {len(lignes_traitees)}')    
