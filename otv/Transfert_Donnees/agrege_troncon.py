@@ -486,14 +486,18 @@ def lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, ligne) :
     while lignes_a_tester :
         for id_lignes2 in lignes_a_tester :
             list_troncon2=liste_complete_tronc_base(id_lignes2,df_lignes2,liste_troncon_finale)
+            #print(id_lignes2, list_troncon2)
             liste_troncon_finale+=list_troncon2
             dico_deb_fin2=deb_fin_liste_tronc_base(df_lignes2, list_troncon2)
+            #print('dico : ',dico_deb_fin2,liste_troncon_finale)
             for k, v in dico_deb_fin2.items() :
+                #print(k, v)
                 lignes_adj2=df_lignes2.loc[((df_lignes2['source']==v['num_node'])|
                                           (df_lignes2['target']==v['num_node']))&
                                          (df_lignes2.index!=v['id'])&(~df_lignes2.index.isin(liste_troncon_finale))]
                 
-                if lignes_adj2.empty : 
+                if lignes_adj2.empty :
+                    #print('vide : ',lignes_adj2.empty) 
                     continue
                 check_rdpt2, num_rdpt2=verif_touche_rdpt(lignes_adj2)
                 # on attaque la liste des cas possible
@@ -504,15 +508,18 @@ def lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, ligne) :
                     lignes_a_tester+=lignes_sortantes2
                 else : #2. route qui se sépare
                     liste_rte_separe=recup_route_split(v['id'],list_troncon2,v['voie'],v['codevoie'], lignes_adj2,v['num_node'],v['geom_node'],v['type'], df_lignes2)
-                    #print(f"{v['id']},liste_rte_separe {liste_rte_separe}")
+                    #print(f"{v['id']},liste_rte_separe {liste_rte_separe}, ligne a tester {lignes_a_tester}, final : {liste_troncon_finale}")
                     if liste_rte_separe : 
+                        #print('route separees')
                         lignes_a_tester+=liste_rte_separe 
                         continue
                     liste_triangle=recup_triangle(v['id'],v['voie'],v['codevoie'], lignes_adj2, v['num_node'],v['geom_node'],v['type'], df_lignes2)
+                    #print(f"{v['id']},liste_rte_separe {liste_rte_separe}, liste_triangle {liste_triangle}")
                     if liste_triangle :
-                        #print(f"{v['id']},liste_rte_separe {liste_rte_separe}, liste_triangle {liste_triangle}")
+                        #print('route triangle')
                         liste_troncon_finale+=liste_triangle 
             lignes_a_tester=[x for x in lignes_a_tester if x not in liste_troncon_finale]
+            #print('lignes_a_teser: ',lignes_a_tester)
     liste_troncon_finale=list(set(liste_troncon_finale))
     return liste_troncon_finale
     
