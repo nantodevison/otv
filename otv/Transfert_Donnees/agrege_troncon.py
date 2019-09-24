@@ -234,8 +234,8 @@ def deb_fin_liste_tronc_base(df_lignes, list_troncon):
     if len(tronc_deb_fin)>1 :
         for i, e in enumerate(tronc_deb_fin.itertuples()) :
             #print(e)
-            dico_deb_fin[i]={'id':e[0],'type':'source','num_node':e[54],'geom_node':e[61],'voie':e[4],'codevoie':e[58]} if e[60]>=3 else {'id':e[0],
-                'type':'target','num_node':e[55],'geom_node':e[63],'voie':e[4],'codevoie':e[58]}
+            dico_deb_fin[i]={'id':e[0],'type':'source','num_node':e[54],'geom_node':e[62],'voie':e[4],'codevoie':e[58]} if e[61]>=3 else {'id':e[0],
+                'type':'target','num_node':e[55],'geom_node':e[64],'voie':e[4],'codevoie':e[58]}
     else  : #pour tester les 2 cotés de la ligne
         dico_deb_fin[0]={'id':tronc_deb_fin.index.values[0],'type':'source','num_node':tronc_deb_fin['source'].values[0],'geom_node':tronc_deb_fin['src_geom'].values[0]
                          ,'voie':tronc_deb_fin['numero'].values[0],'codevoie':tronc_deb_fin['codevoie_d'].values[0]}
@@ -722,12 +722,12 @@ def regrouper_troncon(list_troncon, df_avec_rd_pt, carac_rd_pt,df2_chaussees):
             liste_ligne=[x for x in liste_ligne if x not in lignes_traitees] #filtre des lignes deja affectees
             #print(f'liste ligne filtree : {liste_ligne}, num id_tronc : {i}')
             if any([x in df2_chaussees.id_ign.tolist() for x in liste_ligne]) :  
-                #try : 
-                liste_ligne+=gestion_voie_2_chaussee(liste_ligne, df_avec_rd_pt, l)[0]
-                liste_ligne=[x for x in liste_ligne if x not in lignes_traitees]
+                try : 
+                    liste_ligne+=gestion_voie_2_chaussee(liste_ligne, df_avec_rd_pt, l)[0]
+                    liste_ligne=[x for x in liste_ligne if x not in lignes_traitees]
                     #print(f'apres 2 chaussee : {liste_ligne}, num id_tronc : {i}')
-                #except ParralleleError as Pe:
-                    #dico_erreur[Pe.id_ign]=Pe.erreur_type
+                except ParralleleError as Pe:
+                    dico_erreur[Pe.id_ign]=Pe.erreur_type
             lignes_traitees=np.unique(np.append(lignes_traitees,liste_ligne))
             #except Exception as e : 
                 #print(e)
