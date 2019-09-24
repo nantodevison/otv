@@ -254,8 +254,8 @@ def verif_touche_rdpt(lignes_adj):
     """
     num_rdpt=lignes_adj.id_rdpt.unique()
     #print(f'num rdpt : {num_rdpt}, lignes adj : {lignes_adj.index.tolist()}')
-    if not np.isnan(num_rdpt).any() :
-        return True, num_rdpt
+    if not np.isnan(num_rdpt).all() :
+        return True, num_rdpt[~np.isnan(num_rdpt)]
     else : 
         return False, np.NaN
 
@@ -288,6 +288,8 @@ def recup_lignes_rdpt(carac_rd_pt,num_rdpt,list_troncon,num_voie,codevoie):
         if num_voie != 'NC' :
             if num_voie in df_rdpt.numero_rdpt : 
                 return ligne_rdpt, lignes_sortantes
+            elif codevoie in df_rdpt.codevoie_rdpt :
+                return ligne_rdpt, lignes_sortantes 
             else : return [], lignes_sortantes
         else : 
             if not any([x for x in df_rdpt.codevoie_rdpt if x in df_rdpt.codevoie_rdpt_entrant]): #si aucun des code_voie ne correspond au rd point
@@ -298,6 +300,8 @@ def recup_lignes_rdpt(carac_rd_pt,num_rdpt,list_troncon,num_voie,codevoie):
                 else : return [], lignes_sortantes
             else : 
                 if len(set(df_rdpt.codevoie_rdpt))==1 and 'NR' in df_rdpt.codevoie_rdpt :
+                    return ligne_rdpt, lignes_sortantes
+                elif codevoie=='NR' and 'NR' in df_rdpt.codevoie_rdpt : 
                     return ligne_rdpt, lignes_sortantes
                 else : 
                     return [], lignes_sortantes
@@ -337,31 +341,21 @@ def recup_route_split(ligne_depart,list_troncon,voie,codevoie, lignes_adj,noeud,
             return []
         if lignes_adj.nature.isin(['Autoroute', 'Quasi-autoroute', 'Route à 2 chaussées']).any() : #pour ne pas propager une bertelle a uune autoroute
             return []
-        lgn_cote_1, lgn_cote_2, angle_1,angle_2,angle_3=angle_3_lignes(ligne_depart, lignes_adj, noeud,geom_noeud, type_noeud, df_lignes)
-        lignes_adj_tot=lignes_adj.copy()
-        lignes_adj_tot['tronc_supp']=lignes_adj_tot.apply(lambda x : liste_complete_tronc_base(x.name,df_lignes,[ligne_depart]), axis=1)
-        geom_l1, lg_l1=fusion_ligne_calc_lg(df_lignes.loc[lignes_adj_tot.iloc[0].tronc_supp])
-        geom_l2, lg_l2=fusion_ligne_calc_lg(df_lignes.loc[lignes_adj_tot.iloc[1].tronc_supp])
-        geom_ldep, lg_ldep=fusion_ligne_calc_lg(df_lignes.loc[list_troncon])
-        tt_tronc=[x for y in lignes_adj_tot.tronc_supp.tolist() for x in y ]
-        noeuds_fin=[k for k,v in Counter(df_lignes.loc[tt_tronc].source.tolist()+df_lignes.loc[tt_tronc].target.tolist()).items() if v==1]
-        if (min(lg_l1, lg_l2) / max(lg_l1, lg_l2)) > 0.66 : # soit les lignes qui se separent ont a peu pres la mm longueur et un angle entre elle faible et une ligne les touchent toute les deux (dans ce cas la ligne de depart est la grandee ligne qui arrive)
-            #print('longueur ok')
-            lignes_jointure=df_lignes.loc[(df_lignes.source.isin(noeuds_fin)) & (df_lignes.target.isin(noeuds_fin))]
-            if not lignes_jointure.empty : 
-                #print(lignes_jointure)
-                if angle_3<75 :
-                    return tt_tronc
-                else :
-                    return []
-            else : 
-                    return []
-        elif ((min(lg_l1, lg_ldep) / max(lg_l1, lg_ldep)) > 0.66) and angle_1<75 : #soit on est dans le cas où la ligne dedépart est une des petites lignes pres du rd point
-            return tt_tronc
-        elif ((min(lg_l2, lg_ldep) / max(lg_l2, lg_ldep)) > 0.66) and angle_2<75 :
-            return tt_tronc
-        else : return []    
-    
+        tronc_tch_lign=tronc_tch((ligne_depart,), df_lignes)
+        tronc_tch_lign=tronc_tch_lign.loc[tronc_tch_lign['id_noeud_lgn']==noeud].copy()
+        tronc_tch_lign['tronc_supp']=tronc_tch_lign.apply(lambda x : liste_complete_tronc_base(x['id_ign'],df_lignes,[ligne_depart]), axis=1)
+        tronc_tch_lign['long']=tronc_tch_lign.apply(lambda x : fusion_ligne_calc_lg(df_lignes.loc[x['tronc_supp']])[1],axis=1)
+        noeuds_fin=[k for k,v in Counter(df_lignes.loc[tronc_tch_lign.id_ign.tolist()].source.tolist()+df_lignes.loc[tronc_tch_lign.id_ign.tolist()].target.tolist()).items() if v==1]
+        #print(360-tronc_tch_lign.angle.sum()) 
+        if tronc_tch_lign.long.min() / tronc_tch_lign.long.max() > 0.66 : 
+            if not df_lignes.loc[(df_lignes.source.isin(noeuds_fin)) & (df_lignes.target.isin(noeuds_fin))].empty :
+                if 360-tronc_tch_lign.angle.sum() < 75 :
+                    return [x for y in tronc_tch_lign.tronc_supp.tolist() for x in y ]
+                else : return []
+            else : return []
+        else : 
+            return []
+
 def recup_triangle(ligne_depart,voie,codevoie, lignes_adj, noeud,geom_noeud,type_noeud, df_lignes):
     """
     récuperer un bout de voe coincé entre 2 lignes de carrefourd'une voie perpendiculaire
@@ -385,7 +379,9 @@ def recup_triangle(ligne_depart,voie,codevoie, lignes_adj, noeud,geom_noeud,type
     #dans tout les cas, si une voie se separe en 2, et que les 2 parties touchent la mm lignes apres, on recupere les 2 parties
     liste_noeud=[x for x in set(lignes_adj.source.tolist()+lignes_adj.target.tolist()) if x!=noeud]
     if not df_lignes.loc[(df_lignes['source'].isin(liste_noeud)) & (df_lignes['target'].isin(liste_noeud))].empty : 
-        return lignes_adj.index.tolist()
+        tt=tronc_tch((ligne_depart,), df_lignes)
+        if (tt.loc[tt['id_noeud_lgn']==noeud].angle>=120).all() : #si toute les lignes qui partent sont supà120° (éviter casparticulier avec petit bout rourte perpendicualaire)
+            return lignes_adj.index.tolist()
     
     #IL FAUDRA FAIRE LE MENAGE DANS LE SUITE DE CETTE FONCTION : CERTAINE CHOSES NE SERVENT PEUT ETRE PLUS
     
@@ -500,10 +496,12 @@ def lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, ligne) :
                     #print('vide : ',lignes_adj2.empty) 
                     continue
                 check_rdpt2, num_rdpt2=verif_touche_rdpt(lignes_adj2)
+                #print('chck rd pt',check_rdpt2,num_rdpt2)
                 # on attaque la liste des cas possible
                 #1. Rond point
                 if check_rdpt2 : 
                     lignes_rdpt2, lignes_sortantes2=recup_lignes_rdpt(carac_rd_pt,num_rdpt2,list_troncon2,v['voie'],v['codevoie'])
+                    #print('func troncelem',lignes_rdpt2)
                     liste_troncon_finale+=lignes_rdpt2
                     lignes_a_tester+=lignes_sortantes2
                 else : #2. route qui se sépare
@@ -538,7 +536,7 @@ def trouver_chaussees_separee(list_troncon, df_avec_rd_pt):
     lgn_tron_e=df_avec_rd_pt.loc[df_avec_rd_pt['id_ign'].isin(list_troncon)]
     list_noeud=lgn_tron_e.source.tolist()+lgn_tron_e.target.tolist()
     lgn_agrege, longueur_base=fusion_ligne_calc_lg(lgn_tron_e)
-    xmin,ymin,xmax,ymax=lgn_agrege.interpolate(0.5, normalized=True).buffer(50).bounds #limtes du carre englobant du buffer 50 m du centroid de la ligne
+    xmin,ymin,xmax,ymax=lgn_agrege.interpolate(0.5, normalized=True).buffer(75).bounds #limtes du carre englobant du buffer 50 m du centroid de la ligne
     #gdf_global=gp.GeoDataFrame(df, geometry='geom')#donnees de base
     lignes_possibles=df_avec_rd_pt.cx[xmin:xmax,ymin:ymax]#recherche des lignes proches du centroid
     
@@ -547,9 +545,9 @@ def trouver_chaussees_separee(list_troncon, df_avec_rd_pt):
     code_voie=max(set(lgn_tron_e.codevoie_d.tolist()), key=lgn_tron_e.codevoie_d.tolist().count)
     
     if voie !='NC' : 
-        ligne_filtres=lignes_possibles.loc[(~lignes_possibles.id_ign.isin(list_troncon)) & (lignes_possibles.loc[:,'numero']==lgn_tron_e.iloc[0]['numero'])].copy()
+        ligne_filtres=lignes_possibles.loc[(~lignes_possibles.id_ign.isin(list_troncon)) & (lignes_possibles['numero']==voie)].copy()
     elif voie =='NC' and code_voie != 'NR' : 
-        ligne_filtres=lignes_possibles.loc[(~lignes_possibles.id_ign.isin(list_troncon)) & (lignes_possibles.loc[:,'codevoie_d']==lgn_tron_e.iloc[0]['codevoie_d'])].copy()
+        ligne_filtres=lignes_possibles.loc[(~lignes_possibles.id_ign.isin(list_troncon)) & (lignes_possibles['codevoie_d']==code_voie)].copy()
     else : #cas tordu d'une2*2 de nom inconnu 
         ligne_filtres=lignes_possibles.loc[(~lignes_possibles.id_ign.isin(list_troncon)) & (~lignes_possibles.source.isin(list_noeud)) & 
                                            (~lignes_possibles.target.isin(list_noeud))].copy()
@@ -627,6 +625,8 @@ def gestion_voie_2_chaussee(list_troncon, df_avec_rd_pt, ligne):
         longueur_base : float longueur du troncon elementaire servant de base
         long_comp : float longueur du troncon elementaire compare
     """  
+    #filtre des troncon de base pour ne pas prendre les tronc qui font parti d'un rd pt car il fausse le calcul de la longueur
+    list_troncon=df_avec_rd_pt.loc[(df_avec_rd_pt['id_ign'].isin(list_troncon)) & (df_avec_rd_pt['id_rdpt'].isna())].id_ign.tolist()
     ligne_proche, ligne_filtres, longueur_base=trouver_chaussees_separee(list_troncon, df_avec_rd_pt)
     df_lignes=df_avec_rd_pt.set_index('id_ign')#mettre l'id_ign en index
     #recherche des troncon du mm tronc elem
@@ -715,15 +715,19 @@ def regrouper_troncon(list_troncon, df_avec_rd_pt, carac_rd_pt,df2_chaussees):
         if ~np.isnan(ligne['id_rdpt']):
             continue
         else : 
+            #print(l)
             #try : 
             liste_ligne=lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, l) 
+            #print(f'liste ligne non filtree : {liste_ligne}, num id_tronc : {i}')
             liste_ligne=[x for x in liste_ligne if x not in lignes_traitees] #filtre des lignes deja affectees
-            #print(f'liste tronc base : {liste_ligne}')
+            #print(f'liste ligne filtree : {liste_ligne}, num id_tronc : {i}')
             if any([x in df2_chaussees.id_ign.tolist() for x in liste_ligne]) :  
-                try : 
-                    liste_ligne+=gestion_voie_2_chaussee(liste_ligne, df_avec_rd_pt, l)[0]
-                except ParralleleError as Pe:
-                    dico_erreur[Pe.id_ign]=Pe.erreur_type
+                #try : 
+                liste_ligne+=gestion_voie_2_chaussee(liste_ligne, df_avec_rd_pt, l)[0]
+                liste_ligne=[x for x in liste_ligne if x not in lignes_traitees]
+                    #print(f'apres 2 chaussee : {liste_ligne}, num id_tronc : {i}')
+                #except ParralleleError as Pe:
+                    #dico_erreur[Pe.id_ign]=Pe.erreur_type
             lignes_traitees=np.unique(np.append(lignes_traitees,liste_ligne))
             #except Exception as e : 
                 #print(e)
