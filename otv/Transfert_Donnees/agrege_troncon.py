@@ -234,8 +234,8 @@ def deb_fin_liste_tronc_base(df_lignes, list_troncon):
     if len(tronc_deb_fin)>1 :
         for i, e in enumerate(tronc_deb_fin.itertuples()) :
             #print(e)
-            dico_deb_fin[i]={'id':e[0],'type':'source','num_node':e[54],'geom_node':e[62],'voie':e[4],'codevoie':e[58]} if e[61]>=3 else {'id':e[0],
-                'type':'target','num_node':e[55],'geom_node':e[64],'voie':e[4],'codevoie':e[58]}
+            dico_deb_fin[i]={'id':e[0],'type':'source','num_node':e[54],'geom_node':e[61],'voie':e[4],'codevoie':e[58]} if e[60]>=3 else {'id':e[0],
+                'type':'target','num_node':e[55],'geom_node':e[63],'voie':e[4],'codevoie':e[58]}
     else  : #pour tester les 2 cotés de la ligne
         dico_deb_fin[0]={'id':tronc_deb_fin.index.values[0],'type':'source','num_node':tronc_deb_fin['source'].values[0],'geom_node':tronc_deb_fin['src_geom'].values[0]
                          ,'voie':tronc_deb_fin['numero'].values[0],'codevoie':tronc_deb_fin['codevoie_d'].values[0]}
