@@ -120,6 +120,163 @@ def cd17(fichier):
                 c.curs.execute("INSERT INTO comptage.na_2010_2017_p (id_comptag,dep, route, pr, abs, reseau, gestionnai, concession,type_poste, tmja_2015, pc_pl_2015, obs_2015) VALUES ('17-'||%s||'-'||%s||'+'||%s,'17', %s, %s,%s,'RD','CD17','N','ponctuel',%s,%s,'nouveau point,'||%s||',v85_tv '||%s)", (voie[i], pr[i], abscisse[i], voie[i], pr[i], abscisse[i], tmj[i], pc_pl[i], periode[i], v85[i]))
                 c.connexionPsy.commit()
 
+class comptage_cd17() :
+    """
+    Classe d'ouvertur de fichiers de comptage du CD17
+    en entree : 
+        fichier : raw string de chemin du fichier
+        type_fichier : type e fichier parmi ['brochure', 'cpt_permanent-tournant]
+        annee : integer : annee des points de comptages
+    """  
+            
+    def __init__(self, fichier, type_fichier, annee):
+        self.fichier=fichier
+        self.annee=annee
+        self.liste_type_fichier=['brochure', 'cpt_permanent-tournant']
+        if type_fichier in self.liste_type_fichier :
+            self.type_fichier=type_fichier#pour plus tard pouvoir différencier les fichiers de comptage tournant / permanents des brochures pdf
+        else : 
+            raise comptage_cd17.CptCd17_typeFichierError(type_fichier)
+        self.liste_decomposee_ligne=self.lire_borchure_pdf()
+        self.df_attr, self.df_attr_insert, self.df_attr_update=self.mises_forme_bdd()
+        
+        
+    def lire_borchure_pdf(self):
+        """
+        Transformer les données contenues dans les borchures pdf en list de données
+        POur ça il faut copier-coller les données de la brohcure pdf en l'ouvrant avec firfox puis cole dans notepad puis enregistrer en .txt. 
+        Pas d'en tete de colonne
+        attention à la dénomination des mois,la vérifier
+        """
+        with open(self.fichier, encoding="utf-8") as fichier :  # ouvrir l fichier
+            liste = [element.replace('\n', ' ').replace('    ', ' ').replace('   ', ' ').replace('  ', ' ') for element in fichier]
+            liste_decomposee_ligne = re.split(r'(Janvier|Février|Mars|Avril|Mai|Juin|Juillet|Août|Sept.|Oct.|Nov.|Déc.|Jan.)', "".join(liste))  # permet de conserver le mois
+            liste_decomposee_ligne = [liste_decomposee_ligne[i] + liste_decomposee_ligne[i + 1] for i in range(0, len(liste_decomposee_ligne) - 1, 2)]  # necessaier pour repasser le mois dans le string
+            liste_decomposee_ligne[0] = ' ' + liste_decomposee_ligne[0]  # uniformité des données
+            liste_decomposee_ligne = list(filter(None, liste_decomposee_ligne))
+            liste_decomposee_ligne=[e.strip() for e in liste_decomposee_ligne]
+        return liste_decomposee_ligne
+    
+    def brochure_voie_pr_abs(self):
+        """
+        extraire les voies, pr et abscisse de la liste decomposee issue de lire_borchure_pdf
+        en entree : 
+            self.liste_decomposee_ligne : liste des element issu du fichier.txt issu du pdf 
+        en sortie : 
+            voie : list de string : dénomination de la voie au format D000X
+            pr : list d'integer : point de repere
+            abs : list d'integer : absice
+        """
+        return [element.split(' ')[1] for element in self.liste_decomposee_ligne], [element.split(' ')[2]for element in self.liste_decomposee_ligne], [element.split(' ')[3]for element in self.liste_decomposee_ligne]
+    
+    def brochure_tmj_pcpl_v85(self):
+        """
+        extraire le tmj, %pl et v85 de la liste decomposee issue de lire_borchure_pdf
+        en entree : 
+            self.liste_decomposee_ligne : liste des element issu du fichier.txt issu du pdf
+        en sortie : 
+            tmj : list de numeric : trafic moyen journalier
+            pc_pl : list de numeric : point de repere
+            v85 : list de numeric : absice
+        """
+        # pour le tmj et %PL c'est plus compliqué car la taille de la cellule localisation varie, son délimiteur aussi et les chiffres peuvent être entier ou flottant, don on va se baser sur le fait
+        # que la rechreche d'un nombre a virgule renvoi le %PL, sinon la vitesse, et si c'est la vitesse, alors ca créer une value error en faisant le float sur l'element + 1, donc on 
+        # sait que c'est la vitesse
+        pc_pl, v85, tmj = [], [], []
+        for element in self.liste_decomposee_ligne : 
+            element_decompose = element.split()
+            nombre_a_virgule = re.search('[0-9]{1,}\,[0-9]{1,}', element)  # rechreche un truc avec deux chiffres séparés par une virgule : renvoi un objet match si ok, none sinon
+            if nombre_a_virgule : 
+                try : 
+                    v85.append(float(element_decompose[element_decompose.index(nombre_a_virgule.group()) + 1].replace(',', '.')))  # idem tmj
+                    pc_pl.append(float(nombre_a_virgule.group().replace(',', '.'))) 
+                    tmj.append(int(element_decompose[element_decompose.index(nombre_a_virgule.group()) - 2]))  # donc on en deduit le tmja selon al position (car seare par un ' ' dans le fichier de base) 
+                except ValueError :
+                    pc_pl.append(float(element_decompose[element_decompose.index(nombre_a_virgule.group()) - 1].replace(',', '.')))
+                    v85.append(float(nombre_a_virgule.group().replace(',', '.')))
+                    tmj.append(int(element_decompose[element_decompose.index(nombre_a_virgule.group()) - 3]))            
+            else :  # si les deux données sont des entiers
+                liste_nombre = []  # la liste des nombres dans la ligne de données :
+                for objet in element_decompose : 
+                    try :  # comme ça on ne garde que les nombre
+                        liste_nombre.append(float(objet))
+                    except ValueError : 
+                        pass
+                tmj, pc_pl, v85 = liste_nombre[-4], liste_nombre[-2], liste_nombre[-1]  
+        return tmj, pc_pl, v85
+    
+    def brochure_mois_periode(self):
+        """
+        extraire le mois et la periode de mesure issue de lire_borchure_pdf
+        en entree : 
+            self.liste_decomposee_ligne : liste des element issu du fichier.txt issu du pdf
+        en sortie : 
+            tmj : list de numeric : trafic moyen journalier
+            pc_pl : list de numeric : point de repere
+            v85 : list de numeric : absice
+        """
+        # plus que les dates de mesure !!
+        mois = [element.split()[-1] for element in self.liste_decomposee_ligne]
+        periode = [element.split()[-3] + '-' + element.split()[-2] for element in self.liste_decomposee_ligne]
+        return mois, periode
+
+    def brochure_tt_attr(self):
+        """
+        sort une dataframe des voie, pr, abs, tmj, pc_pl, v85, periode et mois
+        """
+        voie, pr, absc=self.brochure_voie_pr_abs()
+        tmj, pcpl, v85=self.brochure_tmj_pcpl_v85()
+        mois, periode=self.brochure_mois_periode()
+        return pd.DataFrame({'route': voie, 'pr':pr,'abs':absc,'tmja_'+str(self.annee):tmj, 'pc_pl_'+str(self.annee):pcpl, 'v85':v85,'mois':mois, 'periode':periode})  
+    
+    def mises_forme_bdd(self):
+        """
+        mise e forme et tarnsfert dans base de données
+        en sortie : 
+            df_attr_insert : df des pt de comptage a insrere
+            df_attr_update : df des points de comtage a mettre a jour
+        """ 
+        #mise en forme
+        df_attr= self.brochure_tt_attr()
+        df_attr['id_comptag']=df_attr.apply(lambda x : '17-'+O.epurationNomRoute(x['route'])+'-'+str(x['pr'])+'+'+str(x['abs']),axis=1)
+        df_attr['dep']='17'
+        df_attr['reseau']='RD'
+        df_attr['gestionnai']='CD17'
+        df_attr['concession']='N'
+        df_attr['type_poste']='ponctuel'
+        df_attr['obs_'+str(self.annee)]=df_attr.apply(lambda x : 'nouveau point,'+x['periode']+',v85_tv '+str(x['v85']),axis=1)
+        df_attr.drop(['v85', 'mois','periode'], axis=1, inplace=True)
+        #verif que pas de doublons et seprartion si c'est le cas
+        with ct.ConnexionBdd('local_otv') as c:
+            rqt="select id_comptag from comptage.na_2010_2017_p where dep='17' and type_poste='ponctuel'"
+            existant=pd.read_sql(rqt, c.sqlAlchemyConn)
+        df_attr_insert=df_attr.loc[~df_attr['id_comptag'].isin(existant.id_comptag.to_list())]
+        df_attr_update=df_attr.loc[df_attr['id_comptag'].isin(existant.id_comptag.to_list())]
+        return df_attr, df_attr_insert, df_attr_update
+                  
+    def update_bdd(self):
+        """
+        mise à jour des id_comptag deja presents dans la base
+        """
+        valeurs_txt=str(tuple([(elem[0],elem[1], elem[2], elem[3]) for elem in zip(
+            self.df_attr_update.id_comptag, self.df_attr_update.tmja_2016, self.df_attr_update.pc_pl_2016, self.df_attr_update.obs_2016)]))[1:-1]
+        rqt=f"""update comptage.na_2010_2017_p  as c 
+                set tmja_2016=v.tmja_2016 ,pc_pl_2016=v.pc_pl_2016 ,obs_2016=v.obs_2016
+                from (values {valeurs_txt}) as v(id_comptag,tmja_2016,pc_pl_2016,obs_2016) where v.id_comptag=c.id_comptag"""
+        with ct.ConnexionBdd('local_otv') as c:
+            c.sqlAlchemyConn.execute(rqt)
+        
+        
+    class CptCd17_typeFichierError(Exception):  
+        """
+        Exception levee si la recherched'une parrallele ne donne rien
+        """     
+        def __init__(self, type_fichier):
+            Exception.__init__(self,f'type de fichier "{type_fichier}" non présent dans {comptage_cd17.liste_type_fichier} ')
+            
+    
+        
+
 def cd23(fichier=r'Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA\Doc_travail\Donnees_source\CD23\2018_CD23_trafics.xls'):
     """
     Import des données de la creuse
