@@ -43,7 +43,7 @@ def import_donnes_base(ref_connexion):
              from public.traf2015_bdt17_ed15_l t 
             left join public.traf2015_bdt17_ed15_l_vertices_pgr v1 on t.source=v1.id 
             left join public.traf2015_bdt17_ed15_l_vertices_pgr v2  on t.target=v2.id"""
-        df = gp.read_postgis(requete2, c.connexionPsy)
+        df = gp.read_postgis(requete1, c.connexionPsy)
         return df
 
 def df_rond_point(df, taille_buffer=0):
@@ -160,7 +160,12 @@ def identifier_rd_pt(df):
         df_avec_rd_pt : dataframe initiale + attributs rd pt
         carac_rd_pt : df des rd points avec nb voies entrantes, nom voies entrantes et num voie du rdpt
     """
-        
+    def verif_rdpt(id_ign_rdpt,df_lignes ) : 
+        list_angles=[]
+        for ligne_test in id_ign_rdpt : 
+            lignes_tch=tronc_tch((ligne_test,), df_lignes)
+            list_angles+=lignes_tch.loc[lignes_tch['id_ign'].isin(id_ign_rdpt)].angle.tolist()
+        return all([a<90 for a in set(list_angles)])    
     #recuperer les lignes qui constituent les rd points
     lgn_rd_pt=lignes_rd_pts(df)
     #trouver les lignes entrantes sur les rd points : celle qui intersectent le poly ext mais pas le poly int d'un rd pt et qui ne sont pas ds ligne rd pt
@@ -174,6 +179,13 @@ def identifier_rd_pt(df):
                                                             'codevoie_d': lambda x: tuple((set(x)))}).reset_index()
     ligne_et_num_rdpt.columns=['id_rdpt','numero_rdpt','id_ign_rdpt', 'codevoie_rdpt']                                                        
     carac_rd_pt=carac_rd_pt.reset_index().merge(ligne_et_num_rdpt, on='id_rdpt' ).set_index('id_rdpt')
+    
+    #verif que l'on ne prend pas des triangles en rdpt
+    df_lignes=df_avec_rd_pt.set_index('id_ign')
+    carac_rd_pt['verif']=carac_rd_pt.apply(lambda x : verif_rdpt(x['id_ign_rdpt'],df_lignes),axis=1)
+    for attr in ['nb_rte_rdpt', 'nom_rte_rdpt_entrant', 'codevoie_rdpt_entrant',
+       'nb_obj_sig_entrant', 'valeur_sens', 'id_ign_entrant','id_rdpt'] : 
+        df_avec_rd_pt.loc[df_avec_rd_pt['id_rdpt'].isin(carac_rd_pt.loc[carac_rd_pt['verif']].index.tolist()), attr]=np.NaN
     
     return df_avec_rd_pt, carac_rd_pt, ligne_entrant_rdpt
 
@@ -614,13 +626,14 @@ def fusion_ligne_calc_lg(gdf):
     longueur_base=lgn_agrege.length
     return lgn_agrege, longueur_base
     
-def gestion_voie_2_chaussee(list_troncon, df_avec_rd_pt, ligne): 
+def gestion_voie_2_chaussee(list_troncon, df_avec_rd_pt, ligne,carac_rd_pt): 
     """
     fonction de dteremination des tronc elem de voie à chaussees separees
     en entree : 
        list_troncon : list des troncon elementaire de l'idligne recherché, issu de  liste_complete_tronc_base
        df_avec_rd_pt  :df des lignes vace rd point, issu de identifier_rd_pt
        ligne : ligne d'analyse de depart
+       carac_rd_pt : df des caractéristiques des rd points, issus de carac_rond_point
     en sortie : 
         list_troncon_comp : liste des id_ign complementaire si le lien est ok, sinon liste vide 
         ligne_proche : string : id_ign de la liste la plus proche
@@ -631,9 +644,8 @@ def gestion_voie_2_chaussee(list_troncon, df_avec_rd_pt, ligne):
     #filtre des troncon de base pour ne pas prendre les tronc qui font parti d'un rd pt car il fausse le calcul de la longueur
     list_troncon=df_avec_rd_pt.loc[(df_avec_rd_pt['id_ign'].isin(list_troncon)) & (df_avec_rd_pt['id_rdpt'].isna())].id_ign.tolist()
     ligne_proche, ligne_filtres, longueur_base=trouver_chaussees_separee(list_troncon, df_avec_rd_pt)
-    df_lignes=df_avec_rd_pt.set_index('id_ign')#mettre l'id_ign en index
     #recherche des troncon du mm tronc elem
-    list_troncon_comp=liste_complete_tronc_base(ligne_proche,df_lignes,[])
+    list_troncon_comp=lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, ligne_proche)
     #cacul de la longueur
     long_comp=fusion_ligne_calc_lg(df_avec_rd_pt.loc[df_avec_rd_pt['id_ign'].isin(list_troncon_comp)])[1]
     #verif que les longueurs coincident
@@ -726,7 +738,7 @@ def regrouper_troncon(list_troncon, df_avec_rd_pt, carac_rd_pt,df2_chaussees):
                 #print(f'liste ligne filtree : {liste_ligne}, num id_tronc : {i}')
                 if any([x in df2_chaussees.id_ign.tolist() for x in liste_ligne]) :  
                     try : 
-                        liste_ligne+=gestion_voie_2_chaussee(liste_ligne, df_avec_rd_pt, l)[0]
+                        liste_ligne+=gestion_voie_2_chaussee(liste_ligne, df_avec_rd_pt, l,carac_rd_pt)[0]
                         liste_ligne=[x for x in liste_ligne if x not in lignes_traitees]
                         #print(f'apres 2 chaussee : {liste_ligne}, num id_tronc : {i}')
                     except ParralleleError as Pe:

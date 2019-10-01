@@ -138,7 +138,6 @@ class comptage_cd17() :
         else : 
             raise comptage_cd17.CptCd17_typeFichierError(type_fichier)
         self.liste_decomposee_ligne=self.lire_borchure_pdf()
-        self.df_attr, self.df_attr_insert, self.df_attr_update=self.mises_forme_bdd()
         
         
     def lire_borchure_pdf(self):
@@ -229,12 +228,13 @@ class comptage_cd17() :
         mois, periode=self.brochure_mois_periode()
         return pd.DataFrame({'route': voie, 'pr':pr,'abs':absc,'tmja_'+str(self.annee):tmj, 'pc_pl_'+str(self.annee):pcpl, 'v85':v85,'mois':mois, 'periode':periode})  
     
-    def mises_forme_bdd(self):
+    def mises_forme_bdd(self, bdd):
         """
         mise e forme et tarnsfert dans base de données
         en sortie : 
             df_attr_insert : df des pt de comptage a insrere
             df_attr_update : df des points de comtage a mettre a jour
+            bdd: txt de connexion à la bdd que l'on veut (cf ficchier id_connexions)
         """ 
         #mise en forme
         df_attr= self.brochure_tt_attr()
@@ -247,24 +247,34 @@ class comptage_cd17() :
         df_attr['obs_'+str(self.annee)]=df_attr.apply(lambda x : 'nouveau point,'+x['periode']+',v85_tv '+str(x['v85']),axis=1)
         df_attr.drop(['v85', 'mois','periode'], axis=1, inplace=True)
         #verif que pas de doublons et seprartion si c'est le cas
-        with ct.ConnexionBdd('local_otv') as c:
+        with ct.ConnexionBdd(bdd) as c:
             rqt="select id_comptag from comptage.na_2010_2017_p where dep='17' and type_poste='ponctuel'"
             existant=pd.read_sql(rqt, c.sqlAlchemyConn)
         df_attr_insert=df_attr.loc[~df_attr['id_comptag'].isin(existant.id_comptag.to_list())]
         df_attr_update=df_attr.loc[df_attr['id_comptag'].isin(existant.id_comptag.to_list())]
-        return df_attr, df_attr_insert, df_attr_update
+        self.df_attr, self.df_attr_insert, self.df_attr_update=df_attr, df_attr_insert,df_attr_update
                   
-    def update_bdd(self):
+    def update_bdd(self,bdd):
         """
         mise à jour des id_comptag deja presents dans la base
+        en entree : 
+            bdd: txt de connexion à la bdd que l'on veut (cf ficchier id_connexions)
         """
         valeurs_txt=str(tuple([(elem[0],elem[1], elem[2], elem[3]) for elem in zip(
             self.df_attr_update.id_comptag, self.df_attr_update.tmja_2016, self.df_attr_update.pc_pl_2016, self.df_attr_update.obs_2016)]))[1:-1]
         rqt=f"""update comptage.na_2010_2017_p  as c 
                 set tmja_2016=v.tmja_2016 ,pc_pl_2016=v.pc_pl_2016 ,obs_2016=v.obs_2016
                 from (values {valeurs_txt}) as v(id_comptag,tmja_2016,pc_pl_2016,obs_2016) where v.id_comptag=c.id_comptag"""
-        with ct.ConnexionBdd('local_otv') as c:
+        with ct.ConnexionBdd(bdd) as c:
             c.sqlAlchemyConn.execute(rqt)
+    
+    def insert_bdd(self,bdd):
+        """
+        insérer les données dans la bdd et mettre à jour la geometrie
+        en entree : 
+            bdd: txt de connexion à la bdd que l'on veut (cf ficchier id_connexions)
+        """
+        
         
         
     class CptCd17_typeFichierError(Exception):  
