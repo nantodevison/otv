@@ -43,7 +43,7 @@ def import_donnes_base(ref_connexion):
              from public.traf2015_bdt17_ed15_l t 
             left join public.traf2015_bdt17_ed15_l_vertices_pgr v1 on t.source=v1.id 
             left join public.traf2015_bdt17_ed15_l_vertices_pgr v2  on t.target=v2.id"""
-        df = gp.read_postgis(requete1, c.connexionPsy)
+        df = gp.read_postgis(requete2, c.connexionPsy)
         return df
 
 def df_rond_point(df, taille_buffer=0):
