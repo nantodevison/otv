@@ -194,7 +194,7 @@ def liste_troncon_base(id_ligne,df_lignes,ligne_traite_troncon=[]):
     recupérer les troncons qui se suivent sans point de jonction à  + de 2 lignes
     en entree : 
         id_ligne : string : id_ign de la ligne a etudier
-        df_lignes : df des lignes avec rd points
+        df_lignes : df des lignes avec rd points, doit contenir les attributs 'nb_intrsct_src', 'source', 'src_geom','nb_intrsct_tgt','target','tgt_geom' avec id_ign en index
         ligne_traite_troncon : liste des ligne traitees dans le cadre de ce troncon elementaire -> liste de str
     en sortie
         fonction génératrice
@@ -646,12 +646,14 @@ def gestion_voie_2_chaussee(list_troncon, df_avec_rd_pt, ligne,carac_rd_pt):
     ligne_proche, ligne_filtres, longueur_base=trouver_chaussees_separee(list_troncon, df_avec_rd_pt)
     #recherche des troncon du mm tronc elem
     list_troncon_comp=lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, ligne_proche)
+    list_troncon_comp=df_avec_rd_pt.loc[(df_avec_rd_pt.id_ign.isin(list_troncon_comp)) & (df_avec_rd_pt['id_rdpt'].isna())].id_ign.tolist()
     #cacul de la longueur
     long_comp=fusion_ligne_calc_lg(df_avec_rd_pt.loc[df_avec_rd_pt['id_ign'].isin(list_troncon_comp)])[1]
     #verif que les longueurs coincident
     if min(long_comp,longueur_base)*100/max(long_comp,longueur_base) >50 : #si c'est le cas il gfaut transférer list_troncon_comp dans la liste des troncon du tronc elem 
         return list_troncon_comp, ligne_proche, ligne_filtres, longueur_base, long_comp
     else :
+        print(list_troncon_comp, ligne_proche, ligne_filtres, longueur_base, long_comp)
         raise ParralleleError(list_troncon)
         """ 
         ca c'était pour associer un troncon suivant si il faisait la bonne longeueur, mais au final mauvaise idee

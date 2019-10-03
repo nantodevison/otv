@@ -254,26 +254,32 @@ class comptage_cd17() :
         df_attr_update=df_attr.loc[df_attr['id_comptag'].isin(existant.id_comptag.to_list())]
         self.df_attr, self.df_attr_insert, self.df_attr_update=df_attr, df_attr_insert,df_attr_update
                   
-    def update_bdd(self,bdd):
+    def update_bdd(self,bdd, schema, table):
         """
         mise à jour des id_comptag deja presents dans la base
         en entree : 
             bdd: txt de connexion à la bdd que l'on veut (cf ficchier id_connexions)
+            schema : string nom du schema de la table
+            table : string : nom de la table
         """
         valeurs_txt=str(tuple([(elem[0],elem[1], elem[2], elem[3]) for elem in zip(
             self.df_attr_update.id_comptag, self.df_attr_update.tmja_2016, self.df_attr_update.pc_pl_2016, self.df_attr_update.obs_2016)]))[1:-1]
-        rqt=f"""update comptage.na_2010_2017_p  as c 
+        rqt=f"""update {schema}.{table}  as c 
                 set tmja_2016=v.tmja_2016 ,pc_pl_2016=v.pc_pl_2016 ,obs_2016=v.obs_2016
                 from (values {valeurs_txt}) as v(id_comptag,tmja_2016,pc_pl_2016,obs_2016) where v.id_comptag=c.id_comptag"""
         with ct.ConnexionBdd(bdd) as c:
             c.sqlAlchemyConn.execute(rqt)
     
-    def insert_bdd(self,bdd):
+    def insert_bdd(self,bdd, schema, table):
         """
         insérer les données dans la bdd et mettre à jour la geometrie
         en entree : 
             bdd: txt de connexion à la bdd que l'on veut (cf ficchier id_connexions)
+            schema : string nom du schema de la table
+            table : string : nom de la table
         """
+        with ct.ConnexionBdd('bdd') as c:
+            self.df_attr_insert.to_sql(table,c.sqlAlchemyConn,schema=schema,if_exists='append', index=False )
         
         
         
