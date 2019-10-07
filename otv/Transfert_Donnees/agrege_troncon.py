@@ -22,27 +22,30 @@ import Outils
 #from psycopg2 import extras
 
 
-def import_donnes_base(ref_connexion):
+def import_donnes_base(bdd, schema, table_graph,table_vertex ):
     """
     OUvrir une connexion vers le servuer de reference et recuperer les données
     en entree : 
-       ref_connexion : string de reference de la connexion, selon le midule Outils , fichier Id_connexions, et module Connexion_transferts
+       bdd : string de reference de la connexion, selon le midule Outils , fichier Id_connexions, et module Connexion_transferts
+       schema : schema contenant les tables de graph et de vertex
+       table_graph : table contennat le referentiel (cf pgr_createtopology)
+       table_vertex : table contenant la ecsription des vertex (cf pgr_analyzegraph)
     en sortie : 
         df : dataframe telle que telchargées depuis la bdd
     """
-    with ct.ConnexionBdd('local_otv') as c : 
-        requete1="""with jointure as (
+    with ct.ConnexionBdd(bdd) as c : 
+        requete1=f"""with jointure as (
             select t.*, v1.cnt nb_intrsct_src, st_astext(v1.the_geom) as src_geom, v2.cnt as nb_intrsct_tgt, st_astext(v2.the_geom) as tgt_geom 
-             from public.traf2015_bdt17_ed15_l t 
-            left join public.traf2015_bdt17_ed15_l_vertices_pgr v1 on t.source=v1.id 
-            left join public.traf2015_bdt17_ed15_l_vertices_pgr v2  on t.target=v2.id
+             from {schema}.{table_graph} t 
+            left join {schema}.{table_vertex} v1 on t.source=v1.id 
+            left join {schema}.{table_vertex} v2  on t.target=v2.id
             )
             select j.* from jointure j, zone_test_agreg z
             where st_intersects(z.geom, j.geom)"""
-        requete2="""select t.*, v1.cnt nb_intrsct_src, st_astext(v1.the_geom) as src_geom, v2.cnt as nb_intrsct_tgt, st_astext(v2.the_geom) as tgt_geom 
-             from public.traf2015_bdt17_ed15_l t 
-            left join public.traf2015_bdt17_ed15_l_vertices_pgr v1 on t.source=v1.id 
-            left join public.traf2015_bdt17_ed15_l_vertices_pgr v2  on t.target=v2.id"""
+        requete2=f"""select t.*, v1.cnt nb_intrsct_src, st_astext(v1.the_geom) as src_geom, v2.cnt as nb_intrsct_tgt, st_astext(v2.the_geom) as tgt_geom 
+             from {schema}.{table_graph} t 
+            left join {schema}.{table_vertex} v1 on t.source=v1.id 
+            left join {schema}.{table_vertex} v2  on t.target=v2.id"""
         df = gp.read_postgis(requete2, c.connexionPsy)
         return df
 
@@ -73,8 +76,12 @@ def lignes_rd_pts(df) :
     gdf_rd_point_ext=df_rond_point(df,0.1) #polygone extereiur des rond points
     gdf_rd_point_int=df_rond_point(df,-0.1) #polygone interieur des ronds points
     #trouver les lignes Bdtopo contenues dans les rd points ext et non contenues ds les rds points int
-    lignes_ds_rd_pt_ext=gp.sjoin(df.drop('id_tronc_elem',axis=1),gdf_rd_point_ext,op='within') #contenues ds rd_points ext (le drop est pour éviter un runtimeWarning du aux NaN)
-    lignes_ds_rd_pt_int=gp.sjoin(df.drop('id_tronc_elem',axis=1),gdf_rd_point_int,op='within') #contenues ds rd_points int
+    try  : 
+        lignes_ds_rd_pt_ext=gp.sjoin(df.drop('id_tronc_elem',axis=1),gdf_rd_point_ext,op='within') #contenues ds rd_points ext (le drop est pour éviter un runtimeWarning du aux NaN)
+        lignes_ds_rd_pt_int=gp.sjoin(df.drop('id_tronc_elem',axis=1),gdf_rd_point_int,op='within') #contenues ds rd_points int
+    except KeyError : 
+        lignes_ds_rd_pt_ext=gp.sjoin(df,gdf_rd_point_ext,op='within') #contenues ds rd_points ext (le drop est pour éviter un runtimeWarning du aux NaN)
+        lignes_ds_rd_pt_int=gp.sjoin(df,gdf_rd_point_int,op='within')
     lignes_ds_rd_pt_ext_ss_doublon=lignes_ds_rd_pt_ext.drop_duplicates('id_ign') #nettoyage doublons
     lignes_rd_pt=lignes_ds_rd_pt_ext_ss_doublon.loc[~lignes_ds_rd_pt_ext_ss_doublon.index.isin(lignes_ds_rd_pt_int.index.tolist())].drop('index_right',axis=1)
     return lignes_rd_pt
@@ -91,8 +98,12 @@ def lign_entrant_rd_pt(df, df_lgn_rd_pt):
     #trouver les lignes entrantes sur les rd points : celle qui intersectent le poly ext mais pas le poly int d'un rd pt et qui ne sont pas ds ligne rd pt
     poly_ext=df_rond_point(df,0.1)
     poly_int=df_rond_point(df,-0.1)
-    ligne_inter_poly_ext=gp.sjoin(df.drop('id_tronc_elem',axis=1),poly_ext,op='intersects')
-    ligne_inter_poly_int=gp.sjoin(df.drop('id_tronc_elem',axis=1),poly_int,op='intersects')
+    try :
+        ligne_inter_poly_ext=gp.sjoin(df.drop('id_tronc_elem',axis=1),poly_ext,op='intersects')
+        ligne_inter_poly_int=gp.sjoin(df.drop('id_tronc_elem',axis=1),poly_int,op='intersects')
+    except KeyError :
+        ligne_inter_poly_ext=gp.sjoin(df,poly_ext,op='intersects')
+        ligne_inter_poly_int=gp.sjoin(df,poly_int,op='intersects')
     ligne_entrant_rd_pt=ligne_inter_poly_ext.loc[~ligne_inter_poly_ext.id_ign.isin(ligne_inter_poly_int.id_ign.tolist()+df_lgn_rd_pt.id_ign.tolist())].copy()
     ligne_entrant_rd_pt.drop_duplicates('id_ign', inplace=True) #cas des ignes qui touchent plusieurs rdpoint
     return ligne_entrant_rd_pt
@@ -248,9 +259,13 @@ def deb_fin_liste_tronc_base(df_lignes, list_troncon):
     dico_deb_fin={}
     if len(tronc_deb_fin)>1 :
         for i, e in enumerate(tronc_deb_fin.itertuples()) :
-            #print(e)
-            dico_deb_fin[i]={'id':e[0],'type':'source','num_node':e[54],'geom_node':e[61],'voie':e[4],'codevoie':e[58]} if e[60]>=3 else {'id':e[0],
-                'type':'target','num_node':e[55],'geom_node':e[63],'voie':e[4],'codevoie':e[58]}
+            #print(e,'\n', list(df_lignes.columns),'\n', e[list(df_lignes.columns).index('nb_intrsct_src')+1], '\n',list(df_lignes.columns).index('nb_intrsct_src')+1)
+            dico_deb_fin[i]={'id':e[0],'type':'source','num_node':e[list(df_lignes.columns).index('source')+1],
+                             'geom_node':e[list(df_lignes.columns).index('src_geom')+1],'voie':e[list(df_lignes.columns).index('numero')+1],
+                             'codevoie':e[list(df_lignes.columns).index('codevoie_d')+1]} if e[list(df_lignes.columns).index('nb_intrsct_src')+1]>=3 else {
+                             'id':e[0],'type':'target','num_node':e[list(df_lignes.columns).index('target')+1],
+                             'geom_node':e[list(df_lignes.columns).index('tgt_geom')+1],'voie':e[list(df_lignes.columns).index('numero')+1],
+                             'codevoie':e[list(df_lignes.columns).index('codevoie_d')+1]}
     else  : #pour tester les 2 cotés de la ligne
         dico_deb_fin[0]={'id':tronc_deb_fin.index.values[0],'type':'source','num_node':tronc_deb_fin['source'].values[0],'geom_node':tronc_deb_fin['src_geom'].values[0]
                          ,'voie':tronc_deb_fin['numero'].values[0],'codevoie':tronc_deb_fin['codevoie_d'].values[0]}
