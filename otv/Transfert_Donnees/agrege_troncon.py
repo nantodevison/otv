@@ -61,6 +61,8 @@ def df_rond_point(df, taille_buffer=0):
     #créer une liste de rd points selon le rapport longueur eu carré sur aire et créer la geodtaframe qui va bien
     dico_rd_pt=[[i, ((t.length**2)/t.area),t.buffer(taille_buffer), t.area] for i,t in enumerate(polygonize(df.geometry)) 
             if 12<=((t.length**2)/t.area)<=14 or (14<=((t.length**2)/t.area)<20 and 700<t.area<1000) ] # car un cercle à un rappor de ce type entre 12 et 13
+    if not dico_rd_pt : 
+        raise PasDeRondPointError(df)
     gdf_rd_point=gp.GeoDataFrame([(a[0],a[1], a[3]) for a in dico_rd_pt], geometry=[a[2] for a in dico_rd_pt], columns=['id_rdpt', 'rapport_aire', 'aire'])
     gdf_rd_point.crs={'init':'epsg:2154'} #mise à jour du systeme de projection
     return gdf_rd_point
@@ -178,7 +180,13 @@ def identifier_rd_pt(df):
             list_angles+=lignes_tch.loc[lignes_tch['id_ign'].isin(id_ign_rdpt)].angle.tolist()
         return all([a<90 for a in set(list_angles)])    
     #recuperer les lignes qui constituent les rd points
-    lgn_rd_pt=lignes_rd_pts(df)
+    try :
+        lgn_rd_pt=lignes_rd_pts(df)
+    except PasDeRondPointError : 
+        df_avec_rd_pt=df.copy()
+        df_avec_rd_pt['id_rdpt']=np.NaN
+        carac_rd_pt, ligne_entrant_rdpt=pd.DataFrame(np.array([])),pd.DataFrame(np.array([]))
+        return df_avec_rd_pt, carac_rd_pt, ligne_entrant_rdpt
     #trouver les lignes entrantes sur les rd points : celle qui intersectent le poly ext mais pas le poly int d'un rd pt et qui ne sont pas ds ligne rd pt
     ligne_entrant_rdpt=lign_entrant_rd_pt(df,lgn_rd_pt)#caractériser les rd points
     carac_rd_pt=carac_rond_point(ligne_entrant_rdpt)
@@ -210,6 +218,7 @@ def liste_troncon_base(id_ligne,df_lignes,ligne_traite_troncon=[]):
     en sortie
         fonction génératrice
     """
+    
     ligne=df_lignes.loc[id_ligne]#df pour la ligne
     ligne_traitee=list(set(ligne_traite_troncon+[ligne.name]))#on met le num de base de la ligne dans la liste 
     liste_ligne_suivantes=[]  
@@ -228,7 +237,7 @@ def liste_troncon_base(id_ligne,df_lignes,ligne_traite_troncon=[]):
     for ligne_a_traiter in liste_ligne_suivantes :
         yield from liste_troncon_base(ligne_a_traiter, df_lignes, ligne_traitee)
         
-def liste_complete_tronc_base(id_ligne,df_lignes,ligne_traite_troncon):
+def liste_complete_tronc_base(id_ligne,df_lignes,ligne_traite_troncon=[]):
     """
     simplement ajouter l'id de laligne de depart au générateur de la fonction liste_troncon_base
     en entree : 
@@ -306,7 +315,7 @@ def recup_lignes_rdpt(carac_rd_pt,num_rdpt,list_troncon,num_voie,codevoie):
     df_rdpt=carac_rd_pt.loc[num_rdpt]
     nb_voie_rdpt=df_rdpt.nb_rte_rdpt
     ligne_rdpt=list(df_rdpt.id_ign_rdpt)
-    #dans le cas ou 1 ou 2 routes arrivent sur le rd point on doit aussi prevoir de continuer à chercher des lignes qui continue, car le troncon reste le même, dc on recupère
+    #dans le cas ou 1 routes arrivent sur le rd point on doit aussi prevoir de continuer à chercher des lignes qui continue, car le troncon reste le même, dc on recupère
     # les lignes sortantes 
     if  nb_voie_rdpt==1 :
         lignes_sortantes=[a for a in filter(lambda x : x not in list_troncon,df_rdpt.id_ign_entrant)]
@@ -318,7 +327,7 @@ def recup_lignes_rdpt(carac_rd_pt,num_rdpt,list_troncon,num_voie,codevoie):
         if num_voie != 'NC' :
             if num_voie in df_rdpt.numero_rdpt : 
                 return ligne_rdpt, lignes_sortantes
-            elif codevoie in df_rdpt.codevoie_rdpt :
+            elif (not [a in df_rdpt.nom_rte_rdpt_entrant for a  in df_rdpt.numero_rdpt]) and  codevoie in df_rdpt.codevoie_rdpt : 
                 return ligne_rdpt, lignes_sortantes 
             else : return [], lignes_sortantes
         else : 
@@ -425,8 +434,7 @@ def recup_triangle(ligne_depart,voie,codevoie, lignes_adj, noeud,geom_noeud,type
         if lgn_suiv.empty : 
             return []
         noeud_suiv=lgn_suiv['source'].values[0] if lgn_suiv['source'].values[0] != noeud else lgn_suiv['target'].values[0]
-        
-       #dans le cas ou plusieurs ligne a la suite forme le cote du triangle que l'on veut récupérer on veut connaitre le nb de ligne qui touchent le noeud_suiv
+        #dans le cas ou plusieurs ligne a la suite forme le cote du triangle que l'on veut récupérer on veut connaitre le nb de ligne qui touchent le noeud_suiv
         if lgn_suiv['source'].values[0] != noeud : 
             noeud_suiv=lgn_suiv['source'].values[0]
             nb_intersect_noeud_suiv=df_lignes.loc[lgn_suiv.index.values[0]].nb_intrsct_src
@@ -437,7 +445,7 @@ def recup_triangle(ligne_depart,voie,codevoie, lignes_adj, noeud,geom_noeud,type
         if  nb_intersect_noeud_suiv==2 : 
             lgn_suiv=df_lignes.loc[liste_complete_tronc_base(lgn_suiv.index.values[0],df_lignes,[])] 
             noeud_ss_suite=Counter(lgn_suiv.source.tolist()+lgn_suiv.target.tolist())
-            noeud_suiv=[k for k,v in noeud_ss_suite.items() if v==1 and v!=noeud][0]
+            noeud_suiv=[k for k,v in noeud_ss_suite.items() if v==1 and k!=noeud][0]
 
         id_rattache=lgn_suiv.index.tolist()
         if noeud_centre==noeud_suiv : #ça veut dire une seule et mm lign qui fait 2 cote du triangle, dc on peu de suite garder la ligne suiv car 1 seule route non coupe l'intersec
@@ -496,13 +504,14 @@ def recup_triangle(ligne_depart,voie,codevoie, lignes_adj, noeud,geom_noeud,type
             else :
                 return []
 
-def lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, ligne) : 
+def lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, ligne, lignes_exclues=[]) : 
     """
     trouver les lignes qui appartiennent au même troncon elementaire que la ligne de depart
     en entree : 
         df_avec_rd_pt : df des lignes Bdtopo
         carac_rd_pt : df des caractéristiques des rd points, issus de carac_rond_point
         ligne : string : id_ign de la ligne a tester
+        lignes_exclues : list destring : lignes qui arrete la propoagtation du troncon elementaire
     en sortie :
         liste_troncon_finale : set de string des id_ign des lignes réunies dans le troncon elementaire
     """
@@ -511,11 +520,12 @@ def lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, ligne) :
 
     while lignes_a_tester :
         for id_lignes2 in lignes_a_tester :
-            list_troncon2=liste_complete_tronc_base(id_lignes2,df_lignes2,liste_troncon_finale)
-            #print(id_lignes2, list_troncon2)
+            #print(id_lignes2)
+            list_troncon2=liste_complete_tronc_base(id_lignes2,df_lignes2,lignes_exclues)
+            #print(id_lignes2, list_troncon2, locals())
             liste_troncon_finale+=list_troncon2
             dico_deb_fin2=deb_fin_liste_tronc_base(df_lignes2, list_troncon2)
-            #print('dico : ',dico_deb_fin2,liste_troncon_finale)
+            #print(liste_troncon_finale)            
             for k, v in dico_deb_fin2.items() :
                 #print(k, v)
                 lignes_adj2=df_lignes2.loc[((df_lignes2['source']==v['num_node'])|
@@ -525,7 +535,10 @@ def lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, ligne) :
                 if lignes_adj2.empty :
                     #print('vide : ',lignes_adj2.empty) 
                     continue
-                check_rdpt2, num_rdpt2=verif_touche_rdpt(lignes_adj2)
+                if not carac_rd_pt.empty :
+                    check_rdpt2, num_rdpt2=verif_touche_rdpt(lignes_adj2)
+                else : 
+                    check_rdpt2, num_rdpt2=False, np.NaN
                 #print('chck rd pt',check_rdpt2,num_rdpt2)
                 # on attaque la liste des cas possible
                 #1. Rond point
@@ -533,20 +546,21 @@ def lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, ligne) :
                     lignes_rdpt2, lignes_sortantes2=recup_lignes_rdpt(carac_rd_pt,num_rdpt2,list_troncon2,v['voie'],v['codevoie'])
                     #print('func troncelem',lignes_rdpt2)
                     liste_troncon_finale+=lignes_rdpt2
-                    lignes_a_tester+=lignes_sortantes2
+                    lignes_a_tester+=[x for x in lignes_sortantes2 if x not in lignes_exclues]
                 else : #2. route qui se sépare
                     liste_rte_separe=recup_route_split(v['id'],list_troncon2,v['voie'],v['codevoie'], lignes_adj2,v['num_node'],v['geom_node'],v['type'], df_lignes2)
                     #print(f"{v['id']},liste_rte_separe {liste_rte_separe}, ligne a tester {lignes_a_tester}, final : {liste_troncon_finale}")
                     if liste_rte_separe : 
                         #print('route separees')
-                        lignes_a_tester+=liste_rte_separe 
+                        lignes_a_tester+=[x for x in liste_rte_separe if x not in lignes_exclues]
                         continue
                     liste_triangle=recup_triangle(v['id'],v['voie'],v['codevoie'], lignes_adj2, v['num_node'],v['geom_node'],v['type'], df_lignes2)
                     #print(f"{v['id']},liste_rte_separe {liste_rte_separe}, liste_triangle {liste_triangle}")
                     if liste_triangle :
                         #print('route triangle')
-                        liste_troncon_finale+=liste_triangle 
-            lignes_a_tester=[x for x in lignes_a_tester if x not in liste_troncon_finale]
+                        liste_troncon_finale+=[x for x in liste_triangle if x not in lignes_exclues]
+                lignes_exclues+=liste_troncon_finale
+            lignes_a_tester=[x for x in lignes_a_tester if x not in liste_troncon_finale and x not in lignes_exclues]
             #print('lignes_a_teser: ',lignes_a_tester)
     liste_troncon_finale=list(set(liste_troncon_finale))
     return liste_troncon_finale
@@ -668,7 +682,7 @@ def gestion_voie_2_chaussee(list_troncon, df_avec_rd_pt, ligne,carac_rd_pt):
     if min(long_comp,longueur_base)*100/max(long_comp,longueur_base) >50 : #si c'est le cas il gfaut transférer list_troncon_comp dans la liste des troncon du tronc elem 
         return list_troncon_comp, ligne_proche, ligne_filtres, longueur_base, long_comp
     else :
-        print(list_troncon_comp, ligne_proche, ligne_filtres, longueur_base, long_comp)
+        #print(list_troncon_comp, ligne_proche, ligne_filtres, longueur_base, long_comp)
         raise ParralleleError(list_troncon)
         """ 
         ca c'était pour associer un troncon suivant si il faisait la bonne longeueur, mais au final mauvaise idee
@@ -717,14 +731,15 @@ def angle_3_lignes(ligne_depart, lignes_adj, noeud,geom_noeud_central, type_noeu
 
     return lgn_cote_1, lgn_cote_2, angle_1,angle_2,angle_3    
 
-def regrouper_troncon(list_troncon, df_avec_rd_pt, carac_rd_pt,df2_chaussees):
+def regrouper_troncon(list_troncon, df_avec_rd_pt, carac_rd_pt,df2_chaussees,lignes_exclues=[]):
     """
-    Premier run de regroupement des id_ign. il reste des erreurs à la fin
+    Premier run de regroupement des id_ign. il reste des erreurs à la fin. version qui peut tournerà part de la caractérisation des rd points
     en entree : 
         list_troncon : list de string des id_ign a regrouper
         df_avec_rd_pt : df des lignes Bdtopo issu de identifier_rd_pt()
         carac_rd_pt : df des caractéristiques des rd points, issus de carac_rond_point
         df2_chaussees : df des lignes ayant une nature = 'Autoroute', Quasi-autoroute ou Route à 2 chaussées
+        lignes_exclues : list destring : lignes qui arrete la propoagtation du troncon elementaire
     en sortie : 
         lignes_traitees : np array des id_ign affecte à un troncon elementaire
         lignes_non_traitees : list des id_ign non affectes a un troncon elementaires
@@ -738,8 +753,8 @@ def regrouper_troncon(list_troncon, df_avec_rd_pt, carac_rd_pt,df2_chaussees):
     lignes_traitees=np.array([],dtype='<U24')
     for i,l in enumerate(liste_id_ign_base) :
         if len(lignes_traitees)>=len(liste_id_ign_base) : break
-        if i%2000==0 : 
-            print(i, datetime.now(), f'nb lignes traitees : {len(lignes_traitees)}')
+        #if i%2000==0 : 
+            #print(i, datetime.now(), f'nb lignes traitees : {len(lignes_traitees)}')
         if l in lignes_traitees : 
             continue
         #critère d'exclusion : si la ligne est un rdpt ou une des lignes qui arrivent sur un rdpt avec certaines conditions
@@ -749,7 +764,7 @@ def regrouper_troncon(list_troncon, df_avec_rd_pt, carac_rd_pt,df2_chaussees):
         else : 
             #print(l)
             try : 
-                liste_ligne=lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, l) 
+                liste_ligne=lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, l, lignes_exclues) 
                 #print(f'liste ligne non filtree : {liste_ligne}, num id_tronc : {i}')
                 liste_ligne=[x for x in liste_ligne if x not in lignes_traitees] #filtre des lignes deja affectees
                 #print(f'liste ligne filtree : {liste_ligne}, num id_tronc : {i}')
@@ -766,7 +781,7 @@ def regrouper_troncon(list_troncon, df_avec_rd_pt, carac_rd_pt,df2_chaussees):
                 dico_erreur[l]=e
         for ligne_tronc in liste_ligne : 
             dico_fin[ligne_tronc]=i
-    print('fin : ', datetime.now(), f'nb lignes traitees : {len(lignes_traitees)}')    
+    #print('fin : ', datetime.now(), f'nb lignes traitees : {len(lignes_traitees)}')  
     df_affectation=pd.DataFrame.from_dict(dico_fin, orient='index').reset_index()
     df_affectation.columns=['id', 'idtronc']
     lignes_non_traitees=[x for x in df_affectation.id.tolist() if x not in lignes_traitees]
@@ -991,6 +1006,14 @@ class ParralleleError(Exception):
         Exception.__init__(self,f'pas de parrallele trouvee pour les troncons {id_ign}')
         self.id_ign = tuple(id_ign)
         self.erreur_type='ParralleleError'
+        
+class PasDeRondPointError(Exception):  
+    """
+    Exception levee si il n'y a pas de rd point dans le jeud de donnees
+    """     
+    def __init__(self, df_lignes):
+        Exception.__init__(self,f'pas de rond points dans la df {df_lignes}')
+        self.erreur_type='PasDeRondPointError'
     
     
     
