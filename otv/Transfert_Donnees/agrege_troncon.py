@@ -783,6 +783,8 @@ def regrouper_troncon(list_troncon, df_avec_rd_pt, carac_rd_pt,df2_chaussees,lig
             dico_fin[ligne_tronc]=i
     #print('fin : ', datetime.now(), f'nb lignes traitees : {len(lignes_traitees)}')  
     df_affectation=pd.DataFrame.from_dict(dico_fin, orient='index').reset_index()
+    if df_affectation.empty :
+        raise PasAffectationError(list_troncon)
     df_affectation.columns=['id', 'idtronc']
     lignes_non_traitees=[x for x in df_affectation.id.tolist() if x not in lignes_traitees]
     return df_affectation, dico_erreur, lignes_traitees, lignes_non_traitees
@@ -1014,6 +1016,14 @@ class PasDeRondPointError(Exception):
     def __init__(self, df_lignes):
         Exception.__init__(self,f'pas de rond points dans la df {df_lignes}')
         self.erreur_type='PasDeRondPointError'
+        
+class PasAffectationError(Exception):  
+    """
+    Exception levee si la variable df_affectation de la fonction regrouper_troncon() est vide (i.e il n'y a aucune affectation de faite)
+    """     
+    def __init__(self, list_lignes):
+        Exception.__init__(self,f'pas d\'affectation pour les lignes {list_lignes}')
+        self.erreur_type='PasAffectationError'
     
     
     
