@@ -733,7 +733,8 @@ def angle_3_lignes(ligne_depart, lignes_adj, noeud,geom_noeud_central, type_noeu
 
 def regrouper_troncon(list_troncon, df_avec_rd_pt, carac_rd_pt,df2_chaussees,lignes_exclues=[]):
     """
-    Premier run de regroupement des id_ign. il reste des erreurs à la fin. version qui peut tournerà part de la caractérisation des rd points
+    Premier run de regroupement des id_ign. il reste des erreurs à la fin. version qui peut tournerà part de la caractérisation des rd points.
+    on peut faire tourner cette fonction sur un ensemble de lignes pour caractériser tout un fichier ou sur une seule en la mettant seule dans le liste list_troncon
     en entree : 
         list_troncon : list de string des id_ign a regrouper
         df_avec_rd_pt : df des lignes Bdtopo issu de identifier_rd_pt()
@@ -753,8 +754,8 @@ def regrouper_troncon(list_troncon, df_avec_rd_pt, carac_rd_pt,df2_chaussees,lig
     lignes_traitees=np.array([],dtype='<U24')
     for i,l in enumerate(liste_id_ign_base) :
         if len(lignes_traitees)>=len(liste_id_ign_base) : break
-        #if i%2000==0 : 
-            #print(i, datetime.now(), f'nb lignes traitees : {len(lignes_traitees)}')
+        if i%2000==0 : 
+            print(i, datetime.now(), f'nb lignes traitees : {len(lignes_traitees)}')
         if l in lignes_traitees : 
             continue
         #critère d'exclusion : si la ligne est un rdpt ou une des lignes qui arrivent sur un rdpt avec certaines conditions
@@ -781,7 +782,7 @@ def regrouper_troncon(list_troncon, df_avec_rd_pt, carac_rd_pt,df2_chaussees,lig
                 dico_erreur[l]=e
         for ligne_tronc in liste_ligne : 
             dico_fin[ligne_tronc]=i
-    #print('fin : ', datetime.now(), f'nb lignes traitees : {len(lignes_traitees)}')  
+    print('fin : ', datetime.now(), f'nb lignes traitees : {len(lignes_traitees)}')  
     df_affectation=pd.DataFrame.from_dict(dico_fin, orient='index').reset_index()
     if df_affectation.empty :
         raise PasAffectationError(list_troncon)
@@ -876,7 +877,10 @@ def corresp_petit_tronc(df_lignes,df_affectation,tronc_elem_synth,long_max=50) :
         df_tronc_tch=df_tronc_tch.loc[~df_tronc_tch.id_ign.isin(list_petit_tronc)].copy()
         id_ign_ref=df_tronc_tch.loc[df_tronc_tch['angle'].idxmax()].id_ign if 160<df_tronc_tch.angle.max()<200 else False
         #puis trouver le tronc_elem correspondant
-        tronc_elem_ref=df_affectation.loc[df_affectation['id']==id_ign_ref].idtronc.values[0] if id_ign_ref else -99
+        try : 
+            tronc_elem_ref=df_affectation.loc[df_affectation['id']==id_ign_ref].idtronc.values[0] if id_ign_ref else -99
+        except IndexError: #si l'id_ign n'a pas été associé à un troncon elementaire idtronc.value[0] renvoie cette erreur
+            tronc_elem_ref=-99
         return tronc_elem_ref
     
     petit_tronc=tronc_elem_synth.loc[tronc_elem_synth['long']<=long_max].copy()# 467 troncons
