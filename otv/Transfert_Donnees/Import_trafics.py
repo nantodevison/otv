@@ -8,7 +8,8 @@ module d'importation des données de trafics forunies par les gestionnaires
 '''
 
 import pandas as pd
-import os, re
+import numpy as np
+import os, re, csv
 import Connexion_Transfert as ct
 import Outils as O
 
@@ -67,8 +68,64 @@ def cd40():
                         print(f'insert {chemin+fichier}')                    
                     c.connexionPsy.commit()
                     donnees.to_sql('na_2010_2018_mensuel', c.sqlAlchemyConn,schema='comptage',if_exists='append',index=False)
+                    
+class Comptage():
+    """
+    classe comprenant les attributs et méthode commune à tous les comptages de tous les departements
+    """
+    def __init__(self, fichier):
+        self.fichier=fichier
+        
+    def ouvrir_csv(self):
+        """
+        ouvrir un fichier csv en supprimant les caracteres accentué et en remplaçant les valeurs vides par np.naN
+        """
+        with open(self.fichier, newline='') as csvfile : 
+            reader = csv.reader(csvfile, delimiter=';')
+            fichier=([[re.sub(('é|è|ê'),'e',a) for a in row] for row in reader])
+            df=pd.DataFrame(data=fichier[1:], columns=fichier[0])
+            df.replace('', np.NaN, inplace=True)
+        return  df
+    
+    def comptag_existant_bdd(self,bdd, table, schema='comptage',dep=False, type_poste=False):
+        """
+        recupérer les comptages existants dans une df
+        en entree : 
+            bdd : string selon le fichier 'Id_connexions' du Projet Outils
+            table : string : nom de la table
+            schema : string : nom du schema
+            dep : string, code du deprtament sur 2 lettres
+            type_poste : string ou list de string: type de poste dans 'permanent', 'tournant', 'ponctuel'
+        en sortie : 
+            existant : df selon la structure de la table interrogée
+        """
+        if not dep and not type_poste : rqt=f"select id_comptag from {schema}.{table}"
+        elif dep and not type_poste : rqt=f"select id_comptag from {schema}.{table} where dep={dep}"
+        elif dep and isinstance(type_poste, str) : rqt=f"select id_comptag from {schema}.{table} where dep='{dep}' and type_poste='{type_poste}'"
+        elif dep and isinstance(type_poste, list) : 
+            list_type_poste='\',\''.join(type_poste)
+            rqt=f"""select * from {schema}.{table} where dep='{dep}' and type_poste in ('{list_type_poste}')"""
+        with ct.ConnexionBdd(bdd) as c:
+            existant=pd.read_sql(rqt, c.sqlAlchemyConn)
+        return existant
+    
+    def maj_geom(self,bdd, schema, table, dep):
+        """
+        mettre à jour les lignes de geom null
+        en entree : 
+            bdd: txt de connexion à la bdd que l'on veut (cf ficchier id_connexions)
+            schema : string nom du schema de la table
+            table : string : nom de la table
+            dep : string : code departement sur 2 chiffres
+        """
+        rqt=f""" update {schema}.{table}
+              set geom=(select geom_out  from comptage.geoloc_pt_comptag(id_comptag))
+              where dep='{dep}' and geom is null and id_comptag='17-D2-30+610'
+            """
+        with ct.ConnexionBdd(bdd) as c:
+                c.sqlAlchemyConn.execute(rqt)
 
-class comptage_cd17() :
+class Comptage_cd17(Comptage) :
     """
     Classe d'ouvertur de fichiers de comptage du CD17
     en entree : 
@@ -78,14 +135,17 @@ class comptage_cd17() :
     """  
             
     def __init__(self, fichier, type_fichier, annee):
-        self.fichier=fichier
+        Comptage.__init__(self, fichier)
         self.annee=annee
-        self.liste_type_fichier=['brochure', 'cpt_permanent-tournant']
+        self.liste_type_fichier=['brochure', 'permanent_csv']
         if type_fichier in self.liste_type_fichier :
             self.type_fichier=type_fichier#pour plus tard pouvoir différencier les fichiers de comptage tournant / permanents des brochures pdf
         else : 
-            raise comptage_cd17.CptCd17_typeFichierError(type_fichier)
-        self.liste_decomposee_ligne=self.lire_borchure_pdf()
+            raise Comptage_cd17.CptCd17_typeFichierError(type_fichier)
+        if self.type_fichier=='brochure' :
+            self.fichier_src=self.lire_borchure_pdf()
+        elif self.type_fichier=='permanent_csv' : 
+            self.fichier_src=self.ouvrir_csv()
         
         
     def lire_borchure_pdf(self):
@@ -108,19 +168,19 @@ class comptage_cd17() :
         """
         extraire les voies, pr et abscisse de la liste decomposee issue de lire_borchure_pdf
         en entree : 
-            self.liste_decomposee_ligne : liste des element issu du fichier.txt issu du pdf 
+            self.fichier_src : liste des element issu du fichier.txt issu du pdf 
         en sortie : 
             voie : list de string : dénomination de la voie au format D000X
             pr : list d'integer : point de repere
             abs : list d'integer : absice
         """
-        return [element.split(' ')[1] for element in self.liste_decomposee_ligne], [element.split(' ')[2]for element in self.liste_decomposee_ligne], [element.split(' ')[3]for element in self.liste_decomposee_ligne]
+        return [element.split(' ')[1] for element in self.fichier_src], [element.split(' ')[2]for element in self.fichier_src], [element.split(' ')[3]for element in self.fichier_src]
     
     def brochure_tmj_pcpl_v85(self):
         """
         extraire le tmj, %pl et v85 de la liste decomposee issue de lire_borchure_pdf
         en entree : 
-            self.liste_decomposee_ligne : liste des element issu du fichier.txt issu du pdf
+            self.fichier_src : liste des element issu du fichier.txt issu du pdf
         en sortie : 
             tmj : list de numeric : trafic moyen journalier
             pc_pl : list de numeric : point de repere
@@ -130,7 +190,7 @@ class comptage_cd17() :
         # que la rechreche d'un nombre a virgule renvoi le %PL, sinon la vitesse, et si c'est la vitesse, alors ca créer une value error en faisant le float sur l'element + 1, donc on 
         # sait que c'est la vitesse
         pc_pl, v85, tmj = [], [], []
-        for element in self.liste_decomposee_ligne : 
+        for element in self.fichier_src : 
             element_decompose = element.split()
             nombre_a_virgule = re.search('[0-9]{1,}\,[0-9]{1,}', element)  # rechreche un truc avec deux chiffres séparés par une virgule : renvoi un objet match si ok, none sinon
             if nombre_a_virgule : 
@@ -156,15 +216,15 @@ class comptage_cd17() :
         """
         extraire le mois et la periode de mesure issue de lire_borchure_pdf
         en entree : 
-            self.liste_decomposee_ligne : liste des element issu du fichier.txt issu du pdf
+            self.fichier_src : liste des element issu du fichier.txt issu du pdf
         en sortie : 
             tmj : list de numeric : trafic moyen journalier
             pc_pl : list de numeric : point de repere
             v85 : list de numeric : absice
         """
         # plus que les dates de mesure !!
-        mois = [element.split()[-1] for element in self.liste_decomposee_ligne]
-        periode = [element.split()[-3] + '-' + element.split()[-2] for element in self.liste_decomposee_ligne]
+        mois = [element.split()[-1] for element in self.fichier_src]
+        periode = [element.split()[-3] + '-' + element.split()[-2] for element in self.fichier_src]
         return mois, periode
 
     def brochure_tt_attr(self):
@@ -174,30 +234,51 @@ class comptage_cd17() :
         voie, pr, absc=self.brochure_voie_pr_abs()
         tmj, pcpl, v85=self.brochure_tmj_pcpl_v85()
         mois, periode=self.brochure_mois_periode()
-        return pd.DataFrame({'route': voie, 'pr':pr,'abs':absc,'tmja_'+str(self.annee):tmj, 'pc_pl_'+str(self.annee):pcpl, 'v85':v85,'mois':mois, 'periode':periode})  
+        return pd.DataFrame({'route': voie, 'pr':pr,'abs':absc,'tmja_'+str(self.annee):tmj, 'pc_pl_'+str(self.annee):pcpl, 'v85':v85,'mois':mois, 'periode':periode}) 
     
-    def mises_forme_bdd(self, bdd):
+    def permanent_csv_attr(self) :
         """
-        mise e forme et tarnsfert dans base de données
+        sort une dataframe des voie, pr, abs, tmj, pc_pl, v85, periode et mois pour les fichiers csv de comptag permanent
+        """
+        fichier_src_2sens=self.fichier_src.loc[self.fichier_src['Sens']=='3'].copy()
+        liste_attr=([a for a in fichier_src_2sens.columns if a[:6]=='MJM TV']+['Route','PRC','ABC']+['MJA TV TCJ '+str(self.annee),
+                                                                            'MJA %PL TCJ '+str(self.annee),'MJAV85 TV TCJ '+str(self.annee)])
+        liste_nom=(['janv', 'fevr', 'mars', 'avri', 'mai', 'juin', 'juil', 'aout', 'sept', 'octo', 'nove', 'dece']+['route', 'pr','abs']+[
+                                                                            'tmja_'+str(self.annee), 'pc_pl_'+str(self.annee), 'v85'])
+        dico_corres_mois={a:b for a,b in zip(liste_attr,liste_nom)}
+        fichier_filtre=fichier_src_2sens[liste_attr].rename(columns=dico_corres_mois).copy()
+        fichier_filtre=fichier_filtre.loc[~fichier_filtre['tmja_'+str(self.annee)].isna()].copy()
+        fichier_filtre['tmja_'+str(self.annee)]=fichier_filtre['tmja_'+str(self.annee)].apply(lambda x : int(x))
+        fichier_filtre['pc_pl_'+str(self.annee)]=fichier_filtre['pc_pl_'+str(self.annee)].apply(lambda x : float(x.strip().replace(',','.')))
+        fichier_filtre['route']=fichier_filtre.route.apply(lambda x : x.split(' ')[1]) 
+        return fichier_filtre
+  
+    def mises_forme_bdd(self, bdd, schema, table, dep, type_poste):
+        """
+        mise en forme et decompoistion selon comptage existant ou non dans Bdd
         en sortie : 
             df_attr_insert : df des pt de comptage a insrere
             df_attr_update : df des points de comtage a mettre a jour
             bdd: txt de connexion à la bdd que l'on veut (cf ficchier id_connexions)
         """ 
         #mise en forme
-        df_attr= self.brochure_tt_attr()
+        if self.type_fichier=='brochure' : 
+            df_attr= self.brochure_tt_attr()
+            df_attr['type_poste']=type_poste
+            df_attr['obs_'+str(self.annee)]=df_attr.apply(lambda x : 'nouveau point,'+x['periode']+',v85_tv '+str(x['v85']),axis=1)
+            df_attr.drop(['v85', 'mois','periode'], axis=1, inplace=True)
+        elif self.type_fichier=='permanent_csv' : 
+            df_attr=self.permanent_csv_attr()
+            df_attr['type_poste']=type_poste
+            df_attr['obs_'+str(self.annee)]=df_attr.apply(lambda x : 'v85_tv '+str(x['v85']),axis=1)
+            df_attr.drop('v85',axis=1, inplace=True)
         df_attr['id_comptag']=df_attr.apply(lambda x : '17-'+O.epurationNomRoute(x['route'])+'-'+str(x['pr'])+'+'+str(x['abs']),axis=1)
         df_attr['dep']='17'
         df_attr['reseau']='RD'
         df_attr['gestionnai']='CD17'
         df_attr['concession']='N'
-        df_attr['type_poste']='ponctuel'
-        df_attr['obs_'+str(self.annee)]=df_attr.apply(lambda x : 'nouveau point,'+x['periode']+',v85_tv '+str(x['v85']),axis=1)
-        df_attr.drop(['v85', 'mois','periode'], axis=1, inplace=True)
-        #verif que pas de doublons et seprartion si c'est le cas
-        with ct.ConnexionBdd(bdd) as c:
-            rqt="select id_comptag from comptage.na_2010_2017_p where dep='17' and type_poste='ponctuel'"
-            existant=pd.read_sql(rqt, c.sqlAlchemyConn)
+            #verif que pas de doublons et seprartion si c'est le cas
+        existant=self.comptag_existant_bdd(bdd, table, schema, dep, type_poste)
         df_attr_insert=df_attr.loc[~df_attr['id_comptag'].isin(existant.id_comptag.to_list())]
         df_attr_update=df_attr.loc[df_attr['id_comptag'].isin(existant.id_comptag.to_list())]
         self.df_attr, self.df_attr_insert, self.df_attr_update=df_attr, df_attr_insert,df_attr_update
@@ -211,10 +292,13 @@ class comptage_cd17() :
             table : string : nom de la table
         """
         valeurs_txt=str(tuple([(elem[0],elem[1], elem[2], elem[3]) for elem in zip(
-            self.df_attr_update.id_comptag, self.df_attr_update.tmja_2016, self.df_attr_update.pc_pl_2016, self.df_attr_update.obs_2016)]))[1:-1]
+            self.df_attr_update.id_comptag, self.df_attr_update['tmja_'+str(self.annee)].tolist(), 
+            self.df_attr_update['pc_pl_'+str(self.annee)].tolist(), self.df_attr_update['obs_'+str(self.annee)].tolist())]))[1:-1]
         rqt=f"""update {schema}.{table}  as c 
-                set tmja_2016=v.tmja_2016 ,pc_pl_2016=v.pc_pl_2016 ,obs_2016=v.obs_2016
-                from (values {valeurs_txt}) as v(id_comptag,tmja_2016,pc_pl_2016,obs_2016) where v.id_comptag=c.id_comptag"""
+                set {'tmja_'+str(self.annee)}=v.{'tmja_'+str(self.annee)} ,{'pc_pl_'+str(self.annee)}=v.{'pc_pl_'+str(self.annee)} ,
+                {'obs_'+str(self.annee)}=v.{'obs_'+str(self.annee)} from (values {valeurs_txt}) as v(id_comptag,{'tmja_'+str(self.annee)},
+                {'pc_pl_'+str(self.annee)},{'obs_'+str(self.annee)}) 
+                where v.id_comptag=c.id_comptag"""
         with ct.ConnexionBdd(bdd) as c:
             c.sqlAlchemyConn.execute(rqt)
     
@@ -226,9 +310,24 @@ class comptage_cd17() :
             schema : string nom du schema de la table
             table : string : nom de la table
         """
-        with ct.ConnexionBdd('bdd') as c:
+        with ct.ConnexionBdd(bdd) as c:
             self.df_attr_insert.to_sql(table,c.sqlAlchemyConn,schema=schema,if_exists='append', index=False )
-        
+     
+    def insert_bdd_mens(self,bdd, schema, table) :
+        """
+        insérer des données dans la table des comptages mensuels
+        en entree : 
+            bdd: txt de connexion à la bdd que l'on veut (cf ficchier id_connexions)
+            schema : string nom du schema de la table
+            table : string : nom de la table
+        """ 
+        list_attr_mens=['janv', 'fevr', 'mars', 'avri', 'mai', 'juin', 'juil', 'aout', 'sept', 'octo', 'nove', 'dece', 'id_comptag', 'donnees_type', 'annee']
+        mens=self.df_attr.copy()
+        mens['donnees_type']='tmja' #a travailler plus tatrd si on doit extraire le tmja à partir des noms de colonnes, en lien du coup avec permanent_csv_attr()
+        mens['annee']=str(self.annee)
+        mens_fin=mens[list_attr_mens].copy()
+        with ct.ConnexionBdd(bdd) as c:
+            mens_fin.to_sql(table,c.sqlAlchemyConn,schema=schema,if_exists='append', index=False )
         
         
     class CptCd17_typeFichierError(Exception):  
@@ -236,7 +335,7 @@ class comptage_cd17() :
         Exception levee si la recherched'une parrallele ne donne rien
         """     
         def __init__(self, type_fichier):
-            Exception.__init__(self,f'type de fichier "{type_fichier}" non présent dans {comptage_cd17.liste_type_fichier} ')
+            Exception.__init__(self,f'type de fichier "{type_fichier}" non présent dans {Comptage_cd17.liste_type_fichier} ')
             
     
         
