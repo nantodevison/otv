@@ -21,6 +21,13 @@ from sqlalchemy.sql import select
 import Outils
 #from psycopg2 import extras
 
+"""
+A AMELIORER : 
+- prise en compte de l'importance lorsde l'affectation d'un rd point à un troncon : dans carac_rdpoint, troubver un moyen de vérifier si une des voies
+entrantes à une correspondance en terme de numero ou nomvoie_d ET d'importance. Dans ce cas on privilégiera cette voie.
+Cela peut etre la création d'un nouvel attribut dans carc_rdpt qui concatene numero et importance, puis ensuite une recherche sur ce nouvel attribut dans recup_ligne_rdpt
+(cflinéarisation du 17 et test sur qq lignes)
+"""
 
 def import_donnes_base(bdd, schema, table_graph,table_vertex ):
     """
