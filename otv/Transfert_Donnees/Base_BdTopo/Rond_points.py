@@ -8,19 +8,14 @@ Created on 27 oct. 2019
 gestion des ronds points lors de l'agregation
 '''
 
-import matplotlib
 import geopandas as gp
 import pandas as pd
 import numpy as np
-from datetime import datetime
-from collections import Counter
-import Connexion_Transfert as ct
-from shapely.wkt import loads
-from shapely.ops import polygonize, linemerge, unary_union
-from geoalchemy2 import Geometry, WKTElement
-from sqlalchemy import Table, Column, Integer, String, MetaData
-from sqlalchemy.sql import select
-import Outils
+from Base_BdTopo import Import_outils as io
+from shapely.ops import polygonize
+
+
+
 
 
 def df_rond_point(df, taille_buffer=0):
@@ -81,7 +76,19 @@ def lign_entrant_rd_pt(df, df_lgn_rd_pt):
         ligne_inter_poly_ext=gp.sjoin(df,poly_ext,op='intersects')
         ligne_inter_poly_int=gp.sjoin(df,poly_int,op='intersects')
     ligne_entrant_rd_pt=ligne_inter_poly_ext.loc[~ligne_inter_poly_ext.id_ign.isin(ligne_inter_poly_int.id_ign.tolist()+df_lgn_rd_pt.id_ign.tolist())].copy()
-    ligne_entrant_rd_pt.drop_duplicates('id_ign', inplace=True) #cas des ignes qui touchent plusieurs rdpoint
+    
+    #cas des ignes qui touchent plusieurs rdpoint : si trop de lignes touchent 2 rdpt on en perds des references àcertains rdpt si on fait 
+    #un simple drop_duplicated (notamment les rdpt uniquemnet touches par des lignes qui touchent d'autre drpt.
+    #dc : 
+    ligne_entrant_rd_ptss_dbl=ligne_entrant_rd_pt.drop_duplicates('id_ign') #caracterisation du drop duplicated
+    list_rdpt_ss_dbl=ligne_entrant_rd_ptss_dbl.id_rdpt.unique() #list des rdpt après drop
+    list_rdpt_tot=df_lgn_rd_pt.id_rdpt.unique() #compraaison avec la liste des rdpt totaux
+    if any([a not in list_rdpt_ss_dbl for a in list_rdpt_tot]) : #s'il manque des rdpt ça peut venir de trop de rdpt connectés par des lignes 
+        double=ligne_entrant_rd_pt.loc[ligne_entrant_rd_pt.duplicated('id_ign', keep=False)].sort_values('id_ign').copy() #liste des doublons avec la ref pr chaq rdpt
+        ligne_entrant_rd_filtree=ligne_entrant_rd_ptss_dbl.drop(double.loc[double.id_rdpt.isin([a for a in list_rdpt_tot if a not in list_rdpt_ss_dbl])].index.tolist()) #on suppirme de la base initiale les lignes qui font références aux rd points qui manque
+        double_a_ajout=double.loc[double.id_rdpt.isin([a for a in list_rdpt_tot if a not in list_rdpt_ss_dbl])].copy() #la df des rd points qui manque 
+        ligne_entrant_rd_pt=pd.concat([ligne_entrant_rd_filtree,double_a_ajout], sort=False, axis=0) #fusion
+    
     return ligne_entrant_rd_pt
 
 def carac_rond_point(df_lign_entrant_rdpt) : 
@@ -150,7 +157,7 @@ def identifier_rd_pt(df):
     def verif_rdpt(id_ign_rdpt,df_lignes ) : 
         list_angles=[]
         for ligne_test in id_ign_rdpt : 
-            lignes_tch=tronc_tch((ligne_test,), df_lignes)
+            lignes_tch=io.tronc_tch((ligne_test,), df_lignes)
             list_angles+=lignes_tch.loc[lignes_tch['id_ign'].isin(id_ign_rdpt)].angle.tolist()
         return all([a<90 for a in set(list_angles)])    
     #recuperer les lignes qui constituent les rd points
@@ -175,6 +182,7 @@ def identifier_rd_pt(df):
     
     #verif que l'on ne prend pas des triangles en rdpt
     df_lignes=df_avec_rd_pt.set_index('id_ign')
+    #print(f"len carac_rd_pt : {len(carac_rd_pt)}")
     carac_rd_pt['verif']=carac_rd_pt.apply(lambda x : verif_rdpt(x['id_ign_rdpt'],df_lignes),axis=1)
     for attr in ['nb_rte_rdpt', 'nom_rte_rdpt_entrant', 'codevoie_rdpt_entrant',
        'nb_obj_sig_entrant', 'valeur_sens', 'id_ign_entrant','id_rdpt'] : 
@@ -243,3 +251,12 @@ def recup_lignes_rdpt(carac_rd_pt,num_rdpt,list_troncon,num_voie,codevoie):
                     return ligne_rdpt, lignes_sortantes
                 else : 
                     return [], lignes_sortantes
+                
+
+class PasDeRondPointError(Exception):  
+    """
+    Exception levee si il n'y a pas de rd point dans le jeud de donnees
+    """     
+    def __init__(self, df_lignes):
+        Exception.__init__(self,f'pas de rond points dans la df {df_lignes}')
+        self.erreur_type='PasDeRondPointError'
