@@ -72,7 +72,7 @@ def deb_fin_liste_tronc_base(df_lignes, list_troncon):
     if len(tronc_deb_fin)>1 :
         for i, e in enumerate(tronc_deb_fin.itertuples()) :
             #print(e,'\n', list(df_lignes.columns),'\n', e[list(df_lignes.columns).index('nb_intrsct_src')+1], '\n',list(df_lignes.columns).index('nb_intrsct_src')+1)
-            dico_deb_fin[i]={'id':e[0],'type':'source','num_node':e[list(df_lignes.columns).index('source')+1],
+            dico_deb_fin[i]={'id':e[0],'type':'source','num_node':e[list(df_lignes.columns).index('source')+1],'nature':e[list(df_lignes.columns).index('nature')+1],
                              'geom_node':e[list(df_lignes.columns).index('src_geom')+1],'voie':e[list(df_lignes.columns).index('numero')+1],
                              'codevoie':e[list(df_lignes.columns).index('codevoie_d')+1]} if e[list(df_lignes.columns).index('nb_intrsct_src')+1]>=3 else {
                              'id':e[0],'type':'target','num_node':e[list(df_lignes.columns).index('target')+1],
@@ -80,7 +80,7 @@ def deb_fin_liste_tronc_base(df_lignes, list_troncon):
                              'codevoie':e[list(df_lignes.columns).index('codevoie_d')+1]}
     else  : #pour tester les 2 cot�s de la ligne
         dico_deb_fin[0]={'id':tronc_deb_fin.index.values[0],'type':'source','num_node':tronc_deb_fin['source'].values[0],'geom_node':tronc_deb_fin['src_geom'].values[0]
-                         ,'voie':tronc_deb_fin['numero'].values[0],'codevoie':tronc_deb_fin['codevoie_d'].values[0]}
+                         ,'voie':tronc_deb_fin['numero'].values[0],'codevoie':tronc_deb_fin['codevoie_d'].values[0], 'nature':tronc_deb_fin['nature'].values[0]}
         dico_deb_fin[1]={'id':tronc_deb_fin.index.values[0],'type':'target','num_node':tronc_deb_fin['target'].values[0],'geom_node':tronc_deb_fin['tgt_geom'].values[0]
-                         ,'voie':tronc_deb_fin['numero'].values[0],'codevoie':tronc_deb_fin['codevoie_d'].values[0]}
+                         ,'voie':tronc_deb_fin['numero'].values[0],'codevoie':tronc_deb_fin['codevoie_d'].values[0],'nature':tronc_deb_fin['nature'].values[0]}
     return dico_deb_fin

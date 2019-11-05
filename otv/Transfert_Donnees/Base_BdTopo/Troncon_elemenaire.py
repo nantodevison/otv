@@ -15,7 +15,7 @@ from Base_BdTopo.Rond_points import verif_touche_rdpt,recup_lignes_rdpt
 
 
 
-def recup_route_split(ligne_depart,list_troncon,voie,codevoie, lignes_adj,noeud,geom_noeud, type_noeud, df_lignes):
+def recup_route_split(ligne_depart,list_troncon,voie,codevoie, lignes_adj,noeud,geom_noeud, type_noeud, nature,df_lignes):
     """
     r�cup�rer les id_ign des voies adjacentes qui sont de la mm voie que la ligne de depart
     en entree : 
@@ -31,13 +31,16 @@ def recup_route_split(ligne_depart,list_troncon,voie,codevoie, lignes_adj,noeud,
     en sortie : 
         ligne_mm_voie : list d'id_ign ou liste vide
     """    
+    #CAS PARTICULIERS
     if len(lignes_adj)!=2 : 
         return []
     if len(set(lignes_adj.source.tolist()+lignes_adj.target.tolist()))==2 : #cas d'une ligne qui separe pour se reconnecter ensuite
         return lignes_adj.index.tolist()
+    
+    #CAS GENERAL  
     if voie!='NC' : 
         if (voie==lignes_adj.numero).all() : 
-            return lignes_adj.index.tolist()
+            return lignes_adj.index.tolist()  
     elif voie=='NC' and codevoie!='NR' :
         if (codevoie==lignes_adj.codevoie_d).all(): 
             return lignes_adj.index.tolist()
@@ -217,7 +220,8 @@ def lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, ligne, lignes_exclues=[]) :
                     liste_troncon_finale+=lignes_rdpt2
                     lignes_a_tester+=[x for x in lignes_sortantes2 if x not in lignes_exclues]
                 else : #2. route qui se s�pare
-                    liste_rte_separe=recup_route_split(v['id'],list_troncon2,v['voie'],v['codevoie'], lignes_adj2,v['num_node'],v['geom_node'],v['type'], df_lignes2)
+                    liste_rte_separe=recup_route_split(v['id'],list_troncon2,v['voie'],v['codevoie'], lignes_adj2,v['num_node'],
+                                                       v['geom_node'],v['type'],v['nature'], df_lignes2)
                     #print(f"{v['id']},liste_rte_separe {liste_rte_separe}, ligne a tester {lignes_a_tester}, final : {liste_troncon_finale}")
                     if liste_rte_separe : 
                         #print('route separees')
