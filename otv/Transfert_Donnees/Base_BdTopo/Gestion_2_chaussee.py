@@ -10,7 +10,7 @@ gerer les voies repr�sentee par 2 lignes
 
 from Base_BdTopo.Import_outils import fusion_ligne_calc_lg
 from Base_BdTopo.Troncon_base import liste_complete_tronc_base,deb_fin_liste_tronc_base
-from Base_BdTopo.Troncon_elemenaire import lignes_troncon_elem
+from Base_BdTopo.Troncon_elementaire import lignes_troncon_elem
 
 
 def trouver_chaussees_separee(list_troncon, df_avec_rd_pt):
@@ -34,11 +34,14 @@ def trouver_chaussees_separee(list_troncon, df_avec_rd_pt):
     # GESTION DES VOIES COMMUNALESS AVEC NUMERO = 'NC' et CODEVOIE DIFFRENT DE NR
     voie=max(set(lgn_tron_e.numero.tolist()), key=lgn_tron_e.numero.tolist().count)
     code_voie=max(set(lgn_tron_e.codevoie_d.tolist()), key=lgn_tron_e.codevoie_d.tolist().count)
+    importance=max(set(lgn_tron_e.importance.tolist()), key=lgn_tron_e.importance.tolist().count)
     
     if voie !='NC' : 
-        ligne_filtres=lignes_possibles.loc[(~lignes_possibles.id_ign.isin(list_troncon)) & (lignes_possibles['numero']==voie)].copy()
+        ligne_filtres=lignes_possibles.loc[(~lignes_possibles.id_ign.isin(list_troncon)) & (lignes_possibles['numero']==voie) & 
+                                           (lignes_possibles['importance']==importance)].copy()
     elif voie =='NC' and code_voie != 'NR' : 
-        ligne_filtres=lignes_possibles.loc[(~lignes_possibles.id_ign.isin(list_troncon)) & (lignes_possibles['codevoie_d']==code_voie)].copy()
+        ligne_filtres=lignes_possibles.loc[(~lignes_possibles.id_ign.isin(list_troncon)) & (lignes_possibles['codevoie_d']==code_voie) &
+                                           (lignes_possibles['importance']==importance)].copy()
     else : #cas tordu d'une2*2 de nom inconnu 
         ligne_filtres=lignes_possibles.loc[(~lignes_possibles.id_ign.isin(list_troncon)) & (~lignes_possibles.source.isin(list_noeud)) & 
                                            (~lignes_possibles.target.isin(list_noeud))].copy()
@@ -104,7 +107,7 @@ def gestion_voie_2_chaussee(list_troncon, df_avec_rd_pt, ligne,carac_rd_pt):
     list_troncon=df_avec_rd_pt.loc[(df_avec_rd_pt['id_ign'].isin(list_troncon)) & (df_avec_rd_pt['id_rdpt'].isna())].id_ign.tolist()
     ligne_proche, ligne_filtres, longueur_base=trouver_chaussees_separee(list_troncon, df_avec_rd_pt)
     #recherche des troncon du mm tronc elem
-    list_troncon_comp=lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, ligne_proche)
+    list_troncon_comp=lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, ligne_proche,[])
     list_troncon_comp=df_avec_rd_pt.loc[(df_avec_rd_pt.id_ign.isin(list_troncon_comp)) & (df_avec_rd_pt['id_rdpt'].isna())].id_ign.tolist()
     #cacul de la longueur
     long_comp=fusion_ligne_calc_lg(df_avec_rd_pt.loc[df_avec_rd_pt['id_ign'].isin(list_troncon_comp)])[1]

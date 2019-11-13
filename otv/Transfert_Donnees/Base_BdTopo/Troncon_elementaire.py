@@ -14,7 +14,6 @@ from Base_BdTopo.Troncon_base import liste_complete_tronc_base,deb_fin_liste_tro
 from Base_BdTopo.Rond_points import verif_touche_rdpt,recup_lignes_rdpt
 
 
-
 def recup_route_split(ligne_depart,list_troncon,voie,codevoie, lignes_adj,noeud,geom_noeud, type_noeud, nature,df_lignes):
     """
     r�cup�rer les id_ign des voies adjacentes qui sont de la mm voie que la ligne de depart
@@ -37,8 +36,20 @@ def recup_route_split(ligne_depart,list_troncon,voie,codevoie, lignes_adj,noeud,
     if len(set(lignes_adj.source.tolist()+lignes_adj.target.tolist()))==2 : #cas d'une ligne qui separe pour se reconnecter ensuite
         return lignes_adj.index.tolist()
     
+    #donnees de base : 
+    tronc_tch_lign=tronc_tch((ligne_depart,), df_lignes)
+    tronc_tch_lign=tronc_tch_lign.loc[tronc_tch_lign['id_noeud_lgn']==noeud].copy()
+    
+    #si on est sur une 2*2 voies avec ue ligne au milieu provenant d'une autre voie qui intersecte, on s'arrete (cf filaire voie BdxM)
+    if nature in ['Route à 2 chaussées', 'Quasi-autoroute'] and (((
+        tronc_tch_lign.angle>80) & (tronc_tch_lign.angle<100)).any() and ((tronc_tch_lign.angle>160) & (tronc_tch_lign.angle<200)).any()) : 
+        return []
+    
+    
     #CAS GENERAL  
     if voie!='NC' : 
+        if nature=='Bretelle' and (lignes_adj.nature.isin(['Autoroute','Quasi-autoroute'])).any()==1 : 
+            return []
         if (voie==lignes_adj.numero).all() : 
             return lignes_adj.index.tolist()  
     elif voie=='NC' and codevoie!='NR' :
@@ -52,8 +63,6 @@ def recup_route_split(ligne_depart,list_troncon,voie,codevoie, lignes_adj,noeud,
             return []
         if lignes_adj.nature.isin(['Autoroute', 'Quasi-autoroute', 'Route � 2 chauss�es']).any() : #pour ne pas propager une bertelle a uune autoroute
             return []
-        tronc_tch_lign=tronc_tch((ligne_depart,), df_lignes)
-        tronc_tch_lign=tronc_tch_lign.loc[tronc_tch_lign['id_noeud_lgn']==noeud].copy()
         tronc_tch_lign['tronc_supp']=tronc_tch_lign.apply(lambda x : liste_complete_tronc_base(x['id_ign'],df_lignes,[ligne_depart]), axis=1)
         tronc_tch_lign['long']=tronc_tch_lign.apply(lambda x : fusion_ligne_calc_lg(df_lignes.loc[x['tronc_supp']])[1],axis=1)
         noeuds_fin=[k for k,v in Counter(df_lignes.loc[tronc_tch_lign.id_ign.tolist()].source.tolist()+df_lignes.loc[tronc_tch_lign.id_ign.tolist()].target.tolist()).items() if v==1]
@@ -176,7 +185,7 @@ def recup_triangle(ligne_depart,voie,codevoie, lignes_adj, noeud,geom_noeud,type
             else :
                 return []
 
-def lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, ligne, lignes_exclues=[]) : 
+def lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, ligne, lignes_exclues) : 
     """
     trouver les lignes qui appartiennent au m�me troncon elementaire que la ligne de depart
     en entree : 
@@ -194,7 +203,7 @@ def lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, ligne, lignes_exclues=[]) :
         for id_lignes2 in lignes_a_tester :
             #print(id_lignes2)
             list_troncon2=liste_complete_tronc_base(id_lignes2,df_lignes2,lignes_exclues)
-            #print(id_lignes2, list_troncon2, locals())
+            #print(f"list_troncon2 : {list_troncon2}, lignes_exclues : {lignes_exclues}")
             liste_troncon_finale+=list_troncon2
             dico_deb_fin2=deb_fin_liste_tronc_base(df_lignes2, list_troncon2)
             #print(liste_troncon_finale)            
@@ -236,4 +245,5 @@ def lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, ligne, lignes_exclues=[]) :
             lignes_a_tester=[x for x in lignes_a_tester if x not in liste_troncon_finale and x not in lignes_exclues]
             #print('lignes_a_teser: ',lignes_a_tester)
     liste_troncon_finale=list(set(liste_troncon_finale))
+    lignes_exclues=[]#ça c'est juste que sinon je ne peux pas faire tourner 2 fois la fonction de suite dans le notebook, c'est surement du au generateur
     return liste_troncon_finale

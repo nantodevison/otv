@@ -13,12 +13,12 @@ import numpy as np
 import Connexion_Transfert as ct
 from datetime import datetime
 from Base_BdTopo.Import_outils import tronc_tch
-from Base_BdTopo.Troncon_elemenaire import lignes_troncon_elem
+from Base_BdTopo.Troncon_elementaire import lignes_troncon_elem
 from Base_BdTopo.Gestion_2_chaussee import gestion_voie_2_chaussee, ParralleleError
 from geoalchemy2 import Geometry
 from sqlalchemy import Table, Column, Integer, MetaData
 
-def regrouper_troncon(list_troncon, df_avec_rd_pt, carac_rd_pt,df2_chaussees,lignes_exclues=[]):
+def regrouper_troncon(list_troncon, df_avec_rd_pt, carac_rd_pt,df2_chaussees,lignes_exclues):
     """
     Premier run de regroupement des id_ign. il reste des erreurs à la fin. version qui peut tournerà part de la caractérisation des rd points.
     on peut faire tourner cette fonction sur un ensemble de lignes pour caractériser tout un fichier ou sur une seule en la mettant seule dans le liste list_troncon
@@ -39,6 +39,7 @@ def regrouper_troncon(list_troncon, df_avec_rd_pt, carac_rd_pt,df2_chaussees,lig
     dico_erreur={}
     liste_id_ign_base=np.array(list_troncon)
     lignes_traitees=np.array([],dtype='<U24')
+    lignes_exclues=[]
     for i,l in enumerate(liste_id_ign_base) :
         if len(lignes_traitees)>=len(liste_id_ign_base) : break
         if i%500==0 : 
@@ -51,22 +52,21 @@ def regrouper_troncon(list_troncon, df_avec_rd_pt, carac_rd_pt,df2_chaussees,lig
             continue
         else : 
             #print(l)
-            #try : 
-            liste_ligne=lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, l, lignes_exclues) 
-            #print(f'liste ligne non filtree : {liste_ligne}, num id_tronc : {i}')
-            liste_ligne=[x for x in liste_ligne if x not in lignes_traitees] #filtre des lignes deja affectees
-            #print(f'liste ligne filtree : {liste_ligne}, num id_tronc : {i}')
-            if any([x in df2_chaussees.id_ign.tolist() for x in liste_ligne]) :  
-                try : 
-                    liste_ligne+=gestion_voie_2_chaussee(liste_ligne, df_avec_rd_pt, l,carac_rd_pt)[0]
-                    liste_ligne=[x for x in liste_ligne if x not in lignes_traitees]
-                    #print(f'apres 2 chaussee : {liste_ligne}, num id_tronc : {i}')
-                except ParralleleError as Pe:
-                    dico_erreur[Pe.id_ign]=Pe.erreur_type
-            lignes_traitees=np.unique(np.append(lignes_traitees,liste_ligne))
-            #except Exception as e : 
-               # print(f"erreur : {e} sur ligne {l}")
-                #dico_erreur[l]=e
+            try : 
+                liste_ligne=lignes_troncon_elem(df_avec_rd_pt,carac_rd_pt, l, lignes_exclues) 
+                #print(f'liste ligne non filtree : {liste_ligne}, num id_tronc : {i}')
+                liste_ligne=[x for x in liste_ligne if x not in lignes_traitees] #filtre des lignes deja affectees
+                #print(f'liste ligne filtree : {liste_ligne}, num id_tronc : {i}')
+                if any([x in df2_chaussees.id_ign.tolist() for x in liste_ligne]) :  
+                    try : 
+                        liste_ligne+=gestion_voie_2_chaussee(liste_ligne, df_avec_rd_pt, l,carac_rd_pt)[0]
+                        liste_ligne=[x for x in liste_ligne if x not in lignes_traitees]
+                        #print(f'apres 2 chaussee : {liste_ligne}, num id_tronc : {i}')
+                    except ParralleleError as Pe:
+                        dico_erreur[Pe.id_ign]=Pe.erreur_type
+                lignes_traitees=np.unique(np.append(lignes_traitees,liste_ligne))
+            except Exception as e : 
+                dico_erreur[l]=e
         for ligne_tronc in liste_ligne : 
             dico_fin[ligne_tronc]=i
     #print('fin : ', datetime.now(), f'nb lignes traitees : {len(lignes_traitees)}')  

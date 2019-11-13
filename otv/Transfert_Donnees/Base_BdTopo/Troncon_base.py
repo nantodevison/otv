@@ -39,7 +39,8 @@ def liste_troncon_base(id_ligne,df_lignes,ligne_traite_troncon=[]):
                     yield id_ign_suivant
     for ligne_a_traiter in liste_ligne_suivantes :
         yield from liste_troncon_base(ligne_a_traiter, df_lignes, ligne_traitee)
-        
+
+      
 def liste_complete_tronc_base(id_ligne,df_lignes,ligne_traite_troncon=[]):
     """
     simplement ajouter l'id de laligne de depart au g�n�rateur de la fonction liste_troncon_base
@@ -75,7 +76,7 @@ def deb_fin_liste_tronc_base(df_lignes, list_troncon):
             dico_deb_fin[i]={'id':e[0],'type':'source','num_node':e[list(df_lignes.columns).index('source')+1],'nature':e[list(df_lignes.columns).index('nature')+1],
                              'geom_node':e[list(df_lignes.columns).index('src_geom')+1],'voie':e[list(df_lignes.columns).index('numero')+1],
                              'codevoie':e[list(df_lignes.columns).index('codevoie_d')+1]} if e[list(df_lignes.columns).index('nb_intrsct_src')+1]>=3 else {
-                             'id':e[0],'type':'target','num_node':e[list(df_lignes.columns).index('target')+1],
+                             'id':e[0],'type':'target','num_node':e[list(df_lignes.columns).index('target')+1],'nature':e[list(df_lignes.columns).index('nature')+1],
                              'geom_node':e[list(df_lignes.columns).index('tgt_geom')+1],'voie':e[list(df_lignes.columns).index('numero')+1],
                              'codevoie':e[list(df_lignes.columns).index('codevoie_d')+1]}
     else  : #pour tester les 2 cot�s de la ligne
