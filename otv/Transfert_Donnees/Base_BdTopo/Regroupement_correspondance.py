@@ -66,6 +66,7 @@ def regrouper_troncon(list_troncon, df_avec_rd_pt, carac_rd_pt,df2_chaussees,lig
                         dico_erreur[Pe.id_ign]=Pe.erreur_type
                 lignes_traitees=np.unique(np.append(lignes_traitees,liste_ligne))
             except Exception as e : 
+                print(e)
                 dico_erreur[l]=e
         for ligne_tronc in liste_ligne : 
             dico_fin[ligne_tronc]=i

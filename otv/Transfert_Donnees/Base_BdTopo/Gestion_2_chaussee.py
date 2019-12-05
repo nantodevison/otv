@@ -34,7 +34,7 @@ def trouver_chaussees_separee(list_troncon, df_avec_rd_pt):
     # GESTION DES VOIES COMMUNALESS AVEC NUMERO = 'NC' et CODEVOIE DIFFRENT DE NR
     voie=max(set(lgn_tron_e.numero.tolist()), key=lgn_tron_e.numero.tolist().count)
     code_voie=max(set(lgn_tron_e.codevoie_d.tolist()), key=lgn_tron_e.codevoie_d.tolist().count)
-    importance=max(set(lgn_tron_e.importance.tolist()), key=lgn_tron_e.importance.tolist().count)
+    importance=max(set(lgn_tron_e.importance.tolist()), key=lgn_tron_e.importance.tolist().count)# on en a besoin pour les voies aprrallele avec mm nom mais pas mm importance (cf filaire de voie BdxM)
     
     if voie !='NC' : 
         ligne_filtres=lignes_possibles.loc[(~lignes_possibles.id_ign.isin(list_troncon)) & (lignes_possibles['numero']==voie) & 

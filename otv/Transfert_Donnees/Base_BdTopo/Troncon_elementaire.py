@@ -42,7 +42,8 @@ def recup_route_split(ligne_depart,list_troncon,voie,codevoie, lignes_adj,noeud,
     
     #si on est sur une 2*2 voies avec ue ligne au milieu provenant d'une autre voie qui intersecte, on s'arrete (cf filaire voie BdxM)
     if nature in ['Route à 2 chaussées', 'Quasi-autoroute'] and (((
-        tronc_tch_lign.angle>80) & (tronc_tch_lign.angle<100)).any() and ((tronc_tch_lign.angle>160) & (tronc_tch_lign.angle<200)).any()) : 
+        tronc_tch_lign.angle>65) & (tronc_tch_lign.angle<125)).any() and ((tronc_tch_lign.angle>150) & (tronc_tch_lign.angle<200)).any() 
+        and (tronc_tch_lign.longueur<20).any()) : 
         return []
     
     
