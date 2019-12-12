@@ -30,6 +30,7 @@ def trouver_chaussees_separee(list_troncon, df_avec_rd_pt):
     xmin,ymin,xmax,ymax=lgn_agrege.interpolate(0.5, normalized=True).buffer(75).bounds #limtes du carre englobant du buffer 50 m du centroid de la ligne
     #gdf_global=gp.GeoDataFrame(df, geometry='geom')#donnees de base
     lignes_possibles=df_avec_rd_pt.cx[xmin:xmax,ymin:ymax]#recherche des lignes proches du centroid
+    lignes_possibles=lignes_possibles.loc[(~lignes_possibles.source.isin(list_noeud)) & (~lignes_possibles.target.isin(list_noeud))].copy() #les lignes possibles ne doivent pas toucher les lignes sources
     
     # GESTION DES VOIES COMMUNALESS AVEC NUMERO = 'NC' et CODEVOIE DIFFRENT DE NR
     voie=max(set(lgn_tron_e.numero.tolist()), key=lgn_tron_e.numero.tolist().count)
