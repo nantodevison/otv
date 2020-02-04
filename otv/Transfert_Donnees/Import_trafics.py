@@ -100,7 +100,7 @@ class Comptage():
             existant : df selon la structure de la table interrogée
         """
         if not dep and not type_poste : rqt=f"select id_comptag from {schema}.{table}"
-        elif dep and not type_poste : rqt=f"select id_comptag from {schema}.{table} where dep={dep}"
+        elif dep and not type_poste : rqt=f"select id_comptag from {schema}.{table} where dep='{dep}'"
         elif dep and isinstance(type_poste, str) : rqt=f"select id_comptag from {schema}.{table} where dep='{dep}' and type_poste='{type_poste}'"
         elif dep and isinstance(type_poste, list) : 
             list_type_poste='\',\''.join(type_poste)
@@ -120,7 +120,7 @@ class Comptage():
         """
         rqt=f""" update {schema}.{table}
               set geom=(select geom_out  from comptage.geoloc_pt_comptag(id_comptag))
-              where dep='{dep}' and geom is null and id_comptag='17-D2-30+610'
+              where dep='{dep}' and geom is null'
             """
         with ct.ConnexionBdd(bdd) as c:
                 c.sqlAlchemyConn.execute(rqt)
@@ -337,7 +337,7 @@ class Comptage_cd17(Comptage) :
         def __init__(self, type_fichier):
             Exception.__init__(self,f'type de fichier "{type_fichier}" non présent dans {Comptage_cd17.liste_type_fichier} ')
             
-    
+  
         
 
 def cd23(fichier=r'Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA\Doc_travail\Donnees_source\CD23\2018_CD23_trafics.xls'):
@@ -397,4 +397,85 @@ def cd23(fichier=r'Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA\Doc_travail\Donnees_
         c.connexionPsy.commit()
         donnees_mens.to_sql('na_2010_2018_mensuel', c.sqlAlchemyConn,schema='comptage',if_exists='append',index=False)
     
+def cd19(fichier=r'Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA\Doc_travail\Donnees_source\CD19\2018_Recensement_trafic.xls'):    
+    """
+    je le met en bloc mais ça meriterait d'etre passe en classe comme le 17
+    """
+    #importer fichier
+    fichier=r'Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA\Doc_travail\Donnees_source\CD19\2018_Recensement_trafic.xls'
+    donnees_brutes=pd.read_excel(fichier, skiprows=6)
+    donnees_filtrees=donnees_brutes.rename(columns={'N° R.D.':'route','P.R.':'pr',2018:'ann_2018'})[['route','pr','ann_2018']]
+    donnees_filtrees=donnees_filtrees.loc[~donnees_filtrees.pr.isna()].copy()
     
+    #mettre à jour les champs et pereparer les donnees
+    def id_comptage(route,pr) : 
+        route=str(route).strip()
+        pr=str(int(pr.split('+')[0]))+'+0' if int(pr.split('+')[1])==0 else str(int(pr.split('+')[0]))+'+'+str(int(pr.split('+')[1]))
+        return '19-D'+route+'-'+pr
+    
+    donnees_filtrees['idcomptag']=donnees_filtrees.apply(lambda x : id_comptage(x['route'],x['pr']), axis=1)
+    donnees_filtrees['tmja']=donnees_filtrees.ann_2018.apply(lambda x : 0 if (pd.isna(x) or x=='x') else int(x.split('\n')[0]))
+    donnees_filtrees['pc_pl']=donnees_filtrees.ann_2018.apply(lambda x : 0 if (pd.isna(x) or x=='x') else float(x.split('\n')[1].split('%')[0].replace(',','.')))
+    donnees_transfert=donnees_filtrees.loc[donnees_filtrees['tmja']>0].copy()
+    
+    #pour interactions avec Bdd
+    bdd='gti_otv_pg11'
+    
+    #prise en compte variation id_comptag
+    rqt_corresp_comptg='select * from comptage.corresp_id_comptag'
+    with ct.ConnexionBdd(bdd) as c:
+        corresp_comptg=pd.read_sql(rqt_corresp_comptg, c.sqlAlchemyConn)
+    donnees_transfert['idcomptag']=donnees_transfert.apply(lambda x : corresp_comptg.loc[corresp_comptg['id_gest']==x['idcomptag']].id_gti.values[0] 
+                                            if x['idcomptag'] in corresp_comptg.id_gest.tolist() else x['idcomptag'], axis=1)
+    
+    #Recherche des points existants
+    comptage=Comptage(r'Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA\Doc_travail\Donnees_source\CD19\2018_Recensement_trafic.xls')
+    cpt_existant=comptage.comptag_existant_bdd('gti_otv_pg11','na_2010_2018_p',dep='19')
+    #identification des nouveaux points
+    points_a_inserer=donnees_transfert.loc[~donnees_transfert['idcomptag'].isin(cpt_existant.id_comptag.tolist())].copy()
+    #identification des points à mettre a jour
+    points_a_mettre_a_jour=donnees_transfert.loc[donnees_transfert['idcomptag'].isin(cpt_existant.id_comptag.tolist())]
+    
+    #mettre a jour
+    valeurs_txt=str(tuple([(elem[0],elem[1], elem[2]) for elem in zip(
+               points_a_mettre_a_jour.idcomptag.tolist(), points_a_mettre_a_jour.tmja.tolist(), 
+                points_a_mettre_a_jour.pc_pl.tolist(), )]))[1:-1]
+    rqt=f"""update comptage.na_2010_2018_p  as c 
+                    set tmja_2018=v.tmja,pc_pl_2018=v.pc_pl from (values {valeurs_txt}) as v(id_comptag,tmja,pc_pl)
+                    where v.id_comptag=c.id_comptag"""
+    with ct.ConnexionBdd(bdd) as c:
+        c.sqlAlchemyConn.execute(rqt)
+        
+    #inserer
+    #mise en forme
+    points_a_inserer.rename(columns={'idcomptag':'id_comptag','tmja':'tmja_2018','pc_pl':'pc_pl_2018'}, inplace=True)
+    points_a_inserer.drop(['route','pr','ann_2018'], axis=1, inplace=True)
+    points_a_inserer['type_poste']='tournant'
+    points_a_inserer['dep']='19'
+    points_a_inserer['reseau']='RD'
+    points_a_inserer['gestionnai']='CD19'
+    points_a_inserer['concession']='N'
+    with ct.ConnexionBdd(bdd) as c:
+        points_a_inserer.to_sql('na_2010_2018_p',c.sqlAlchemyConn,schema='comptage',if_exists='append', index=False )
+    
+    #mise à jhour geom : auto puis le reste en manuel
+    comptage.maj_geom(bdd,'comptage','na_2010_2018_p','19')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
