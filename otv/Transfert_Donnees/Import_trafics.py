@@ -10,7 +10,7 @@ module d'importation des données de trafics forunies par les gestionnaires
 import pandas as pd
 import geopandas as gp
 import numpy as np
-import os, re, csv
+import os, re, csv,statistics,filecmp
 
 import Connexion_Transfert as ct
 import Outils as O
@@ -194,7 +194,217 @@ def cd23(fichier=r'Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA\Doc_travail\Donnees_
         print('fini')
         c.connexionPsy.commit()
         donnees_mens.to_sql('na_2010_2018_mensuel', c.sqlAlchemyConn,schema='comptage',if_exists='append',index=False)
+
+class FIM():
+    """
+    classe dediée aux fichiers FIM de comptage brut
+    attributs : 
+        dico_corresp_type_veh : dico poutr determiner le type de vehicule selon en-tete
+        dico_corresp_type_fichier : dico poutr determiner le mode de comptag selon en-tete
+        pas_temporel : pas de concatenation des donnes, issu de en-tete (cf fonction params_fim())
+        date_debut : date de debut du comptage, (cf fonction params_fim())
+        mode : mod de cimptage (cf fonction params_fim())
+        taille_donnees : integer : taille des blocs de donnees
+        df_tot_heure : df avec dateIndex et valeur horaire VL ou TV et PL et tot si calculée
+        df_tot_jour : df avec dateIndex et valeur journaliere TV et PL
+        tmja
+        pl,
+        pc_pl
+        sens_uniq : booleen
+        sens_uniq_nb_blocs : si sens_uniq : nb de bloc de donnees
+    """
+    def __init__(self, fichier):
+        self.fichier=fichier
+        self.dico_corresp_type_veh={'TV':('1.T','2.','1.'),'VL':('2.V',),'PL':('3.P','2.P')}
+        self.dico_corresp_type_fichier={'mode3' : ('1.T','3.P'), 'mode4' : ('2.V','2.P'), 'mode2':('2.',), 'mode1' : ('1.',)}
+
+    def ouvrir_fim(self):
+        """
+        ouvrir le fichier txt et en sortir la liste des lignes
+        """
+        with open(self.fichier) as f :
+            lignes=[e.strip() for e in f.readlines()]
+        return lignes
+
+    def params_fim(self,lignes):
+        """
+        obtenir les infos générales du fichier : date_debut(anne, mois, jour, heure, minute), mode
+        """
+        annee,mois,jour,heure,minute,self.pas_temporel=(int(lignes[0].split('.')[i].strip()) for i in range(5,11))
+        self.date_debut=pd.to_datetime(f'{jour}-{mois}-{annee} {heure}:{minute}', dayfirst=True)
+        mode=lignes[0].split()[9]
+        self.mode=[k for k,v in self.dico_corresp_type_fichier.items() if any([e == mode for e in v])][0]
+        if not self.mode : 
+            raise self.fim_TypeModeError
+
+    def fim_type_veh(self,ligne):
+        """
+        savoir si le fichier fim concerne les TV, VL ou PL
+        in : 
+            ligne : ligne du fichier
+        """
+
+        for k,v  in self.dico_corresp_type_veh.items() : 
+            if any([e+' ' in ligne for e in v]) :
+                return [cle for cle, value in self.dico_corresp_type_veh.items() for e in value  if e==ligne.split()[9]][0]
+    
+    def liste_carac_fichiers(self,lignes):
+        """
+        creer une liste des principales caracteristiques 
+        """
+        liste_lign_titre=[]
+        for i,ligne in enumerate(lignes) : 
+            type_veh=self.fim_type_veh(ligne)
+            if type_veh : 
+                sens=ligne.split('.')[4].strip()
+                liste_lign_titre.append([i, type_veh,sens])
+        self.sens_uniq=True if len(set([e[2] for e in liste_lign_titre]))==1 else False
+        self.sens_uniq_nb_blocs=len(liste_lign_titre) if self.sens_uniq else np.NaN 
+        return liste_lign_titre
+
+    def taille_bloc_donnees(self,lignes_fichiers,liste_lign_titre) : 
+        """
+        verifier que les blocs de donnees ont tous la mm taille
+        in : 
+            lignes_fichiers : toute les lignes du fichiers, issu de f.readlines()
+        """
+        taille_donnees=tuple(set([liste_lign_titre[i+1][0]-(liste_lign_titre[i][0]+1) for i in range(len(liste_lign_titre)-1)]+
+                           [len(lignes_fichiers)-1-liste_lign_titre[len(liste_lign_titre)-1][0]]))
+        if len(taille_donnees)>1 : 
+            raise self.fim_TailleBlocDonneesError(taille_donnees)
+        else : self.taille_donnees=taille_donnees[0]
+
+    def isoler_bloc(self,lignes, liste_lign_titre) : 
+        """
+        isoler les blocs de données des lignes de titre,en fonction du mode de comptage
+        """
+        for i,e in enumerate(liste_lign_titre) :
+            if self.mode in ('mode3','mode1') :
+                e.append([int(b) for c in [a.split('.') for a in [a.strip() for a in lignes[e[0]+1:e[0]+1+self.taille_donnees]]] for b in c if b])
+            elif self.mode in ('mode4', 'mode2') :
+                e.append([sum([int(e) for e in b if e]) for b in [a.split('.') for a in [a.strip() for a in lignes[e[0]+2:e[0]+1+self.taille_donnees]]]])
+        return
+
+    def df_trafic_brut_horaire(self,liste_lign_titre):
+        """
+        creer une df des donnes avec un index datetimeindex de freq basee sur le pas temporel
+        """
+        freq=str(int(self.pas_temporel))+'T'
+        for i,e in enumerate(liste_lign_titre) :
+            df=pd.DataFrame(liste_lign_titre[i][3], columns=[liste_lign_titre[i][1]+'_sens'+liste_lign_titre[i][2]])
+            df.index=pd.date_range(self.date_debut, periods=len(df), freq=freq)
+            if i==0 : 
+                self.df_tot_heure=df
+            else : 
+                self.df_tot_heure=self.df_tot_heure.merge(df, left_index=True, right_index=True)
+
+    def calcul_indicateurs_horaire(self):
+        """
+        ajouter le tmja et le nb PL au xdonnes de df_trafic_brut_horaire
+        """
+        self.df_tot_heure=self.df_tot_heure.reset_index().rename(columns={'index':'date'})
+
+        def sommer_trafic_h(dateindex):
+            if not self.sens_uniq : 
+                if self.mode=='mode3' : 
+                    return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens2.values[0],
+                            self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens2.values[0])
+                elif self.mode=='mode4' :
+                    return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].VL_sens1.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].VL_sens2.values[0]+
+                            self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens2.values[0],
+                            self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens2.values[0])
+                elif self.mode=='mode2':
+                    return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens2.values[0],np.NaN)
+                elif self.mode=='mode1':
+                    return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens2.values[0],np.NaN)
+            else : 
+                if self.sens_uniq_nb_blocs==4:
+                    if self.mode=='mode3' : 
+                        return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1_x.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1_y.values[0],
+                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1_x.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1_y.values[0])
+                    elif self.mode=='mode4' :
+                        return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].VL_sens1_x.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].VL_sens1_y.values[0]+
+                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1_x.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1_y.values[0],
+                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1_x.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1_y.values[0])
+                    elif self.mode=='mode2':
+                        return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1_x.values[0]+
+                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1_y.values[0],np.NaN)
+                elif self.sens_uniq_nb_blocs==2:
+                    if self.mode=='mode3' : 
+                        return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1.values[0],
+                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1.values[0])
+                    elif self.mode=='mode4' :
+                        return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].VL_sens1.values[0]+
+                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1.values[0],
+                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1.values[0])
+                    elif self.mode=='mode2':
+                        return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1.values[0]+
+                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1.values[0],np.NaN)
                     
+                
+        self.df_tot_heure['tv_tot']=self.df_tot_heure.apply(lambda x : sommer_trafic_h(x.date)[0],axis=1)
+        self.df_tot_heure['pl_tot']=self.df_tot_heure.apply(lambda x : sommer_trafic_h(x.date)[1] if self.mode not in ('mode2','mode1') else
+                                                            np.NaN ,axis=1)
+        self.df_tot_heure['pc_pl_tot']=self.df_tot_heure.apply(lambda x : x['pl_tot']*100/x['tv_tot'] if x['tv_tot']!=0 else 0 if self.mode not in ('mode2','mode1') else
+                                                            np.NaN,axis=1)
+        self.df_tot_heure.set_index('date', inplace=True)
+
+    def calcul_indicateurs_agreges(self):
+        """
+        calculer le tmjs, pl et pc_pl pour un fichier
+        """
+        #regrouper par jour et calcul des indicateurs finaux
+        self.df_tot_jour=self.df_tot_heure[['tv_tot','pl_tot']].resample('1D').sum() if self.mode not in ('mode2','mode1') else self.df_tot_heure[['tv_tot']].resample('1D').sum()
+        #selon le nombre de jour comptés on prend soit tous les jours sauf les 1ers et derniers, soit on somme les 1ers et derniers
+        #si le nb de jours est inéfrieur à 7 on leve une erreur
+        if len(self.df_tot_jour)<7 : 
+            raise self.fim_PasAssezMesureError(len(self.df_tot_jour))
+        elif len(self.df_tot_jour) in (7,8) : 
+            traf_list=self.df_tot_jour.tv_tot.tolist()
+            self.tmja=int(statistics.mean([traf_list[0]+traf_list[-1]]+traf_list[1:-1]))
+            pl_list=self.df_tot_jour.pl_tot.tolist() if self.mode not in ('mode2','mode1') else np.NaN
+            self.pl=int(statistics.mean([pl_list[0]+pl_list[-1]]+pl_list[1:-1])) if self.mode not in ('mode2','mode1') else np.NaN
+        else : 
+            self.tmja=int(self.df_tot_jour.iloc[1:-1].tv_tot.mean())
+            self.pl=int(self.df_tot_jour.iloc[1:-1].pl_tot.mean()) if self.mode not in ('mode2','mode1') else np.NaN
+        self.pc_pl=round(self.pl*100/self.tmja,1) if self.mode not in ('mode2','mode1') else np.NaN
+    
+    def resume_indicateurs(self):
+        """
+        procedure complete de calcul des indicateurs agreges
+        """
+        lignes=self.ouvrir_fim()
+        self.params_fim(lignes)
+        liste_lign_titre=self.liste_carac_fichiers(lignes)
+        self.taille_bloc_donnees(lignes,liste_lign_titre)
+        self.isoler_bloc(lignes, liste_lign_titre)
+        self.df_trafic_brut_horaire(liste_lign_titre)
+        self.calcul_indicateurs_horaire()
+        self.calcul_indicateurs_agreges()
+        
+        
+    class fim_TailleBlocDonneesError(Exception):
+        """
+        Exception levee si la taile des blocs de donnees entre fichiers fim, varie
+        """     
+        def __init__(self, taille_donnees):
+            Exception.__init__(self,f'taille multiple de blocs de donnees dans le fichier : {taille_donnees} ')
+
+    class fim_TypeModeError(Exception):
+        """
+        Exception levee si le mode n'a pas pu etre detreminé
+        """     
+        def __init__(self):
+            Exception.__init__(self,f'le mode n\'est pas reconnu, cf focntion params_fim()')
+            
+    class fim_PasAssezMesureError(Exception):
+        """
+        Exception levee si le fichier comport emoins de 7 jours
+        """     
+        def __init__(self, nbjours):
+            Exception.__init__(self,f'le fichier comporte moins de 7 jours de mesures. Nb_jours: : {nbjours} ')
+            
+                  
 class Comptage():
     """
     classe comprenant les attributs et méthode commune à tous les comptages de tous les departements
@@ -212,7 +422,7 @@ class Comptage():
             df=pd.DataFrame(data=fichier[1:], columns=fichier[0])
             df.replace('', np.NaN, inplace=True)
         return  df
-    
+   
     def comptag_existant_bdd(self,bdd, table, schema='comptage',dep=False, type_poste=False):
         """
         recupérer les comptages existants dans une df
@@ -234,6 +444,20 @@ class Comptage():
         with ct.ConnexionBdd(bdd) as c:
             self.existant=gp.GeoDataFrame.from_postgis(rqt, c.sqlAlchemyConn, geom_col='geom',crs={'init': 'epsg:2154'})
     
+    def corresp_nom_id_comptag(self,bdd,df):
+        """
+        pour les id_comptag dont on sait que les noms gti et gestionnaire diffèrent mais que ce sont les memes, on remplace le nom gest
+        par le nom_gti, pour pouvoir faire des jointure ensuite
+        in : 
+            bdd :  string : l'identifiant de la Bdd pour recuperer la table de correspondance
+            df : dataframe des comptage du gest. attention doit contenir l'attribut 'id_comptag'
+        """
+        rqt_corresp_comptg='select * from comptage.corresp_id_comptag'
+        with ct.ConnexionBdd(bdd) as c:
+            corresp_comptg=pd.read_sql(rqt_corresp_comptg, c.sqlAlchemyConn)
+        df['id_comptag']=df.apply(lambda x : corresp_comptg.loc[corresp_comptg['id_gest']==x['id_comptag']].id_gti.values[0] 
+                                                    if x['id_comptag'] in corresp_comptg.id_gest.tolist() else x['id_comptag'], axis=1)
+    
     def maj_geom(self,bdd, schema, table, dep=False):
         """
         mettre à jour les lignes de geom null
@@ -244,15 +468,146 @@ class Comptage():
             dep : string : code departement sur 2 chiffres
         """
         if dep : 
-            rqt=f""" update {schema}.{table}
+            rqt_geom=f""" update {schema}.{table}
               set geom=(select geom_out  from comptage.geoloc_pt_comptag(id_comptag))
               where dep='{dep}' and geom is null"""
+            rqt_attr=f""" update {schema}.{table}
+              set src_geo='pr+abs', x_l93=round(st_x(geom)::numeric,3), y_l93=round(st_y(geom)::numeric,3)
+              where dep='{dep}' and src_geo is null and geom is not null"""
         else :
-            rqt=f""" update {schema}.{table}
+            rqt_geom=f""" update {schema}.{table}
               set geom=(select geom_out  from comptage.geoloc_pt_comptag(id_comptag))
-              where geom is null"""    
+              where geom is null""" 
+            rqt_attr=f""" update {schema}.{table}
+              set src_geo='pr+abs', x_l93=round(st_x(geom)::numeric,3), y_l93=round(st_y(geom)::numeric,3)
+              where src_geo is null and geom is not null"""   
+              
         with ct.ConnexionBdd(bdd) as c:
-                c.sqlAlchemyConn.execute(rqt)
+                c.sqlAlchemyConn.execute(rqt_geom)
+                c.sqlAlchemyConn.execute(rqt_attr)
+                
+    def localiser_comptage_a_inserer(self,df,bdd, schema_temp,nom_table_temp):
+        """
+        récupérer la geometrie de pt de comptage à inserer dans une df sans les inserer dans la Bdd
+        """
+        with ct.ConnexionBdd(bdd) as c:
+            #passer les données dans Bdd
+            c.sqlAlchemyConn.execute(f'drop table if exists {schema_temp}.{nom_table_temp}')
+            df.to_sql(nom_table_temp,c.sqlAlchemyConn,schema_temp)   
+            #ajouter une colonne geometrie
+            rqt_ajout_geom=f"""ALTER TABLE {schema_temp}.{nom_table_temp} ADD COLUMN geom geometry('POINT',2154)""" 
+            c.sqlAlchemyConn.execute(rqt_ajout_geom)
+            #mettre a jour la geometrie. attention, il faut un fichier de référentiel qui va bein, cf fonction geoloc_pt_comptag dans la Bdd
+            rqt_maj_geom=f"""update {schema_temp}.{nom_table_temp}
+                             set geom=(select geom_out  from comptage.geoloc_pt_comptag(id_comptag))
+                             where geom is null"""
+            c.sqlAlchemyConn.execute(rqt_maj_geom)
+            points_a_inserer=gp.GeoDataFrame.from_postgis(f'select * from {nom_table_temp}', c.sqlAlchemyConn, geom_col='geom',crs={'init': 'epsg:2154'})
+        return points_a_inserer
+        
+    def donnees_existantes(self, bdd, table_linearisation_existante):
+        """
+        recuperer une linearisation existante et les points de comptages existants
+        in : 
+            bdd : string : identifiant de connexion à la bdd
+            table_linearisation_existante : string : schema-qualified table de linearisation de reference
+        """    
+        with ct.ConnexionBdd(bdd) as c:
+            lin_precedente=gp.GeoDataFrame.from_postgis(f'select * from {table_linearisation_existante}',c.sqlAlchemyConn, 
+                                                    geom_col='geom',crs={'init': 'epsg:2154'})
+        return lin_precedente
+    
+    def plus_proche_voisin_comptage_a_inserer(self,df,bdd, schema_temp,nom_table_temp,table_linearisation_existante):
+        """
+        trouver si nouveau point de comptage est sur  un id_comptag linearise
+        in:
+            df : les données de comptage nouvelles, normalement c'est self.df_attr_insert (cf Comptage_Cd17 ou Compatge cd47
+            schema_temp : string : nom du schema en bdd opur calcul geom, cf localiser_comptage_a_inserer
+            nom_table_temp : string : nom de latable temporaire en bdd opur calcul geom, cf localiser_comptage_a_inserer
+            table_linearisation_existante : string : schema-qualified table de linearisation de reference cf donnees_existantes
+        """
+        #mettre en forme les points a inserer
+        points_a_inserer=self.localiser_comptage_a_inserer(df,bdd, schema_temp,nom_table_temp)
+        #recuperer les donnees existante
+        lin_precedente=self.donnees_existantes(bdd, table_linearisation_existante)
+        
+        #ne conserver que le spoints a inserer pour lesquels il y a une geometrie
+        points_a_inserer_geom=points_a_inserer.loc[~points_a_inserer.geom.isna()].copy()
+        #recherche de la ligne la plus proche pour chaque point a inserer
+        ppv=O.plus_proche_voisin(points_a_inserer_geom,lin_precedente[['id_ign','geom']],5,'id_comptag','id_ign')
+        #verifier si il y a un id comptage sur la ligne la plus proche, ne conserver que les lignes où c'est le cas, et recuperer la geom de l'id_comptag_lin 
+        #(les points issu de lin sans geom ne sont pas conserves, et on a besoin de passer les donnees en gdf)
+        ppv_id_comptagLin=ppv.merge(lin_precedente[['id_ign','id_comptag']].rename(columns={'id_comptag':'id_comptag_lin'}), on='id_ign')
+        ppv_id_comptagLin=ppv_id_comptagLin.loc[~ppv_id_comptagLin.id_comptag_lin.isna()].copy().merge(self.existant[['geom','id_comptag']].rename(columns=
+                                                {'geom':'geom_cpt_lin','id_comptag':'id_comptag_lin'}),on='id_comptag_lin')
+        ppv_id_comptagLin_p=gp.GeoDataFrame(ppv_id_comptagLin.rename(columns={'id_ign':'id_ign_cpt_new'}),geometry=ppv_id_comptagLin.geom_cpt_lin)
+        ppv_id_comptagLin_p.crs = {'init' :'epsg:2154'}
+        #si il y a un id_comptag linearisation : trouver le troncon le plus proche de celui-ci
+        ppv_total=O.plus_proche_voisin(ppv_id_comptagLin_p,lin_precedente[['id_ign','geom']],5,'id_comptag_lin','id_ign')
+        ppv_final=ppv_total.merge(ppv_id_comptagLin_p,on='id_comptag_lin').merge(df[['id_comptag','type_poste']]
+                    ,on='id_comptag').rename(columns={'id_ign':'id_ign_lin','type_poste':'type_poste_new'}).drop_duplicates()
+        return ppv_final
+    
+    def troncon_elemntaires(self,bdd, schema, table_graph,table_vertex,liste_lignes,id_name):    
+        """
+        trouver les troncons elementaires d'une liste de ligne
+        se base sur travail interne cf Base_BdTopo Modules regroupement_Correspondace, Import_outils, Rond_Points
+        in : 
+            id_name : string : nom de l'integer identifiant uniq de la table_graph
+        """
+        def troncon_elementaires_params(self,bdd, schema, table_graph,table_vertex):
+            """
+            construire les parametres de determination des troncons elementaires
+            """    
+            df=io.import_donnes_base(bdd,schema, table_graph,table_vertex)
+            df2_chaussees=df.loc[df.nature.isin(['Autoroute', 'Quasi-autoroute', 'Route à 2 chaussées'])]
+            df_avec_rd_pt,carac_rd_pt,lign_entrant_rdpt=rp.identifier_rd_pt(df)
+            return df_avec_rd_pt, carac_rd_pt,df2_chaussees
+        
+        O.epurer_graph(bdd,id_name, schema, table_graph,table_vertex)
+        df_avec_rd_pt, carac_rd_pt,df2_chaussees=troncon_elementaires_params(self,bdd, schema, table_graph,table_vertex)
+        dico_corresp={}
+        for id_ign_lin in set(liste_lignes) :
+            try : 
+                dico_corresp[id_ign_lin]=rc.regrouper_troncon([id_ign_lin], df_avec_rd_pt, carac_rd_pt,df2_chaussees,[])[0].id.tolist()
+            except rc.PasAffectationError : 
+                continue
+        return dico_corresp
+    
+    def corresp_old_new_comptag(self,bdd, schema_temp,nom_table_temp,table_linearisation_existante,
+                                schema, table_graph,table_vertex,id_name,liste_lignes):
+        """
+        trouver la correspndance entre des comptages gestionnaires nouveau et les données dans la base gti de comptage, pour des 
+        comptages n'ayant pas tout a fait les mm pr+abs.
+        attention, traitement de plusieurs heures possible.
+        Attention, si le comptage de la base linearise existante est aussi dans les données de comptage, en plus du nouveau point, alors on le conserve dans les points
+        a inserer
+        in : 
+            bdd : string : id de la base a laquelle se connecter (cf module id_connexion)
+            schema_temp : string : nom du schema en bdd opur calcul geom, cf localiser_comptage_a_inserer
+            nom_table_temp : string : nom de latable temporaire en bdd opur calcul geom, cf localiser_comptage_a_inserer
+            table_linearisation_existante : string : schema-qualified table de linearisation de reference cf donnees_existantes
+            schema : string : nom du schema contenant la table qui sert de topologie
+            table_graph : string : nom de la table topologie (normalement elle devrait etre issue de table_linearisation_existante
+            table_vertex : string : nom de la table des vertex de la topoolgie
+            id_name : nom de l'identifiant uniq en integer de la table_graoh
+            liste_lignes : liste des lignes a tester, issue ppv_fila issu de de plus_proche_voisin_comptage_a_inserer
+             : 
+        """
+        
+        def pt_corresp(id_ign_lin,id_ign_cpt_new,dico_corresp) : 
+            if id_ign_cpt_new in dico_corresp[id_ign_lin] : 
+                return True
+            else : return False
+
+        ppv_final=self.plus_proche_voisin_comptage_a_inserer(self.df_attr_insert,bdd, schema_temp,nom_table_temp,table_linearisation_existante)
+        dico_corresp=self.troncon_elemntaires(bdd, schema, table_graph,table_vertex,id_name,ppv_final.id_ign_lin.tolist())
+        ppv_final['correspondance']=ppv_final.apply(lambda x : pt_corresp(x['id_ign_lin'],x['id_ign_cpt_new'],dico_corresp),axis=1)
+        df_correspondance=ppv_final.loc[(ppv_final['correspondance']) & 
+              (~ppv_final['id_comptag_lin'].isin(self.df_attr.id_comptag.tolist())) &
+              (ppv_final.type_poste_new.isin(['permanent','tournant']))
+             ].copy()[['id_comptag_lin','id_comptag','type_poste_new']]
+        return df_correspondance
     
     def creer_valeur_txt_update(self, df, liste_attr):
         """
@@ -292,6 +647,8 @@ class Comptage():
         with ct.ConnexionBdd(bdd) as c:
             df.to_sql(table,c.sqlAlchemyConn,schema=schema,if_exists='append', index=False )
 
+
+            
 class Comptage_cd17(Comptage) :
     """
     Classe d'ouvertur de fichiers de comptage du CD17
@@ -462,7 +819,6 @@ class Comptage_cd17(Comptage) :
         prendre den compte si des id_comptages ont unnom differents entre le CD17 et le Cerema
         in : 
             bdd : l'identifiant de la Bdd pour recuperer la table de correspondance
-            donnees_brutes : df issue de ouvrir_xls_tournant_brochure
         """
         rqt_corresp_comptg='select * from comptage.corresp_id_comptag'
         with ct.ConnexionBdd(bdd) as c:
@@ -488,7 +844,7 @@ class Comptage_cd17(Comptage) :
         #identification des points à mettre a jour
         self.df_attr_update=self.df_attr.loc[self.df_attr['id_comptag'].isin(self.existant.id_comptag.tolist())]
   
-    def mises_forme_bdd(self, bdd, schema, table, dep, type_poste):
+    def mises_forme_bdd_brochure_pdf(self, bdd, schema, table, dep, type_poste):
         """
         mise en forme et decompoistion selon comptage existant ou non dans Bdd
         en sortie : 
@@ -517,120 +873,7 @@ class Comptage_cd17(Comptage) :
         df_attr_insert=df_attr.loc[~df_attr['id_comptag'].isin(existant.id_comptag.to_list())]
         df_attr_update=df_attr.loc[df_attr['id_comptag'].isin(existant.id_comptag.to_list())]
         self.df_attr, self.df_attr_insert, self.df_attr_update=df_attr, df_attr_insert,df_attr_update
-                  
-    def localiser_comptage_a_inserer(self,bdd, schema_temp,nom_table_temp):
-        """
-        récupérer la geometrie de pt de comptage à inserer dans une df sans les inserer dans la Bdd
-        """
-        with ct.ConnexionBdd(bdd) as c:
-            #passer les données dans Bdd
-            c.sqlAlchemyConn.execute(f'drop table if exists {schema_temp}.{nom_table_temp}')
-            self.df_attr_insert.to_sql(nom_table_temp,c.sqlAlchemyConn,schema_temp)   
-            #ajouter une colonne geometrie
-            rqt_ajout_geom=f"""ALTER TABLE {schema_temp}.{nom_table_temp} ADD COLUMN geom geometry('POINT',2154)""" 
-            c.sqlAlchemyConn.execute(rqt_ajout_geom)
-            #mettre a jour la geometrie. attention, il faut un fichier de référentiel qui va bein, cf fonction geoloc_pt_comptag dans la Bdd
-            rqt_maj_geom=f"""update {schema_temp}.{nom_table_temp}
-                             set geom=(select geom_out  from comptage.geoloc_pt_comptag(id_comptag))
-                             where geom is null"""
-            c.sqlAlchemyConn.execute(rqt_maj_geom)
-            points_a_inserer=gp.GeoDataFrame.from_postgis(f'select * from {nom_table_temp}', c.sqlAlchemyConn, geom_col='geom',crs={'init': 'epsg:2154'})
-            return points_a_inserer
-        
-    def donnees_existantes(self, bdd, table_linearisation_existante):
-        """
-        recuperer une linearisation existante et les points de comptages existants
-        in : 
-            bdd : string : identifiant de connexion à la bdd
-            table_linearisation_existante : string : schema-qualified table de linearisation de reference
-        """    
-        with ct.ConnexionBdd(bdd) as c:
-            lin_precedente=gp.GeoDataFrame.from_postgis(f'select * from {table_linearisation_existante}',c.sqlAlchemyConn, 
-                                                    geom_col='geom',crs={'init': 'epsg:2154'})
-        return lin_precedente
-    
-    def plus_proche_voisin_comptage_a_inserer(self,bdd, schema_temp,nom_table_temp,table_linearisation_existante):
-        """
-        trouver si nouveau point de comptage est sur  un id_comptag linearise
-        in:
-            schema_temp : string : nom du schema en bdd opur calcul geom, cf localiser_comptage_a_inserer
-            nom_table_temp : string : nom de latable temporaire en bdd opur calcul geom, cf localiser_comptage_a_inserer
-            table_linearisation_existante : string : schema-qualified table de linearisation de reference cf donnees_existantes
-        """
-        #mettre en forme les points a inserer
-        points_a_inserer=self.localiser_comptage_a_inserer(bdd, schema_temp,nom_table_temp)
-        #recuperer les donnees existante
-        lin_precedente=self.donnees_existantes(bdd, table_linearisation_existante)
-        
-        #ne conserver que le spoints a inserer pour lesquels il y a une geometrie
-        points_a_inserer_geom=points_a_inserer.loc[~points_a_inserer.geom.isna()].copy()
-        #recherche de la ligne la plus proche pour chaque point a inserer
-        ppv=O.plus_proche_voisin(points_a_inserer_geom,lin_precedente[['id_ign','geom']],5,'id_comptag','id_ign')
-        #verifier si il y a un id comptage sur la ligne la plus proche, ne conserver que les lignes où c'est le cas, et recuperer la geom de l'id_comptag_lin 
-        #(les points issu de lin sans geom ne sont pas conserves, et on a besoin de passer les donnees en gdf)
-        ppv_id_comptagLin=ppv.merge(lin_precedente[['id_ign','id_comptag']].rename(columns={'id_comptag':'id_comptag_lin'}), on='id_ign')
-        ppv_id_comptagLin=ppv_id_comptagLin.loc[~ppv_id_comptagLin.id_comptag_lin.isna()].copy().merge(self.existant[['geom','id_comptag']].rename(columns=
-                                                {'geom':'geom_cpt_lin','id_comptag':'id_comptag_lin'}),on='id_comptag_lin')
-        ppv_id_comptagLin_p=gp.GeoDataFrame(ppv_id_comptagLin.rename(columns={'id_ign':'id_ign_cpt_new'}),geometry=ppv_id_comptagLin.geom_cpt_lin)
-        ppv_id_comptagLin_p.crs = {'init' :'epsg:2154'}
-        #si il y a un id_comptag linearisation : trouver le troncon le plus proche de celui-ci
-        ppv_total=O.plus_proche_voisin(ppv_id_comptagLin_p,lin_precedente[['id_ign','geom']],5,'id_comptag_lin','id_ign')
-        ppv_final=ppv_total.merge(ppv_id_comptagLin_p,on='id_comptag_lin').rename(columns={'id_ign':'id_ign_lin'})
-        return ppv_final
-        
-    
-    
-    def troncon_elemntaires(self,bdd, schema, table_graph,table_vertex,liste_lignes):    
-        """
-        trouver les troncons elementaires d'une liste de ligne
-        se base sur travail interne cf Base_BdTopo Modules regroupement_Correspondace, Import_outils, Rond_Points
-        """
-        def troncon_elementaires_params(self,bdd, schema, table_graph,table_vertex):
-            """
-            construire les parametres de determination des troncons elementaires
-            """    
-            df=io.import_donnes_base(bdd,schema, table_graph,table_vertex)
-            df2_chaussees=df.loc[df.nature.isin(['Autoroute', 'Quasi-autoroute', 'Route à 2 chaussées'])]
-            df_avec_rd_pt,carac_rd_pt,lign_entrant_rdpt=rp.identifier_rd_pt(df)
-            return df_avec_rd_pt, carac_rd_pt,df2_chaussees
-        
-        df_avec_rd_pt, carac_rd_pt,df2_chaussees=troncon_elementaires_params(self,bdd, schema, table_graph,table_vertex)
-        dico_corresp={}
-        for id_ign_lin in set(liste_lignes) :
-            try : 
-                dico_corresp[id_ign_lin]=rc.regrouper_troncon([id_ign_lin], df_avec_rd_pt, carac_rd_pt,df2_chaussees,[])[0].id.tolist()
-            except rc.PasAffectationError : 
-                continue
-        return dico_corresp
-    
-    
-    def correspondance_ancien_nouveau_comptage(self,bdd, schema_temp,nom_table_temp,table_linearisation_existante,
-                                               schema_te, table_graph,table_vertex):
-        """
-        obtenir la table de correspondance entre les id_comptage des points a inserer et les id_comptage des points existants, pour les points
-        se situant sur le même troncon elementaire
-        in : 
-            bdd : string :identifiant de la Bdd avec la quelle on interagit, cf module Id_connexions
-            schema_temp :string :pour la geolov des points de comptage a tester cf plus_proche_voisin_comptage_a_inserer
-            nom_table_temp : string :pour la geolov des points de comptage a tester cf plus_proche_voisin_comptage_a_inserer
-            table_linearisation_existante
-            schema_te : string : pour le calcul des traoncon elemntaires : nom du schema cf troncon_elemntaires
-            table_graph :string : pour le calcul des traoncon elemntaires : nom de la table avec les colonnes de topologie cf troncon_elemntaires
-            table_vertex : string : pour le calcul des traoncon elemntaires : nom de la table avec les valeur de count des vertex cf troncon_elemntaires
-        """
-        #calcul de la table de correspondance de base
-        ppv_final=self.plus_proche_voisin_comptage_a_inserer(bdd,schema_temp,nom_table_temp,table_linearisation_existante)
-        dico_corresp=self.troncon_elemntaires(bdd, schema_te, table_graph,table_vertex,ppv_final.id_ign_lin.tolist())
-        #rappatrimeent des id des tronc elem pour comparaison, creation d'un attribut booleen pour comparaison
-        table_correspondance=ppv_final.merge(pd.DataFrame.from_dict({k:(tuple(v),) for k,v in dico_corresp.items()}, orient='index', columns=['id_ign_te']).reset_index(),left_on='id_ign_lin',
-                        right_on='index').drop_duplicates()
-        table_correspondance['cpt_redondant']=table_correspondance.apply(lambda x : x['id_ign_cpt_new'] in x['id_ign_te'], axis=1)
-        #creation de la table de comparaison pouyr les id_comptages qui se chevauchent
-        table_correspondance_finale=table_correspondance.loc[table_correspondance.cpt_redondant][['id_comptag_lin','id_comptag']].merge(self.existant[['type_poste','id_comptag']].rename(
-                                                    columns={'id_comptag':'id_comptag_lin','type_poste':'type_poste_lin'}),on='id_comptag_lin')
-        return table_correspondance_finale
-        
-        
+       
     def insert_bdd_mens(self,bdd, schema, table) :
         """
         insérer des données dans la table des comptages mensuels
@@ -650,30 +893,344 @@ class Comptage_cd17(Comptage) :
         
     class CptCd17_typeFichierError(Exception):  
         """
-        Exception levee si la recherched'une parrallele ne donne rien
+        Exception levee si le type de fcihier n'est pas dans la liste self.liste_type_fichier
         """     
         def __init__(self, type_fichier):
             Exception.__init__(self,f'type de fichier "{type_fichier}" non présent dans {Comptage_cd17.liste_type_fichier} ')
             
 class Comptage_cd47(Comptage):
     """
-    traiter les données du CD47
+    traiter les données du CD47, selon les traitement on creer les attributs :
+    -type_cpt
+    -dico_perm
+    -dico_periodq
+    -dico_tempo
+    -dico_tot
     PLUS TARD ON POURRA AJOUTER LA RECUPDES DONNEES HORAIRES
     """
-    def __init__(self,dossier) : 
+    def __init__(self,dossier,type_cpt ) :
+        self.dossier=dossier 
+        self.liste_type_cpt=['TRAFICS PERIODIQUES','TRAFICS PERMANENTS','TRAFICS TEMPORAIRES']
+        if type_cpt in self.liste_type_cpt:
+            self.type_cpt=type_cpt
+        else : 
+            raise Comptage_cd47.CptCd47_typeCptError(type_cpt)
         #liste des dossiers contenant du permanent
-        self.liste_dossiers_perm=[os.path.join(root,dir) for root, dirs, files in 
-                     os.walk(dossier) 
-                     for directory in dirs if 'UD' in root and 'TRAFICS PERMANENTS' in root]
+    
+    def modifier_type_cpt(self,new_type_cpt):
+        """
+        mettre à jour le type_cptde l'objet
+        """
+        if new_type_cpt in self.liste_type_cpt:
+            self.type_cpt=new_type_cpt
+        else : 
+            raise Comptage_cd47.CptCd47_typeCptError(new_type_cpt)
+    
+    def liste_dossier(self):
+        """
+        recupérer la liste des dossier contenant les comptages en fonction du type_cpt
+        """
+        liste_dossiers=[os.path.join(root,directory) for root, dirs, files in 
+                 os.walk(self.dossier) 
+                 for directory in dirs if 'UD' in root and self.type_cpt.upper() in root]
+        return liste_dossiers
+    
+    def dico_fichier(self,liste_dossiers):
+        """
+        creer un dico contenant la liste des fichier contenu dans chaque dossier qui contient des fichiers de comptage
+        in : 
+            liste_dossiers : list des dossiers contenant des fichiers de commtage, cf liste_dossier
+        """
+        if self.type_cpt.upper()=='TRAFICS PERMANENTS':
+            dico_fichiers={dossier : {'fichier' : O.ListerFichierDossier(dossier,'.xlsx')} for dossier in liste_dossiers}
+        elif self.type_cpt.upper()=='TRAFICS PERIODIQUES': 
+            dico_fichiers={dossier : {'fichier' : [[fichier for fichier in O.ListerFichierDossier(dossier,'.xlsx') 
+                        if uniq in fichier  and re.search('[T][1-4]',fichier) and 'vitesse' not in fichier.lower()] 
+                        for uniq in set([re.split('[T,V][1-4]',fichier)[0] 
+                        for fichier in O.ListerFichierDossier(dossier,'.xlsx')]) ] } for dossier in liste_dossiers}
+        elif self.type_cpt.upper()=='TRAFICS TEMPORAIRES' :
+            dico_fichiers={dossier : {'fichier' : [[fichier for fichier in O.ListerFichierDossier(dossier,'.xlsx') 
+                        for uniq in [re.split(' T.xls',fichier)[0] 
+                        for fichier in O.ListerFichierDossier(dossier,'.xlsx')]
+                        if uniq in fichier  and re.search(' T.xls',fichier) and 'V.xls' not in fichier
+                        and re.search('D[ ]{0,1}[0-9]+',fichier)]] } for dossier in self.liste_dossier()}
+        return dico_fichiers
+    
+    def ouverture_fichier(self,dossier,fichier):
+        """
+        ouvrir un fichier, prendre la bonne feuille, virer les NaN et renommer les colonnes
+        """
+        colonne=['jour','type_veh']+[str(i)+'_'+str(i+1)+'h' for i in range(24)]+['total','pc_pl']
+        data=pd.read_excel(os.path.join(dossier,fichier),sheet_name=-1, header=None)
+        data.dropna(axis=0,how='all', inplace=True)
+        data.columns=colonne
+        return data
+    
+    def id_comptag(self, data):
+        """
+        definir l'id_comptag à patir d'une df issue d'un fcihier xls (cf ouverture_fichier)
+        """
+        pr_abs=data.loc[1,'jour'].split(' PR ')[1].strip()[:-1]
+        pr=int(pr_abs.split('+')[0])
+        absc=int(pr_abs.split('+')[1])
+        route=re.search('D[ ]{0,1}[0-9]+',data.loc[1,'jour'].split(' PR ')[0].split("(")[1].strip())[0].replace(' ','')
+        id_comptag='47-'+route+'-'+str(pr)+'+'+str(absc)
+        return id_comptag,pr,absc,route
+    
+    def donnees_generales(self,data):
+        """
+        recuperer le pc_pl et le tmja et les periodes de mesures à patir d'une df issue d'un fcihier xls (cf ouverture_fichier)
+        """
+        tmja=int(data.loc[data['jour']=='Moyenne journalière : ','5_6h'].values[0].split(' ')[0])
+        pc_pl=float(data.loc[data.loc[data['jour']=='Moyenne journalière : ','5_6h'].index+2,'5_6h'].values[0].split('(')[1][1:-3].replace(',','.'))
         
+        dico_date={a:b for (a,b) in zip(['janvier','février','mars' ,'avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'],
+                           [a.lower() for a in ['January','February','March', 'April','May','June','July','August','September','October','November','December']])}
+        debut_periode=data.loc[1,'total'].lower().split('du')[1].split('au')[0].strip()
+        fin_periode=data.loc[1,'total'].lower().split('du')[1].split('au')[1].strip()
+        for k,v in dico_date.items() :
+            debut_periode=debut_periode.replace(k,v)
+            fin_periode=fin_periode.replace(k,v)
+        debut_periode=pd.to_datetime(debut_periode)
+        fin_periode=pd.to_datetime(fin_periode)
+        return tmja, pc_pl,debut_periode,fin_periode
+    
+    def remplir_dico_fichier(self):
+        """
+        creer un dico avec les valeusr de tmja et pc_pl par id_comptage
+        """
+        dico_final={}
+        dico=self.dico_fichier(self.liste_dossier())
+        if self.type_cpt.upper()=='TRAFICS PERMANENTS' : 
+            for k,v in dico.items():
+                liste_tmja=[]
+                liste_pc_pl=[]
+                for fichier in v['fichier']:
+                    data=self.ouverture_fichier(k,fichier)
+                    id_comptag,pr,absc,route=self.id_comptag(data)
+                    if not 'id_comptag' in v.keys() : 
+                        v['id_comptag']=id_comptag
+                    tmja, pc_pl=self.donnees_generales(data)[0:2]
+                    liste_tmja.append(tmja)
+                    liste_pc_pl.append(pc_pl)
+                v['tmja']=int(statistics.mean(liste_tmja))
+                v['pc_pl']=round(float(statistics.mean(liste_pc_pl)),1)
+            dico_final={v['id_comptag']:{'tmja':v['tmja'],'pc_pl':v['pc_pl'], 'type_poste' : 'permanent','debut_periode':None,
+                                         'fin_periode':None,'pr':pr,'absc':absc,'route':route} for k,v in dico.items()}
+        elif self.type_cpt.upper()=='TRAFICS PERIODIQUES' :
+            for k,v in dico.items() :
+                for liste_fichier in v['fichier'] :
+                    liste_tmja=[]
+                    liste_pc_pl=[]
+                    for fichier in liste_fichier :
+                        if 'Vitesse' not in fichier : 
+                            data=self.ouverture_fichier(k,fichier)
+                            id_comptag,pr,absc,route=self.id_comptag(data) 
+                            tmja, pc_pl=self.donnees_generales(data)[0:2]
+                            liste_tmja.append(tmja)
+                            liste_pc_pl.append(pc_pl)  
+                    dico_final[id_comptag]={'tmja' : int(statistics.mean(liste_tmja)), 'pc_pl' : round(float(statistics.mean(liste_pc_pl)),1), 
+                                            'type_poste' : 'tournant','debut_periode':None,'fin_periode':None,'pr':pr,'absc':absc,'route':route}  
+        elif self.type_cpt.upper()=='TRAFICS TEMPORAIRES' : 
+            for k,v in dico.items():
+                for liste_fichier in v['fichier']:
+                    if liste_fichier :
+                        if len(liste_fichier)>1 : 
+                            for fichier in liste_fichier :
+                                data=self.ouverture_fichier(k,fichier)
+                                id_comptag,pr,absc,route=self.id_comptag(data)
+                                tmja, pc_pl,debut_periode,fin_periode=self.donnees_generales(data)
+                                dico_final[id_comptag]={'tmja':tmja, 'pc_pl':pc_pl,'type_poste' : 'ponctuel','debut_periode':debut_periode,
+                                                        'fin_periode':fin_periode,'pr':pr,'absc':absc,'route':route}
+                        else : 
+                            data=self.ouverture_fichier(k,liste_fichier[0])
+                            id_comptag,pr,absc,route=self.id_comptag(data)
+                            tmja, pc_pl,debut_periode,fin_periode=self.donnees_generales(data)
+                            dico_final[id_comptag]={'tmja':tmja, 'pc_pl':pc_pl,'type_poste' : 'ponctuel','debut_periode':debut_periode,
+                                                        'fin_periode':fin_periode,'pr':pr,'absc':absc,'route':route}
+        return dico_final
+
+    def regrouper_dico(self):
+        """
+        regrouper les dico creer dans remplir_dico_fichier et sortir une df
+        """
+        self.type_cpt='TRAFICS PERMANENTS'
+        self.dico_perm=self.remplir_dico_fichier()
+        self.modifier_type_cpt('TRAFICS PERIODIQUES')
+        self.dico_perdq=self.remplir_dico_fichier()
+        self.modifier_type_cpt('TRAFICS TEMPORAIRES')
+        self.dico_tempo=self.remplir_dico_fichier()   
+        self.dico_tot={}
+        for d in [self.dico_perm, self.dico_perdq, self.dico_tempo]:
+            self.dico_tot.update(d)
+     
+    def dataframe_dico(self, dico):
+        """
+        conversion d'un dico en df
+        """
+        return pd.DataFrame.from_dict(dico, orient='index').reset_index().rename(columns={'index':'id_comptag'})
+    
+    def filtrer_periode_ponctuels(self):
+        """
+        filtrer des periodesde vacances
+        """
+        #filtrer pt comptage pendant juillet aout
+        self.df_attr=self.df_attr.loc[self.df_attr.apply(lambda x : x['debut_periode'].month not in [7,8] and x['fin_periode'].month not in [7,8], 
+                                                         axis=1)].copy()
+    
+    def classer_comptage_update_insert(self,bdd):
+        """
+        a prtir du dico tot (regrouper_dico), separer les comptages a mettre a jour et ceux à inserer dans les attributs
+        df_attr_update et df_attr_insert
+        """
+        #creer le dico_tot
+        self.regrouper_dico()
+        self.df_attr=self.dataframe_dico(self.dico_tot)
+        #filtrer les periodes de vacances
+        self.filtrer_periode_ponctuels()
+        #prende en compte les variation d'id_comptag en gti et le gest
+        self.corresp_nom_id_comptag(bdd,self.df_attr)
+        #compârer avec les donnees existantes
+        self.comptag_existant_bdd(bdd, 'na_2010_2018_p', dep='47')
+        self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())]
+        self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())]
+        
+    def mise_en_forme_insert(self,annee):
+        """
+        ajout des attributs à self.df_attr_insert attendu dans la table comptag avant transfert dans bdd
+        in : 
+            annee : string : annee sur 4 lettres pour mise enf orme nom attr
+        """
+        if not isinstance(annee,str) : 
+            raise TypeError('annee doit un string sur 4 caracteres')
+        self.df_attr_insert['dep']='47'
+        self.df_attr_insert['reseau']='RD'
+        self.df_attr_insert['gestionnai']='CD47'
+        self.df_attr_insert['concession']='N'
+        self.df_attr_insert['obs']=self.df_attr_insert.apply(lambda x : f"""nouveau_point,{x['debut_periode'].strftime("%d/%m/%Y")}-{x['fin_periode'].strftime("%d/%m/%Y")}""" if not (pd.isnull(x['debut_periode']) and  pd.isnull(x['fin_periode'])) else None,axis=1)
+        self.df_attr_insert.rename(columns={'absc' : 'abs', 'tmja':'tmja_'+annee,'pc_pl':'pc_pl_'+annee,'obs':'obs_'+annee},inplace=True)
+        self.df_attr_insert.drop(['debut_periode','fin_periode'],axis=1,inplace=True)
+        
+    class CptCd47_typeCptError(Exception):  
+        """
+        Exception levee si le type de comptage n'est pas dans la liste self.self.type_cpt
+        """     
+        def __init__(self, type_cpt):
+            Exception.__init__(self,f'type de comptage "{type_cpt}" non présent dans {Comptage_cd47.liste_type_cpt} ')
+
+
+class Comptage_cd87(Comptage):
+    """
+    les données fournies par le CD87 sont des fichiers fim bruts
+    attributs : 
+        dossier : nom du dossier contenant les fchiers
+        liste_nom_simple : list edes fihciers avce un n om explicite
+        liste_nom_foireux : liste des fichiers avec un nom pourri
+    """
+    def __init__(self,dossier):
+        self.dossier=dossier
+        self.liste_fichier=O.ListerFichierDossier(dossier,'.FIM')
     
 
-    
-
-
-
-
-
+    def classer_fichiers_par_nom(self):
+        """
+        classer les fihciers selon le nom : avec RD et PR ou sans
+        """
+        self.liste_nom_simple=[fichier for fichier in self.liste_fichier 
+                  if re.search('[D][( |_)]{0,1}[0-9]{1,5}([A-O]|[Q-Z]|[a-o]|[q-z]){0,3}.*PR[( |_)]{0,1}[0-9]{1,4}',fichier)]
+        self.liste_nom_foireux=[fichier for fichier in self.liste_fichier 
+                    if re.search('^[0-9]{1,4}([A-Z]|[a-z]){0,3}[( |_)]{0,1}[0-9]{4,5}',fichier) and fichier not in self.liste_nom_simple]
+        
+    def dico_pt_cptg(self):
+        """
+        creer un dico de caracterisation pdes pt de comptag : pr, absc, fihciers.
+        le dico supprime les fihciers doublons du dossier source
+        """
+        #recuperer les liste de fichiers : 
+        self.classer_fichiers_par_nom()
+        #associer les fichiers à des voies_pr_absc pour la liste_nom_simple 
+        self.dico_voie={}
+        for fichier in self.liste_nom_simple :
+            nom_voie=re.sub('( |_)','',re.search('[D][( |_)]{0,1}[0-9]{1,5}([A-O]|[Q-Z]|[a-o]|[q-z]){0,3}',fichier).group(0))
+            pr=re.search('(PR[( |_)]{0,1})([0-9]{1,2})([+]{0,1})([0-9]{0,3})',re.sub("(!|\()",'+',fichier)).group(2)
+            absc=re.search('(PR[( |+)]{0,1})([0-9]{1,2})([+]{0,1})([0-9]{0,3})',re.sub("(!|\(|_|x)",'+',fichier)).group(4)
+            if len(absc)<3 :
+                absc, pr = int(pr[-(3-len(absc))] + absc), int(pr[0:-(3-2)])
+            else : 
+                absc, pr=int(absc),int(pr)
+            if nom_voie in self.dico_voie.keys():
+                for e in self.dico_voie[nom_voie] :
+                    if pr==e['pr'] : 
+                        if absc==e['abs'] : 
+                            e['fichiers'].append(fichier)
+                            break
+                        else : 
+                            self.dico_voie[nom_voie].append({'pr':pr,'abs':absc,'fichiers':[fichier]})
+                            break
+                else : 
+                    self.dico_voie[nom_voie].append({'pr':pr,'abs':absc,'fichiers':[fichier]})
+            else : 
+                self.dico_voie[nom_voie]=[{'pr':pr,'abs':absc,'fichiers':[fichier]},]
+                
+        #pour la liste_nom_foireux : 
+        for fichier in self.liste_nom_foireux : 
+            nom_voie='D'+re.split('( |_)',fichier)[0]
+            absc, pr=int(re.split('( |_)',fichier)[2][-3:]), int(re.split('( |_)',fichier)[2][:-3])
+            if nom_voie in self.dico_voie.keys():
+                for e in self.dico_voie[nom_voie] :
+                    if pr==e['pr'] : 
+                        if absc==e['abs'] : 
+                            e['fichiers'].append(fichier)
+                            break
+                        else : 
+                            self.dico_voie[nom_voie].append({'pr':pr,'abs':absc,'fichiers':[fichier]})
+                            break
+                else : 
+                    self.dico_voie[nom_voie].append({'pr':pr,'abs':absc,'fichiers':[fichier]})
+            else : 
+                self.dico_voie[nom_voie]=[{'pr':pr,'abs':absc,'fichiers':[fichier]},]
+        
+        self.verif_fichiers_dico()#verfi que tous fihciers dans dico
+        self.supprimer_fichiers_doublons()
+        
+        
+    def verif_fichiers_dico(self):
+        """
+        verifier que les fichiers des listes (cf classer_fichiers_par_nom()) sont tous dans le dico
+        """    
+        #verif sur le nombre de fichier
+        if not len(self.liste_nom_simple)+len(self.liste_nom_foireux)==len([e for a in [b['fichiers'] for a in self.dico_voie.values() for b in a] for e in a]) : 
+            nbfichierManquants=abs((len(self.liste_nom_simple)+len(self.liste_nom_foireux))-len([e for a in [b['fichiers'] for a in self.dico_voie.values() for b in a] for e in a]) )
+            raise self.CptCd87_ManqueFichierDansDicoError(nbfichierManquants)
+        else : print('OK : tous fichiers dans dico')
+        
+    def supprimer_fichiers_doublons(self):
+        """
+        supprimer dans les listes de fichiers presentes dans le dico, les fihciers qui sont les mm
+        """
+        for k,v in self.dico_voie.items() :
+            for e in v :
+                liste_fichiers=e['fichiers']
+                liste_fichier_dbl=[]
+                dico_corresp_fichier_dbl={}
+                for i,f_a_tester in enumerate(liste_fichiers) :
+                    if i!=0:
+                        if f_a_tester in [a for b in dico_corresp_fichier_dbl.values() for a in b] :
+                            continue
+                    for f_test in liste_fichiers :
+                        if f_test!=f_a_tester and filecmp.cmp(os.path.join(self.dossier,f_a_tester),os.path.join(self.dossier,f_test),shallow=True):
+                            liste_fichier_dbl.append(f_test)
+                    dico_corresp_fichier_dbl[f_a_tester]=liste_fichier_dbl
+                    liste_fichier_dbl=[]
+                e['fichiers']=[a for a in dico_corresp_fichier_dbl.keys()] 
+        
+        
+    class CptCd87_ManqueFichierDansDicoError(Exception):  
+        """
+        Exception levee si des fichiers des listes ne sont pas presents dans le dico
+        """     
+        def __init__(self, nbfichierManquants):
+            Exception.__init__(self,f'il manque {nbfichierManquants} fichiers présents dans liste_nom_simple ou liste_nom_foireux dans le dico_voie')
 
 
 
