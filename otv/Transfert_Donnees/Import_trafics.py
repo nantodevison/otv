@@ -212,6 +212,7 @@ class FIM():
         pc_pl
         sens_uniq : booleen
         sens_uniq_nb_blocs : si sens_uniq : nb de bloc de donnees
+        date_fin
     """
     def __init__(self, fichier):
         self.fichier=fichier
@@ -284,10 +285,10 @@ class FIM():
             elif self.mode in ('mode4', 'mode2') :
                 e.append([sum([int(e) for e in b if e]) for b in [a.split('.') for a in [a.strip() for a in lignes[e[0]+2:e[0]+1+self.taille_donnees]]]])
         return
-
+        
     def df_trafic_brut_horaire(self,liste_lign_titre):
         """
-        creer une df des donnes avec un index datetimeindex de freq basee sur le pas temporel
+        creer une df des donnes avec un index datetimeindex de freq basee sur le pas temporel et rnvoi la date de fin
         """
         freq=str(int(self.pas_temporel))+'T'
         for i,e in enumerate(liste_lign_titre) :
@@ -297,6 +298,7 @@ class FIM():
                 self.df_tot_heure=df
             else : 
                 self.df_tot_heure=self.df_tot_heure.merge(df, left_index=True, right_index=True)
+        self.date_fin=self.df_tot_heure.index.max()
 
     def calcul_indicateurs_horaire(self):
         """
@@ -310,9 +312,11 @@ class FIM():
                     return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens2.values[0],
                             self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens2.values[0])
                 elif self.mode=='mode4' :
-                    return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].VL_sens1.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].VL_sens2.values[0]+
-                            self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens2.values[0],
-                            self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens2.values[0])
+                    colVL1,colVL2=[e for e in self.df_tot_heure.columns if 'VL' in e][0], [e for e in self.df_tot_heure.columns if 'VL' in e][1]
+                    colPL1,colPL2=[e for e in self.df_tot_heure.columns if 'PL' in e][0], [e for e in self.df_tot_heure.columns if 'PL' in e][1]
+                    return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex][colVL1].values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex][colVL2].values[0]+
+                            self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex][colPL1].values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex][colPL2].values[0],
+                            self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex][colPL1].values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex][colPL2].values[0])
                 elif self.mode=='mode2':
                     return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens2.values[0],np.NaN)
                 elif self.mode=='mode1':
@@ -340,6 +344,8 @@ class FIM():
                     elif self.mode=='mode2':
                         return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1.values[0]+
                                 self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1.values[0],np.NaN)
+                else : 
+                    raise self.fimNbBlocDonneesError(self.mode)
                     
                 
         self.df_tot_heure['tv_tot']=self.df_tot_heure.apply(lambda x : sommer_trafic_h(x.date)[0],axis=1)
@@ -403,6 +409,12 @@ class FIM():
         """     
         def __init__(self, nbjours):
             Exception.__init__(self,f'le fichier comporte moins de 7 jours de mesures. Nb_jours: : {nbjours} ')
+    class fimNbBlocDonneesError(Exception):
+        """
+        Exception levee si le  nb de blocs du fihchier est égal à 1
+        """     
+        def __init__(self, mode):
+            Exception.__init__(self,f'le fichier ne comporte qu\'un seul bloc en mode {mode} ')
             
                   
 class Comptage():
