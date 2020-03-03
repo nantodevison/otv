@@ -62,7 +62,7 @@ def recup_route_split(ligne_depart,list_troncon,voie,codevoie, lignes_adj,noeud,
             return lignes_adj.index.tolist()
         if (lignes_adj.id_rdpt>0).any()==1  :#si une des lignes qui se separent fait partie d'un rd point on passe 
             return []
-        if lignes_adj.nature.isin(['Autoroute', 'Quasi-autoroute', 'Route � 2 chauss�es']).any() : #pour ne pas propager une bertelle a uune autoroute
+        if lignes_adj.nature.isin(['Autoroute', 'Quasi-autoroute', 'Route à 2 chaussées']).any() : #pour ne pas propager une bertelle a uune autoroute
             return []
         tronc_tch_lign['tronc_supp']=tronc_tch_lign.apply(lambda x : liste_complete_tronc_base(x['id_ign'],df_lignes,[ligne_depart]), axis=1)
         tronc_tch_lign['long']=tronc_tch_lign.apply(lambda x : fusion_ligne_calc_lg(df_lignes.loc[x['tronc_supp']])[1],axis=1)

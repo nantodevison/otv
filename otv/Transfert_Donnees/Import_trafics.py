@@ -409,6 +409,7 @@ class FIM():
         """     
         def __init__(self, nbjours):
             Exception.__init__(self,f'le fichier comporte moins de 7 jours de mesures. Nb_jours: : {nbjours} ')
+    
     class fimNbBlocDonneesError(Exception):
         """
         Exception levee si le  nb de blocs du fihchier est égal à 1
@@ -587,7 +588,7 @@ class Comptage():
         return dico_corresp
     
     def corresp_old_new_comptag(self,bdd, schema_temp,nom_table_temp,table_linearisation_existante,
-                                schema, table_graph,table_vertex,id_name,liste_lignes):
+                                schema, table_graph,table_vertex,id_name):
         """
         trouver la correspndance entre des comptages gestionnaires nouveau et les données dans la base gti de comptage, pour des 
         comptages n'ayant pas tout a fait les mm pr+abs.
@@ -603,7 +604,6 @@ class Comptage():
             table_graph : string : nom de la table topologie (normalement elle devrait etre issue de table_linearisation_existante
             table_vertex : string : nom de la table des vertex de la topoolgie
             id_name : nom de l'identifiant uniq en integer de la table_graoh
-            liste_lignes : liste des lignes a tester, issue ppv_fila issu de de plus_proche_voisin_comptage_a_inserer
              : 
         """
         
@@ -613,7 +613,9 @@ class Comptage():
             else : return False
 
         ppv_final=self.plus_proche_voisin_comptage_a_inserer(self.df_attr_insert,bdd, schema_temp,nom_table_temp,table_linearisation_existante)
-        dico_corresp=self.troncon_elemntaires(bdd, schema, table_graph,table_vertex,id_name,ppv_final.id_ign_lin.tolist())
+        print('plus proche voisin fait')
+        dico_corresp=self.troncon_elemntaires(bdd, schema, table_graph,table_vertex,ppv_final.id_ign_lin.tolist(),id_name)
+        print('tronc elem fait')
         ppv_final['correspondance']=ppv_final.apply(lambda x : pt_corresp(x['id_ign_lin'],x['id_ign_cpt_new'],dico_corresp),axis=1)
         df_correspondance=ppv_final.loc[(ppv_final['correspondance']) & 
               (~ppv_final['id_comptag_lin'].isin(self.df_attr.id_comptag.tolist())) &
@@ -1104,8 +1106,8 @@ class Comptage_cd47(Comptage):
         self.corresp_nom_id_comptag(bdd,self.df_attr)
         #compârer avec les donnees existantes
         self.comptag_existant_bdd(bdd, 'na_2010_2018_p', dep='47')
-        self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())]
-        self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())]
+        self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         
     def mise_en_forme_insert(self,annee):
         """
@@ -1163,7 +1165,7 @@ class Comptage_cd87(Comptage):
         #associer les fichiers à des voies_pr_absc pour la liste_nom_simple 
         self.dico_voie={}
         for fichier in self.liste_nom_simple :
-            nom_voie=re.sub('( |_)','',re.search('[D][( |_)]{0,1}[0-9]{1,5}([A-O]|[Q-Z]|[a-o]|[q-z]){0,3}',fichier).group(0))
+            nom_voie=O.epurationNomRoute(re.sub('( |_)','',re.search('[D][( |_)]{0,1}[0-9]{1,5}([A-O]|[Q-Z]|[a-o]|[q-z]){0,3}',fichier).group(0))).upper()
             pr=re.search('(PR[( |_)]{0,1})([0-9]{1,2})([+]{0,1})([0-9]{0,3})',re.sub("(!|\()",'+',fichier)).group(2)
             absc=re.search('(PR[( |+)]{0,1})([0-9]{1,2})([+]{0,1})([0-9]{0,3})',re.sub("(!|\(|_|x)",'+',fichier)).group(4)
             if len(absc)<3 :
@@ -1186,7 +1188,7 @@ class Comptage_cd87(Comptage):
                 
         #pour la liste_nom_foireux : 
         for fichier in self.liste_nom_foireux : 
-            nom_voie='D'+re.split('( |_)',fichier)[0]
+            nom_voie=O.epurationNomRoute('D'+re.split('( |_)',fichier)[0]).upper()
             absc, pr=int(re.split('( |_)',fichier)[2][-3:]), int(re.split('( |_)',fichier)[2][:-3])
             if nom_voie in self.dico_voie.keys():
                 for e in self.dico_voie[nom_voie] :
