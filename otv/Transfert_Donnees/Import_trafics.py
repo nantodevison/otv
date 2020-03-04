@@ -463,7 +463,7 @@ class Comptage():
         par le nom_gti, pour pouvoir faire des jointure ensuite
         in : 
             bdd :  string : l'identifiant de la Bdd pour recuperer la table de correspondance
-            df : dataframe des comptage du gest. attention doit contenir l'attribut 'id_comptag'
+            df : dataframe des comptage du gest. attention doit contenir l'attribut 'id_comptag', ene général prendre df_attr
         """
         rqt_corresp_comptg='select * from comptage.corresp_id_comptag'
         with ct.ConnexionBdd(bdd) as c:
@@ -611,6 +611,11 @@ class Comptage():
             if id_ign_cpt_new in dico_corresp[id_ign_lin] : 
                 return True
             else : return False
+           
+        #verif que les colonnes necessaires sont presentes dans le fichier de base
+        flag_col, col_manquante=O.check_colonne_in_table_bdd(bdd, schema, table_graph,*io.list_colonnes_necessaires)
+        if not flag_col : 
+            raise io.ManqueColonneError(col_manquante)
 
         ppv_final=self.plus_proche_voisin_comptage_a_inserer(self.df_attr_insert,bdd, schema_temp,nom_table_temp,table_linearisation_existante)
         print('plus proche voisin fait')
@@ -642,7 +647,7 @@ class Comptage():
             schema : string nom du schema de la table
             table : string : nom de la table
             valeurs_txt : tuple des valeurs pour mise à jour, issu de creer_valeur_txt_update
-            dico_attr_modif : dico de traing avec en clé les nom d'attribut à mettre à jour, en value des noms des attributs source dans la df
+            dico_attr_modif : dico de string avec en clé les nom d'attribut à mettre à jour, en value des noms des attributs source dans la df
         """
         rqt_attr=','.join(f'{attr_b}=v.{attr_f}' for (attr_b,attr_f) in dico_attr_modif.items())
         attr_fichier=','.join(f'{attr_f}' for attr_f in dico_attr_modif.values())
@@ -1154,6 +1159,38 @@ class Comptage_cd87(Comptage):
                   if re.search('[D][( |_)]{0,1}[0-9]{1,5}([A-O]|[Q-Z]|[a-o]|[q-z]){0,3}.*PR[( |_)]{0,1}[0-9]{1,4}',fichier)]
         self.liste_nom_foireux=[fichier for fichier in self.liste_fichier 
                     if re.search('^[0-9]{1,4}([A-Z]|[a-z]){0,3}[( |_)]{0,1}[0-9]{4,5}',fichier) and fichier not in self.liste_nom_simple]
+
+        
+    def verif_fichiers_dico(self):
+        """
+        verifier que les fichiers des listes (cf classer_fichiers_par_nom()) sont tous dans le dico
+        """    
+        #verif sur le nombre de fichier
+        if not len(self.liste_nom_simple)+len(self.liste_nom_foireux)==len([e for a in [b['fichiers'] for a in self.dico_voie.values() for b in a] for e in a]) : 
+            nbfichierManquants=abs((len(self.liste_nom_simple)+len(self.liste_nom_foireux))-len([e for a in [b['fichiers'] for a in self.dico_voie.values() for b in a] for e in a]) )
+            raise self.CptCd87_ManqueFichierDansDicoError(nbfichierManquants)
+        else : print('OK : tous fichiers dans dico')
+        
+    def supprimer_fichiers_doublons(self):
+        """
+        supprimer dans les listes de fichiers presentes dans le dico, les fihciers qui sont les mm
+        """
+        for k,v in self.dico_voie.items() :
+            for e in v :
+                liste_fichiers=e['fichiers']
+                liste_fichier_dbl=[]
+                dico_corresp_fichier_dbl={}
+                for i,f_a_tester in enumerate(liste_fichiers) :
+                    if i!=0:
+                        if f_a_tester in [a for b in dico_corresp_fichier_dbl.values() for a in b] :
+                            continue
+                    for f_test in liste_fichiers :
+                        if f_test!=f_a_tester and filecmp.cmp(os.path.join(self.dossier,f_a_tester),os.path.join(self.dossier,f_test),shallow=True):
+                            liste_fichier_dbl.append(f_test)
+                    dico_corresp_fichier_dbl[f_a_tester]=liste_fichier_dbl
+                    liste_fichier_dbl=[]
+                e['fichiers']=[a for a in dico_corresp_fichier_dbl.keys()] 
+        
         
     def dico_pt_cptg(self):
         """
@@ -1207,38 +1244,151 @@ class Comptage_cd87(Comptage):
         self.verif_fichiers_dico()#verfi que tous fihciers dans dico
         self.supprimer_fichiers_doublons()
         
-        
-    def verif_fichiers_dico(self):
+    def remplir_indicateurs_dico(self):
         """
-        verifier que les fichiers des listes (cf classer_fichiers_par_nom()) sont tous dans le dico
-        """    
-        #verif sur le nombre de fichier
-        if not len(self.liste_nom_simple)+len(self.liste_nom_foireux)==len([e for a in [b['fichiers'] for a in self.dico_voie.values() for b in a] for e in a]) : 
-            nbfichierManquants=abs((len(self.liste_nom_simple)+len(self.liste_nom_foireux))-len([e for a in [b['fichiers'] for a in self.dico_voie.values() for b in a] for e in a]) )
-            raise self.CptCd87_ManqueFichierDansDicoError(nbfichierManquants)
-        else : print('OK : tous fichiers dans dico')
-        
-    def supprimer_fichiers_doublons(self):
+        ajouter eu dico issu de dico_pt_cptg les données de tmja, pc_pl, date_debut, date_fin
         """
-        supprimer dans les listes de fichiers presentes dans le dico, les fihciers qui sont les mm
-        """
-        for k,v in self.dico_voie.items() :
-            for e in v :
-                liste_fichiers=e['fichiers']
-                liste_fichier_dbl=[]
-                dico_corresp_fichier_dbl={}
-                for i,f_a_tester in enumerate(liste_fichiers) :
-                    if i!=0:
-                        if f_a_tester in [a for b in dico_corresp_fichier_dbl.values() for a in b] :
+        for k, v in self.dico_voie.items() : 
+            for i,e in enumerate(v) : 
+                if len(e['fichiers'])==1 : 
+                    print(e['fichiers'][0])
+                    obj_fim=FIM(os.path.join(self.dossier,e['fichiers'][0]))
+                    try : 
+                        obj_fim.resume_indicateurs()
+                    except obj_fim.fim_PasAssezMesureError : 
+                        continue
+                    except Exception as ex : 
+                        print(f"erreur : {ex} \n dans fichier : {e['fichiers'][0]}")
+                    e['tmja'], e['pc_pl'], e['date_debut'], e['date_fin']=obj_fim.tmja, obj_fim.pc_pl, obj_fim.date_debut,obj_fim.date_fin
+                elif len(e['fichiers'])>1 :
+                    list_tmja=[]
+                    list_pc_pl=[]
+                    for f in e['fichiers'] : 
+                        obj_fim=FIM(os.path.join(self.dossier,f))
+                        print(f)
+                        try : 
+                            obj_fim.resume_indicateurs()
+                        except (obj_fim.fim_PasAssezMesureError,obj_fim.fimNbBlocDonneesError)  : 
                             continue
-                    for f_test in liste_fichiers :
-                        if f_test!=f_a_tester and filecmp.cmp(os.path.join(self.dossier,f_a_tester),os.path.join(self.dossier,f_test),shallow=True):
-                            liste_fichier_dbl.append(f_test)
-                    dico_corresp_fichier_dbl[f_a_tester]=liste_fichier_dbl
-                    liste_fichier_dbl=[]
-                e['fichiers']=[a for a in dico_corresp_fichier_dbl.keys()] 
+                        except Exception as ex : 
+                            print(f"erreur : {ex} \n dans fichier : {f}")
+                        list_tmja.append(obj_fim.tmja)
+                        list_pc_pl.append(obj_fim.pc_pl)
+                    e['tmja'], e['pc_pl'], e['date_debut'], e['date_fin']=int(statistics.mean(list_tmja)), round(statistics.mean(list_pc_pl),2),np.NaN, np.NaN
+    
+    def remplir_type_poste_dico(self):
+        """
+        ajouter eu dico issu de remplir_indicateurs_dico le type de poste selon le nb de fichiers ayant servi à calculer le tmja
+        """        
+        for k, v in self.dico_voie.items() : 
+            for e in v : 
+                if len(e['fichiers']) > 4 :
+                    e['type_poste']='permanent'
+                elif 1<len(e['fichiers'])<=4 : 
+                    e['type_poste']='tournant'
+                elif len(e['fichiers'])== 1 :
+                    e['type_poste']='ponctuel'
+                else : 
+                    e['type_poste']='NC'
+    
+    def dataframe_dico(self):
+        """
+        obtenir une df à partir du dico issu de remplir_type_poste_dico
+        """
+        self.df_attr=pd.DataFrame([[k, e['pr'], e['abs'], e['tmja'], e['pc_pl'], e['type_poste'],
+                      e['date_debut'],e['date_fin']] for k, v in self.dico_voie.items() for e in v if 'tmja' in e.keys()], 
+             columns=['route','pr','absc','tmja','pc_pl','type_poste','date_debut','date_fin'])
+        self.df_attr['id_comptag']=self.df_attr.apply(lambda x :'87-'+x['route']+'-'+str(x['pr'])+'+'+str(x['absc']), axis=1)
         
+    def filtrer_periode_ponctuels(self):
+        """
+        filtrer des periodesde vacances
+        """
+        #filtrer pt comptage pendant juillet aout
+        self.df_attr=self.df_attr.loc[self.df_attr.apply(lambda x : x['date_debut'].month not in [7,8] and x['date_fin'].month not in [7,8], 
+                                                         axis=1)].copy()
+    
+    def dataframe_dico_glob(self):
+        """
+        fonction globla de création d'une df
+        """
+        self.remplir_indicateurs_dico()
+        self.remplir_type_poste_dico()
+        self.dataframe_dico()
+        self.filtrer_periode_ponctuels()
+    
+    def classer_comptage_update_insert(self,bdd,table_cpt,schema_cpt,
+                                       schema_temp,nom_table_temp,table_linearisation_existante,
+                                       schema_graph, table_graph,table_vertex,id_name):
+        """
+        classer la df des comptage (self.df_attr) selon le spoints à mettre à jour et ceux à inserer, en prenant en compte les points diont l'id_comptag
+        diffère mais qui sont sur le mm troncon elemnraire
+        in :
+            bdd :string :id de la bdd
+            table_cpt : string : nom de la table dans la bdd contenar les cpt
+            schema_cpt :string : nom du schma contenant la table
+            schema_temp : string : nom du schema en bdd opur calcul geom, cf localiser_comptage_a_inserer
+            nom_table_temp : string : nom de latable temporaire en bdd opur calcul geom, cf localiser_comptage_a_inserer
+            table_linearisation_existante : string : schema-qualified table de linearisation de reference cf donnees_existantes
+            schema_graph : string : nom du schema contenant la table qui sert de topologie
+            table_graph : string : nom de la table topologie (normalement elle devrait etre issue de table_linearisation_existante
+            table_vertex : string : nom de la table des vertex de la topoolgie
+            id_name : nom de l'identifiant uniq en integer de la table_graoh
+        """
+        #fare le tri avec les comptages existants : 
+        #recuperer les compmtages existants
+        self.comptag_existant_bdd(bdd, table_cpt, schema=schema_cpt,dep='87', type_poste=False)
+        self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        #obtenir une cle de correspondace pour les comptages tournants et permanents
+        df_correspondance=self.corresp_old_new_comptag(bdd, schema_temp,nom_table_temp,table_linearisation_existante,
+                                        schema_graph, table_graph,table_vertex,id_name)
+        #passer la df de correspondance dans le table corresp_id_comptage
+        self.insert_bdd(bdd, schema_cpt, 'corresp_id_comptag', 
+               df_correspondance.rename(columns={'id_comptag_lin':'id_gti','id_comptag':'id_gest'})[['id_gest','id_gti']])
+        #faire la correspondance entre les noms de comptage
+        self.corresp_nom_id_comptag(bdd,self.df_attr)
+        #recalculer les insert et update
+        self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+    
+    def update_bdd_d87(self,bdd,table_cpt,schema_cpt):
+        """
+        mettre à jour la bdd avec df_attr_update, en ayant au préalbale traite les NaN
+        """
+        #mettre en forme pour update
+        self.df_attr_update['obs']=self.df_attr_update.apply(lambda x : x['date_debut'].strftime('%d/%m/%Y')+'-'+ x['date_fin'].strftime('%d/%m/%Y') if not pd.isnull(x['date_debut']) else '', axis=1)
+        self.df_attr_update.loc[self.df_attr_update.pc_pl.isna(),'obs']='pc_pl inconnu'
+        self.df_attr_update.loc[self.df_attr_update.pc_pl.isna(),'pc_pl']=-99
+        #preparer update
+        valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update, ['id_comptag','tmja','pc_pl','obs'])
+        dico_attr={'tmja_2018':'tmja','pc_pl_2018':'pc_pl','obs_2018':'obs'}
+        #update
+        self.update_bdd(bdd, schema_cpt, table_cpt, valeurs_txt,dico_attr)
         
+    def insert_bdd_d87(self,bdd,table_cpt,schema_cpt):
+        """
+        inserer les point df_attr_insert qui n'était pas à mettre à jour
+        """
+        #mettre en forme le insert
+        dbl=self.df_attr_insert.loc[self.df_attr_insert.duplicated('id_comptag', False)].copy()
+        ss_dbl=self.df_attr_insert.loc[~self.df_attr_insert.index.isin(dbl.index.tolist())].copy()
+        dbl=dbl.dropna()
+        dbl_traite=dbl.loc[dbl.tmja==dbl.groupby('id_comptag').tmja.transform(max)].drop_duplicates().copy()
+        self.df_attr_insert=pd.concat([dbl_traite,ss_dbl], axis=0, sort=False)
+        self.df_attr_insert.pc_pl.fillna(-99, inplace=True)
+        annee='2018'
+        self.df_attr_insert['dep']='87'
+        self.df_attr_insert['reseau']='RD'
+        self.df_attr_insert['gestionnai']='CD87'
+        self.df_attr_insert['concession']='N'
+        self.df_attr_insert['obs']=self.df_attr_insert.apply(lambda x : f"""nouveau_point,{x['date_debut'].strftime("%d/%m/%Y")}-{x['date_fin'].strftime("%d/%m/%Y")}""" if not (pd.isnull(x['date_debut']) and  pd.isnull(x['date_fin'])) else None,axis=1)
+        self.df_attr_insert.rename(columns={'absc' : 'abs', 'tmja':'tmja_'+annee,'pc_pl':'pc_pl_'+annee,'obs':'obs_'+annee},inplace=True)
+        self.df_attr_insert.drop(['date_debut','date_fin','route'],axis=1,inplace=True)
+        self.insert_bdd(self,bdd,table_cpt,schema_cpt, self.df_attr_insert)
+        #mettre à jour la geom
+        self.maj_geom(bdd, schema_cpt, table_cpt, dep='87')
+    
     class CptCd87_ManqueFichierDansDicoError(Exception):  
         """
         Exception levee si des fichiers des listes ne sont pas presents dans le dico

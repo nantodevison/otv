@@ -14,6 +14,9 @@ from shapely.wkt import loads
 from shapely.ops import linemerge, unary_union
 import Outils
 
+#liste des colonnes necessaires pour aire le traotement
+list_colonnes_necessaires=['codevoie_d','id_ign','source','target','numero','id','sens','geom','nature']
+
 def import_donnes_base(bdd, schema, table_graph,table_vertex ):
     """
     OUvrir une connexion vers le servuer de reference et recuperer les donn�es
@@ -25,6 +28,12 @@ def import_donnes_base(bdd, schema, table_graph,table_vertex ):
     en sortie : 
         df : dataframe telle que telcharg�es depuis la bdd
     """
+    #avant tout verf que toute les colonnes necessaires au traitements sont presents
+    flag_col, col_manquante=Outils.check_colonne_in_table_bdd(bdd, schema, table_graph,*list_colonnes_necessaires)
+    if not flag_col : 
+        raise ManqueColonneError(col_manquante)
+        
+    
     with ct.ConnexionBdd(bdd) as c : 
         requete1=f"""with jointure as (
             select t.*, v1.cnt nb_intrsct_src, st_astext(v1.the_geom) as src_geom, v2.cnt as nb_intrsct_tgt, st_astext(v2.the_geom) as tgt_geom 
@@ -157,3 +166,10 @@ def tronc_tch(ids, df_lignes) :
         df_tronc_tch=df_tronc_tch.merge(df_lignes[['numero','codevoie_d',df_lignes.geometry.name]], left_on='id_ign', right_index=True)
         df_tronc_tch['longueur']=df_tronc_tch[df_lignes.geometry.name].apply(lambda x : x.length)
     return df_tronc_tch
+
+class ManqueColonneError(Exception):  
+        """
+        Exception levee si il manque une des colonnes necessaire
+        """     
+        def __init__(self, listeColonneManquante):
+            Exception.__init__(self,f'il manque les colonnes {listeColonneManquante} dans la table de départ')
