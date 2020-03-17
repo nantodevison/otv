@@ -633,7 +633,7 @@ class Comptage():
         a partir d'une df cree un tuple selon les vaelur que l'on va vouloir inserer dans la Bdd
         en entree : 
             df: df des donnees de base
-            liste_attr : liste des attributs que l'on souhaite transferer dans la bdd
+            liste_attr : liste des attributs que l'on souhaite transferer dans la bdd (avec id_comptag)
         """
         valeurs_txt=str(tuple([ tuple([elem[i] for i in range(len(liste_attr))]) 
                                for elem in zip(*[df[a].tolist() for a in liste_attr])]))[1:-1]
@@ -1397,16 +1397,170 @@ class Comptage_cd87(Comptage):
             Exception.__init__(self,f'il manque {nbfichierManquants} fichiers présents dans liste_nom_simple ou liste_nom_foireux dans le dico_voie')
 
 
+class Comptage_cd16(Comptage):
+    """
+    les données fournies par le CD16 sont des fichiers excel pour les compteurs permanents, et des fichiers FIM pour les comptages temporaires.
+    il y a aussi des données sur PIGMA qu'il a tout prix télécharger, car les données FIM ne sont géolocalisable que par PIGMA
+    en 2018 on ne traite pas les FIM mais ils permettront d'obtenir des données horaires plus tard.
+    Normalement dans ce dept on a que des comptage en update
+        fichier_b15_perm : nom complet du fichier des comptages permanents
+        fichier_cpt_lgn : nom complet du fihcier de ligne contenant tous les comptages issu de pigma
+        fichier_station_cpt : nom complet du fihcier de points contenant tous les points comptages issu de pigma
+    """
+    def __init__(self,fichier_b15_perm,fichier_cpt_lgn,fichier_station_cpt,annee):
+        self.fichier_b15_perm=fichier_b15_perm
+        self.fichier_cpt_lgn=fichier_cpt_lgn
+        self.fichier_station_cpt=fichier_station_cpt
+        self.annee=annee
+        
+    def cpt_perm_xls(self):
+        """
+        mettre en forme les comptages permannets issu des fichiers de comptages au format xls B15 de route plus
+        """
+        donnees_brutes=pd.read_excel(self.fichier_b15_perm, skiprows=8)
+        donnees_filtrees=donnees_brutes[[a for a in donnees_brutes.columns if not isinstance(a, int) and 'Unnamed' not in a]].copy()
+        # traiter et mettre en forme
+        tmja=donnees_filtrees.loc[donnees_filtrees .apply(lambda x : x['Identif. Local.'][-2:]==' 3', axis=1)].copy()
+        tmja['pr']=tmja['PR Distance'].apply(lambda x : int(x))
+        tmja['absc']=tmja['PR Distance'].apply(lambda x : int((str(x)+'0'*(4-len(str(x).split('.')[1]))).split('.')[1]))
+        tmja['route']=tmja['Route'].apply(lambda x : O.epurationNomRoute(x[3:]))
+        tmja['id_comptag']=tmja.apply(lambda x : f"16-{x['route']}-{x['pr']}+{x['absc']}", axis=1)
+        tmja_final=tmja[['pr', 'absc', 'route', 'id_comptag', 'Année']].loc[(tmja['Année']!=' ') & (~tmja['Année'].isna())].rename(columns={'Année':'tmja'})
+        index_tmja=tmja.index.tolist()
+        index_ppl=[a+1 for a in index_tmja]
+        ppl=donnees_filtrees.loc[index_ppl].copy()
+        ppl['pr']=ppl['PR Distance'].apply(lambda x : int(x))
+        ppl['absc']=ppl['PR Distance'].apply(lambda x : int((str(x)+'0'*(4-len(str(x).split('.')[1]))).split('.')[1]))
+        ppl['route']=ppl['Route'].apply(lambda x : O.epurationNomRoute(x[3:]))
+        ppl['id_comptag']=ppl.apply(lambda x : f"16-{x['route']}-{x['pr']}+{x['absc']}", axis=1)
+        ppl['Année']=ppl['Année'].apply(lambda x : round(float(x),2) if x!=' ' else np.NaN)
+        ppl_final=ppl[['pr', 'absc', 'route', 'id_comptag', 'Année']].rename(columns={'Année':'pc_pl'})
+        df_trafic=tmja_final.merge(ppl_final[['pc_pl','id_comptag']], on='id_comptag')
+        #filtrer selon comm CD16
+        di_comptag_filtre_cd16=('16-D103-1+17','16-D674-10+28','16-D674-22+660','16-D699-12-490','16-D737-22+93','16-D910-23+821','16-D939-1+575','16-D939-15+445','16-D939-23+778','16-D951-36+15','16-D1000-0+369','16-D1000-2+920',
+        '16-D1000-13+700','16-D1000-15+845', '16-D1000-16+350')
+        df_compt_perm=df_trafic.loc[~df_trafic.id_comptag.isin(di_comptag_filtre_cd16)].copy()
+        df_compt_perm['type_poste']='Per'
+        df_compt_perm['src']='tableau B15'
+        return df_compt_perm
+    
+    def cpt_tmp_pigma(self):
+        """
+        mettre en forme les comptages temporaires issu de pigma
+        """
+        donnees_brutes_tmp_lgn=gp.read_file(self.fichier_cpt_lgn)
+        donnees_brutes_tmp_pt=gp.read_file(self.fichier_station_cpt)
+        
+        donnees_brutes_tmp=donnees_brutes_tmp_pt[['AXE','PLOD','ABSD','SECTION']].merge(donnees_brutes_tmp_lgn[['AXE','TRAFIC_PL','TMJA','ANNEE_COMP', 'PRC','ABC','TYPE_COMPT']], 
+                                                                                        left_on=['AXE','PLOD','ABSD'],right_on=['AXE','PRC','ABC'])
+        donnees_tmp_liees=donnees_brutes_tmp.loc[(donnees_brutes_tmp['ANNEE_COMP']==self.annee) & (donnees_brutes_tmp['TYPE_COMPT']!='Per')].copy()
+        donnees_tmp_filtrees=donnees_tmp_liees.rename(columns={'AXE':'route','PRC':'pr','ABC':'absc','TMJA':'tmja','TRAFIC_PL':'pc_pl','TYPE_COMPT':'type_poste'}).drop(['PLOD','ABSD','SECTION','ANNEE_COMP'], axis=1)
+        donnees_tmp_filtrees['id_comptag']=donnees_tmp_filtrees.apply(lambda x : f"16-{x['route']}-{x['pr']}+{x['absc']}", axis=1)
+        donnees_tmp_filtrees['src']='sectionnement'
+        return donnees_tmp_filtrees
+    
+    def comptage_forme(self):
+        """
+        fusion des données de cpt_tmp_pigma() et cpt_perm_xls()
+        """
+        self.df_attr=pd.concat([self.cpt_perm_xls(),self.cpt_tmp_pigma()],sort=False, axis=0)
 
+    def classer_comptage_update_insert(self,bdd,table_cpt):
+        """
+        faire le tri entre les comptages à mettre a jour et ceux à inserer. Pour arppel dans le 16 normalement on a que du update
+        in :
+            bdd : string, descriptf bdd (cf module Connexion_transfert de Outils
+            table_cpt : string : nom e la table des compatges que l'on va chercher a modifer
+        """
+        self.comptag_existant_bdd(bdd, table_cpt, dep='16')
+        self.corresp_nom_id_comptag(bdd, self.df_attr)
+        self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
 
+    def update_bdd_16(self,bdd, schema, table):
+        """
+        mettre à jour la table des comptages dans le 16
+        """
+        valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag','tmja','pc_pl','src'])
+        dico_attr_modif={'tmja_2018':'tmja', 'pc_pl_2018':'pc_pl','src_2018':'src'}
+        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)
 
+class Comptage_cd86(Comptage):
+    """
+    les données fournies par le CD86 sont des fichiers excel pour les compteurs permanents et secondaires,
+    il y a un petit pb sur les compteurs permanents entre la donnees pr+abs chez nous et la leur dans le tableau, donc il faut la premiere fois tout passer dans la table de correspondance
+        fichier_perm : nom complet du fichier des comptages permanents
+        fichier_secondaire : nom complet du fihcier des comptages secondaires
+    """
+    def __init__(self,fichier_perm,fichier_secondaire):
+        self.fichier_perm=fichier_perm
+        self.fichier_secondaire=fichier_secondaire
+    
+    def ouvrir_cpt_perm_xls(self):
+        """
+        mettre en forme les comptages permannets
+        """
+        donnees_brutes_perm=pd.read_excel(self.fichier_perm)
+        donnees_brutes_perm['route']=donnees_brutes_perm['AXE'].apply(lambda x : O.epurationNomRoute(x[3:]))
+        donnees_brutes_perm['pr']=donnees_brutes_perm.apply(lambda x : int(x['CUMULD']//1000) if not pd.isnull(x['CUMULD']) else x['PLOD'], axis=1)
+        donnees_brutes_perm['absc']=donnees_brutes_perm.apply(lambda x : int(x['CUMULD']%1000) if not pd.isnull(x['CUMULD']) else 0, axis=1)
+        donnees_brutes_perm['id_gest']=donnees_brutes_perm.apply(lambda x : f"86-{x['route']}-{x['pr']}+{x['absc']}", axis=1)
+        return donnees_brutes_perm
 
+    def corresp_perm(self, bdd, table):
+        """
+        creer le dico de corresp des compt perm fouri en 2018 avec ceux existants
+        """
+        self.comptag_existant_bdd(bdd, table, schema='comptage',dep='86')
+        corresp=self.existant[['id_comptag','route','pr','abs']].merge(self.ouvrir_cpt_perm_xls(), left_on=['route','pr'], right_on=['route','PLOD'], how='right').sort_values('id_comptag')
+        corresp['id_comptag']=corresp.apply(lambda x : x['id_comptag'] if not pd.isnull(x['id_comptag']) else f"86-{x['route']}-{x['pr_y']}+{x['absc']}", axis=1)
+        #le dico de correspondance à inserer dans corresp_id_comptage
+        corresp_id_comptag=corresp[['id_comptag', 'id_gest']].loc[corresp['id_comptag']!=corresp['id_gest']].rename(columns={'id_comptag':'id_gti'})
+        return corresp_id_comptag
+    
+    def forme_cpt_perm_xls(self):
+        #la future df_attr, avec que les perm
+        donnees_brutes_perm=self.ouvrir_cpt_perm_xls()
+        df_cpt_perm=donnees_brutes_perm[['id_gest','TMJA','POURCENTAGE_PL','TYPE_POSTE','route','pr','absc']].rename(columns={'id_gest':'id_comptag','TMJA':'tmja','POURCENTAGE_PL':'pc_pl','TYPE_POSTE':'type_poste'})
+        df_cpt_perm['type_poste']='permanent'
+        return df_cpt_perm
 
-
-
-
-
-
-
-
-
+    def cpt_second_xls(self):
+        """
+        mettre en forme les comptages permannets
+        """  
+        donnees_brutes_second=pd.read_excel(self.fichier_secondaire)
+        donnees_brutes_second['route']=donnees_brutes_second.apply(lambda x : 'D'+str(x['RD']).strip(), axis=1)
+        donnees_brutes_second['pr']=donnees_brutes_second.apply(lambda x : re.split('(\.|\+)',str(x['PR']))[0], axis=1)
+        donnees_brutes_second['absc']=donnees_brutes_second.apply(lambda x : int(re.split('(\.|\+|,)',str(x['PR']))[2]+'0'*(3-len(re.split('(\.|\+|,)',str(x['PR']))[2]))) if re.search('(\.|\+)',str(x['PR'])) else 0, axis=1)
+        donnees_brutes_second['id_comptag']=donnees_brutes_second.apply(lambda x : f"86-{x['route']}-{x['pr']}+{x['absc']}", axis=1)
+        donnees_brutes_second['type_poste']='tournant'
+        donnees_brutes_second['% PL']=donnees_brutes_second['% PL']*100
+        df_cpt_second=donnees_brutes_second.rename(columns={'TV':'tmja','% PL':'pc_pl'}).drop(['LIEUX', 'RD','PR','n° de compteur','PL'], axis=1)     
+        return  df_cpt_second
+    
+    def comptage_forme(self) : 
+        """
+        creer le df_attr a partir des donnees secondaire et permanent
+        """
+        self.df_attr=pd.concat([self.forme_cpt_perm_xls(),self.cpt_second_xls()], axis=0, sort=False)
+        self.df_attr=self.df_attr.loc[~self.df_attr.isna().any(axis=1)].copy()
+        self.df_attr['src']='tableur'
+    
+    
+    def classer_comptage_update_insert(self,bdd, table_cpt):
+        self.comptag_existant_bdd(bdd, table_cpt, dep='86')
+        self.corresp_nom_id_comptag(bdd, self.df_attr)
+        self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        
+    def update_bdd_86(self,bdd, schema, table):
+        """
+        mettre à jour la table des comptages dans le 16
+        """
+        valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag','tmja','pc_pl','src'])
+        dico_attr_modif={'tmja_2018':'tmja', 'pc_pl_2018':'pc_pl','src_2018':'src'}
+        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)    
+        
+        
+        
