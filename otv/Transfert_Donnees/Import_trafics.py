@@ -11,6 +11,8 @@ import pandas as pd
 import geopandas as gp
 import numpy as np
 import os, re, csv,statistics,filecmp
+from geoalchemy2 import Geometry,WKTElement
+from shapely.geometry import Point
 
 import Connexion_Transfert as ct
 import Outils as O
@@ -459,8 +461,8 @@ class Comptage():
     
     def corresp_nom_id_comptag(self,bdd,df):
         """
-        pour les id_comptag dont on sait que les noms gti et gestionnaire diffèrent mais que ce sont les memes, on remplace le nom gest
-        par le nom_gti, pour pouvoir faire des jointure ensuite
+        pour les id_comptag dont on sait que les noms gti et gestionnaire diffèrent mais que ce sont les memes (cf table comptage.corresp_id_comptag), 
+        on remplace le nom gest par le nom_gti, pour pouvoir faire des jointure ensuite
         in : 
             bdd :  string : l'identifiant de la Bdd pour recuperer la table de correspondance
             df : dataframe des comptage du gest. attention doit contenir l'attribut 'id_comptag', ene général prendre df_attr
@@ -595,6 +597,7 @@ class Comptage():
         attention, traitement de plusieurs heures possible.
         Attention, si le comptage de la base linearise existante est aussi dans les données de comptage, en plus du nouveau point, alors on le conserve dans les points
         a inserer
+        ON PEUT NE FAIRE LA CORRESPONDANCE QU'AVEC LES IMPORTANCES 1,2,3,4 pour les comptages perm et tourn, mais pourça il faut recreer un graph ou mettre a jour l'existant
         in : 
             bdd : string : id de la base a laquelle se connecter (cf module id_connexion)
             schema_temp : string : nom du schema en bdd opur calcul geom, cf localiser_comptage_a_inserer
@@ -647,7 +650,8 @@ class Comptage():
             schema : string nom du schema de la table
             table : string : nom de la table
             valeurs_txt : tuple des valeurs pour mise à jour, issu de creer_valeur_txt_update
-            dico_attr_modif : dico de string avec en clé les nom d'attribut à mettre à jour, en value des noms des attributs source dans la df
+            dico_attr_modif : dico de string avec en clé les nom d'attribut à mettre à jour, en value des noms des attributs source dans la df (ne pas mettre id_comptag,
+                            garder les attributsdans l'ordre issu de creer_valeur_txt_update)
         """
         rqt_attr=','.join(f'{attr_b}=v.{attr_f}' for (attr_b,attr_f) in dico_attr_modif.items())
         attr_fichier=','.join(f'{attr_f}' for attr_f in dico_attr_modif.values())
@@ -663,10 +667,16 @@ class Comptage():
             schema : string nom du schema de la table
             table : string : nom de la table
         """
-        with ct.ConnexionBdd(bdd) as c:
-            df.to_sql(table,c.sqlAlchemyConn,schema=schema,if_exists='append', index=False )
-
-
+        if isinstance(df, gp.GeoDataFrame) : 
+            if df.geometry.name!='geom':
+                df=df.rename(columns={df.geometry.name : 'geom'}).set_geometry('geom')
+                df.geom=df.apply(lambda x : WKTElement(x['geom'].wkt, srid=2154), axis=1)
+            with ct.ConnexionBdd(bdd) as c:
+                df.to_sql(table,c.sqlAlchemyConn,schema=schema,if_exists='append', index=False,
+                          dtype={'geom': Geometry('POINT', srid=2154)} )
+        elif isinstance(df, pd.DataFrame) : 
+            with ct.ConnexionBdd(bdd) as c:
+                df.to_sql(table,c.sqlAlchemyConn,schema=schema,if_exists='append', index=False )
             
 class Comptage_cd17(Comptage) :
     """
@@ -1560,7 +1570,103 @@ class Comptage_cd86(Comptage):
         """
         valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag','tmja','pc_pl','src'])
         dico_attr_modif={'tmja_2018':'tmja', 'pc_pl_2018':'pc_pl','src_2018':'src'}
-        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)    
+        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)   
         
+class Comptage_cd24(Comptage):
+    """
+    pour le moment on ne traite que les cpt perm de 2018 issus de D:\temp\otv\Donnees_source\CD24\2018_CD24_trafic.csv
+    """ 
+    def __init__(self,fichier_perm):
+        Comptage.__init__(self, fichier_perm)
+    
+    def cpt_perm_csv(self):
+        donnees_brutes=self.ouvrir_csv()
+        donnees_traitees=donnees_brutes.loc[~donnees_brutes.MJA.isna()].copy()
+        donnees_traitees=donnees_traitees.loc[donnees_traitees['Sens']=='3'].rename(columns={'MJA' : 'tmja', 'MJAPPL':'pc_pl'}).copy()
+        donnees_traitees['id_comptag']=donnees_traitees.apply(lambda x : f"24-{x['Data']}-{x['PRC']}+{x['ABC']}", axis=1)
+        donnees_traitees['Latitude']=donnees_traitees.Latitude.apply(lambda x : float(x.replace(',','.')))
+        donnees_traitees['Longitude']=donnees_traitees.Longitude.apply(lambda x : float(x.replace(',','.')))
+        donnees_traitees['tmja']=donnees_traitees.tmja.apply(lambda x : int(x))
+        donnees_traitees['pc_pl']=donnees_traitees.pc_pl.apply(lambda x : float(x.replace(',','.')))
+        donnees_traitees.rename(columns={'Data':'route', 'PRC':'pr', 'ABC':'abs'}, inplace=True)
+        gdf_finale = gp.GeoDataFrame(donnees_traitees, geometry=gp.points_from_xy(donnees_traitees.Longitude, donnees_traitees.Latitude), crs={'init': 'epsg:4326'})
+        gdf_finale=gdf_finale.to_crs({'init': 'epsg:2154'})
+        gdf_finale['type_poste']='permanent'
+        gdf_finale['geometry']=gdf_finale.apply(lambda x : None if x['Latitude']==0 else x['geometry'], axis=1)
+        gdf_finale['src']='tableau cpt permanent 2018'
+        return gdf_finale
+    
+    def comptage_forme(self):
+        donnees_finales=self.cpt_perm_csv()
+        donnees_finales=donnees_finales[['id_comptag', 'tmja', 'pc_pl','route', 'pr', 'abs','src', 'geometry', 'type_poste']].copy()
+        self.df_attr=donnees_finales
         
+    def classer_comptage_update_insert(self,bdd, table_cpt):
+        """
+        attention, on aurait pu ajouter un check des comptages deja existant et rechercher les correspondances comme dans le 87,
+        mais les données PR de l'IGN sont trop pourries dans ce dept, dc corresp faite à la main en amont
+        """
+        self.corresp_nom_id_comptag(bdd,self.df_attr)
+        self.comptag_existant_bdd(bdd, table_cpt, dep='24')
+        self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        """
+        #on peut tenter un dico de correspondance, mais les données PR de l'IGN sont trop fausses pour faire confaince
+        dico_corresp=cd24.corresp_old_new_comptag('local_otv_station_gti', 'public','cd24_perm', 'lineaire.traf2017_bdt24_ed17_l',
+             'referentiel','troncon_route_bdt24_ed17_l','troncon_route_bdt24_ed17_l_vertices_pgr','id')
+        """
         
+    def update_bdd_24(self,bdd, schema, table):
+        valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag','tmja','pc_pl','src'])
+        dico_attr_modif={'tmja_2018':'tmja', 'pc_pl_2018':'pc_pl','src_2018':'src'}
+        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif) 
+    
+    def insert_bdd_24(self,bdd, schema, table):
+        self.df_attr_insert.loc[self.df_attr_insert['id_comptag']=='24-D939-4+610', 'geometry']=Point(517579.400,6458283.399)
+        self.df_attr_insert.loc[self.df_attr_insert['id_comptag']=='24-D939-4+610', 'obs_geo']='mano'
+        self.df_attr_insert.loc[self.df_attr_insert['id_comptag']=='24-D939-4+610', 'src_geo']='tableau perm 2018'
+        self.df_attr_insert.loc[self.df_attr_insert['id_comptag']=='24-D710-32+270', 'src_geo']='tableau perm 2018'
+        self.df_attr_insert['dep']='24'
+        self.df_attr_insert['reseau']='RD'
+        self.df_attr_insert['gestionnai']='CD24'
+        self.df_attr_insert['concession']='N'
+        self.df_attr_insert=self.df_attr_insert.rename(columns={'tmja':'tmja_2018', 'pc_pl':'pc_pl_2018','src':'src_2018'})
+        self.df_attr_insert['x_l93']=self.df_attr_insert.apply(lambda x : round(x['geometry'].x,3), axis=1)
+        self.df_attr_insert['y_l93']=self.df_attr_insert.apply(lambda x : round(x['geometry'].y,3), axis=1)
+        self.insert_bdd(bdd, schema, table,self.df_attr_insert)
+    
+class Comptage_vinci(Comptage):
+    """
+    inserer les donnees de comptage de Vinci
+    POur info il y a une table de correspondance entre les donnees fournies par Vinci et les notre dans la base otv, scham source table asf_otv_tmja_2017
+    """  
+    def __init__(self,fichier_perm):
+        self.fichier_perm=fichier_perm
+        self.comptage_forme()
+    
+    def ouvrir_fichier(self):
+        donnees_brutes=pd.read_excel(r'D:\temp\otv\Donnees_source\VINCI\2018_comptage_vitesse_moyenne_VINCI.xlsx').rename(columns={'(*) PR début':'pr_deb'})
+        donnees_brutes=donnees_brutes.loc[~donnees_brutes.pr_deb.isna()].copy()
+        return donnees_brutes
+    
+    def importer_donnees_correspondance(self):
+        with ct.ConnexionBdd('local_otv_station_gti') as c :
+            rqt=f"""select * from source.asf_otv_tmja_2017"""
+            base=pd.read_sql(rqt, c.sqlAlchemyConn).rename(columns={'(*) PR début':'pr_deb'})
+            base=base.loc[~base.pr_deb.isna()].copy()
+            base['pr_deb']=base.pr_deb.apply(lambda x : float(x.strip()))
+        return base
+    
+    def comptage_forme(self):
+        donnees_brutes=self.ouvrir_fichier()
+        base=self.importer_donnees_correspondance() 
+        self.df_attr=donnees_brutes[['pr_deb','TMJA 2018','Pc PL 2018']].merge(base[['pr_deb','ID']], on='pr_deb').rename(columns={'ID':'id_comptag','TMJA 2018':'tmja','Pc PL 2018':'pc_pl'})
+        self.df_attr['pc_pl']=self.df_attr.pc_pl.apply(lambda x : round(x,2))
+        self.df_attr['src']='tableur'
+        
+    def update_bdd_Vinci(self,bdd, schema, table):
+        val_txt=self.creer_valeur_txt_update(self.df_attr, ['id_comptag','tmja','pc_pl', 'src'])
+        self.update_bdd(bdd, schema, table, val_txt,{'tmja_2018':'tmja','pc_pl_2018':'pc_pl', 'src_2018':'src'})
+        
+    
+    
