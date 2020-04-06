@@ -21,61 +21,6 @@ from Base_BdTopo import Rond_points as rp
 from Base_BdTopo import Regroupement_correspondance as rc
 
 
-def cd40():
-    """
-    fonction faite vie fait pour transférer les données stockée dans un répertoire vers la bdd OTV sur la station GTI
-    il faudrait ajouter les paramètres d'année, de dossier / fichiers source au moins
-    """
-    #lire les fichiers
-    for chemin, dossier, files in os.walk(r"Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA\Doc_travail\Donnees_source\CD40\Trafics 2018 Landes\comptage_B152") :
-        for fichier in files : 
-            if fichier.endswith('.xls') :
-                path_donnees=os.path.join(chemin,fichier)
-                df_fichier_xls=df=pd.read_excel(path_donnees,headers=None, skiprows=1) #les 1eres lignes mettent le bordel dans la definition des colonnes
-                
-                #epurer les donn�es
-                df2=df.dropna(how='all').dropna(axis=1,how='all')
-                
-                #d�finir les variables globales
-                compteur='040.'+df2.loc[0,'Unnamed: 125'].split(' ')[1]
-                vma=int(df2.loc[4,'Unnamed: 0'].split(' : ')[1][:2])
-                voie=O.epurationNomRoute(df2.loc[4,'Unnamed: 141'].split(' ')[1])
-                pr,absice=df2.loc[4,'Unnamed: 125'].split(' ')[1],df2.loc[4,'Unnamed: 125'].split(' ')[2]
-                dep,gest, reseau,concession,type_poste,annee_cpt='40','CD40','D','N','permanent','2018'
-                id_comptag=dep+'-'+voie+'-'+pr+'+'+absice
-                tmja=df2.loc[18,'Unnamed: 107']
-                pc_pl=df2.loc[19,'Unnamed: 107']
-                
-                #recuperer les donnees mensuelles
-                donnees=df2.loc[[7,18,19],['Unnamed: 13', 'Unnamed: 23', 'Unnamed: 30',
-                       'Unnamed: 37', 'Unnamed: 44', 'Unnamed: 51', 'Unnamed: 58',
-                       'Unnamed: 65', 'Unnamed: 72', 'Unnamed: 79', 'Unnamed: 86',
-                       'Unnamed: 93', 'Unnamed: 100', 'Unnamed: 107']].dropna(axis=1,how='all')
-                    #renommer les colonnes
-                donnees.columns=[element.replace('é','e').replace('.','').lower() for element in list(donnees.loc[7])]
-                    #remplacer l'annee en string et ne conserver 
-                donnees=donnees.drop(7).replace(['D.Moy.Jour', '% PL'],['tmja','pc_pl'])
-                    #inserer les valeusr qui vont bien
-                donnees['annee']='2018'
-                donnees['id_comptag']=id_comptag
-                    #r�arranger les colonnes
-                cols=donnees.columns.tolist()
-                cols_arrangees=cols[-1:]+cols[:1]+cols[-2:-1]+cols[1:-2]
-                donnees=donnees[cols_arrangees]
-                donnees.columns=['id_comptag','donnees_type','annee','janv','fevr','mars','avri','mai','juin','juil','aout','sept','octo','nove','dece']
-                
-                #inserer les donn�es
-                with ct.ConnexionBdd('gti_otv') as c : 
-                    c.curs.execute("select distinct id_comptag from comptage.na_2010_2018_p")
-                    if id_comptag in [record[0] for record in c.curs] :
-                        print(f'update {chemin+fichier}')
-                        c.curs.execute("update comptage.na_2010_2018_p set tmja_2018=%s, pc_pl_2018=%s, id_cpt=%s, ann_cpt=%s where id_comptag=%s",(tmja, pc_pl,compteur,annee_cpt,id_comptag))
-                    else : 
-                        c.curs.execute("insert into comptage.na_2010_2018_p (id_comptag, dep, route, pr, abs, reseau, gestionnai, concession,type_poste, id_cpt, ann_cpt, tmja_2018, pc_pl_2018) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",(id_comptag,dep,voie,pr,absice,reseau,gest,concession,type_poste,compteur,annee_cpt, tmja, pc_pl))
-                        print(f'insert {chemin+fichier}')                    
-                    c.connexionPsy.commit()
-                    donnees.to_sql('na_2010_2018_mensuel', c.sqlAlchemyConn,schema='comptage',if_exists='append',index=False)
-
 def cd19(fichier=r'Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA\Doc_travail\Donnees_source\CD19\2018_Recensement_trafic.xls'):    
     """
     je le met en bloc mais ça meriterait d'etre passe en classe comme le 17
@@ -926,7 +871,179 @@ class Comptage_cd17(Comptage) :
         """     
         def __init__(self, type_fichier):
             Exception.__init__(self,f'type de fichier "{type_fichier}" non présent dans {Comptage_cd17.liste_type_fichier} ')
+
+class Comptage_cd19(Comptage):
+    """
+    Dans le 19 pour le moment on qu'un simple fichier xls des comptages perm ou tourn
+    """
+    def __init__(self,fichier,annee) :
+        Comptage.__init__(self, fichier)
+        self.annee=annee
+    
+    def comptage_forme(self):
+        
+        def id_comptage(route,pr) : 
+            route=str(route).strip()
+            pr=str(int(pr.split('+')[0]))+'+0' if int(pr.split('+')[1])==0 else str(int(pr.split('+')[0]))+'+'+str(int(pr.split('+')[1]))
+            return '19-D'+route+'-'+pr
+        
+        donnees_brutes=pd.read_excel(self.fichier, skiprows=6)
+        donnees_filtrees=donnees_brutes.rename(columns={' RD':'route','P.R.':'pr',self.annee:f'ann_{self.annee}'})[['route','pr',f'ann_{self.annee}']]
+        donnees_filtrees=donnees_filtrees.loc[~donnees_filtrees.pr.isna()].copy()
+        donnees_filtrees['route']=donnees_filtrees.route.apply(lambda x : x.strip().replace(' ','') if isinstance(x,str) else x)
+        donnees_filtrees['id_comptag']=donnees_filtrees.apply(lambda x : id_comptage(x['route'],x['pr']), axis=1)
+        donnees_filtrees['tmja']=donnees_filtrees[f'ann_{self.annee}'].apply(lambda x : 0 if (pd.isna(x) or x=='x') else int(x.split('\n')[0]))
+        donnees_filtrees['pc_pl']=donnees_filtrees[f'ann_{self.annee}'].apply(lambda x : 0 if (pd.isna(x) or x=='x') else float(x.split('\n')[1].split('%')[0].replace(',','.')))
+        donnees_filtrees['type_poste']='tournant'
+        donnees_filtrees['src']='tableur_2019'
+        donnees_transfert=donnees_filtrees.loc[donnees_filtrees['tmja']>0].copy()
+        self.df_attr= donnees_transfert.copy()
+    
+    def classer_comptage_update_insert(self,bdd,table_cpt,schema_cpt,
+                                       schema_temp,nom_table_temp,table_linearisation_existante,
+                                       schema_graph, table_graph,table_vertex,id_name) : 
+        """
+        classer les comptage a insrere ou mettre a jour, selon leur correspondance ou non avec des comptages existants.
+        se base sur la creation de graph variable selon le type de comptage, pour prendsre en compte ou non certaines categories de vehicules
+        """
+        #creation de l'existant
+        self.comptag_existant_bdd(bdd, schema=schema_cpt, table=table_cpt,dep='19', type_poste=False)
+        #mise a jour des noms selon la table de corresp existnate
+        self.corresp_nom_id_comptag(bdd,self.df_attr)
+        #classement
+        self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        #recherche de correspondance
+        corresp_cd19=self.corresp_old_new_comptag(bdd, schema_temp,nom_table_temp,table_linearisation_existante,
+                                       schema_graph, table_graph,table_vertex,id_name)
+        #insertion des correspondance dans la table dediee
+        self.insert_bdd(bdd,schema_cpt,'corresp_id_comptag',corresp_cd19[['id_comptag','id_comptag_lin']].rename(columns={'id_comptag':'id_gest','id_comptag_lin':'id_gti'}))
+        #ajout de correspondance manuelle (3, à cause de nom de voie notamment) et creation d'un unique opint a insert
+        #nouvelle mise a jour de l'id comptag suivant correspondance
+        self.comptag_existant_bdd(bdd, schema=schema_cpt, table=table_cpt,dep='19', type_poste=False)
+        self.corresp_nom_id_comptag(bdd,self.df_attr)
+        #puis nouveau classement
+        self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+
+    def update_bdd_19(self,bdd, schema, table):
+        valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag','tmja','pc_pl', 'src'])
+        dico_attr_modif={'tmja_2019':'tmja', 'pc_pl_2019':'pc_pl', 'src_2019':'src'}
+        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)
+
+class Comptage_cd40(Comptage):
+    """
+    Les donnees du CD40 sont habituelement fournies au format B152, i.e u dossier par site, chaque dossier contenant des sous dossiers qui menent a un fihcier xls
+    """
+    def __init__(self,dossier) : 
+        self.dossier=dossier
+        self.liste_fichier=[os.path.join(chemin,fichier) for chemin, dossier, files in os.walk(dossier) for fichier in files if fichier.endswith('.xls')]
+     
+    def type_fichier(self,fichier) : 
+        """
+        récupérer le type de fichier selon la case A5
+        """
+        return pd.read_excel(fichier,headers=None, skiprows=1).iloc[2,0]
+    
+    def verif_liste_fichier(self):
+        """
+        trier la liste des fichiers fournis pour ne garder que le B152
+        """
+        return [fichier for fichier in self.liste_fichier if self.type_fichier(fichier)=='B152']
             
+    def extraire_donnees_annuelles(self, fichier):
+        """
+        recuperer les donnes annuelles et de caract des comptage
+        """
+        df=pd.read_excel(fichier,headers=None, skiprows=1) #les 1eres lignes mettent le bordel dans la definition des colonnes
+        df2=df.dropna(how='all').dropna(axis=1,how='all')
+        compteur='040.'+df2.loc[0,'Unnamed: 125'].split(' ')[1]
+        vma=int(df2.loc[4,'Unnamed: 0'].split(' : ')[1][:2])
+        voie=O.epurationNomRoute(df2.loc[4,'Unnamed: 141'].split(' ')[1])
+        pr,absice=df2.loc[4,'Unnamed: 125'].split(' ')[1],df2.loc[4,'Unnamed: 125'].split(' ')[2]
+        dep,gest, reseau,concession,type_poste='40','CD40','D','N','permanent'
+        annee_cpt=df2.loc[18,'Unnamed: 6']
+        id_comptag=dep+'-'+voie+'-'+pr+'+'+absice
+        tmja=df2.loc[18,'Unnamed: 107']
+        pc_pl=round(df2.loc[19,'Unnamed: 107'],2)
+        return compteur,vma, voie, pr, absice,dep,gest, reseau,concession,type_poste,annee_cpt,id_comptag,tmja,pc_pl,df2
+    
+    def remplir_dico(self, dico, *donnees):
+        dico['compteur'].append(donnees[0])
+        dico['vma'].append(donnees[1])
+        dico['voie'].append(donnees[2])
+        dico['pr'].append(donnees[3])
+        dico['absice'].append(donnees[4])
+        dico['dep'].append(donnees[5])
+        dico['gest'].append(donnees[6])
+        dico['reseau'].append(donnees[7])
+        dico['concession'].append(donnees[8])
+        dico['type_poste'].append(donnees[9])
+        dico['annee_cpt'].append(donnees[10])
+        dico['id_comptag'].append(donnees[11])
+        dico['tmja'].append(donnees[12])
+        dico['pc_pl'].append(donnees[13])
+    
+    def donnees_mensuelles(self, df2,id_comptag, annee):
+        """
+        extraire les donnes mens d'un fichiere te les mettre ne forme
+        """
+        donnees_mens=df2.loc[[7,18,19],['Unnamed: 13', 'Unnamed: 23', 'Unnamed: 30',
+                           'Unnamed: 37', 'Unnamed: 44', 'Unnamed: 51', 'Unnamed: 58',
+                           'Unnamed: 65', 'Unnamed: 72', 'Unnamed: 79', 'Unnamed: 86',
+                           'Unnamed: 93', 'Unnamed: 100', 'Unnamed: 107']].dropna(axis=1,how='all')
+            #renommer les colonnes
+        donnees_mens.columns=[element.replace('é','e').replace('.','').lower() for element in list(donnees_mens.loc[7])]
+            #remplacer l'annee en string et ne conserver 
+        donnees_mens=donnees_mens.drop(7).replace(['D.Moy.Jour', '% PL'],['tmja','pc_pl'])
+            #inserer les valeusr qui vont bien
+        donnees_mens['annee']=annee
+        donnees_mens['id_comptag']=id_comptag
+            #r�arranger les colonnes
+        cols=donnees_mens.columns.tolist()
+        cols_arrangees=cols[-1:]+cols[:1]+cols[-2:-1]+cols[1:-2]
+        donnees_mens=donnees_mens[cols_arrangees]
+        donnees_mens.columns=['id_comptag','donnees_type','annee','janv','fevr','mars','avri','mai','juin','juil','aout','sept','octo','nove','dece']
+        return donnees_mens
+    
+    def comptage_forme(self):
+        """
+        mise en forme des comptages dans une df pour les donnees annuelles et une autre pour les donnees mensuelles
+        """     
+        #ouvrir un fichier et modifier son cotenu
+        dico_annee={'compteur':[],'vma':[],'voie':[],'pr':[],'absice':[],'dep':[],'gest':[],'reseau' :[],'concession':[],'type_poste':[],'annee_cpt':[],'id_comptag':[],'tmja':[],'pc_pl':[]}
+        for i,fichier in enumerate(self.verif_liste_fichier()) :
+            #traitement des donnees agregee a l'annee
+            compteur,vma, voie, pr, absice,dep,gest, reseau,concession,type_poste,annee_cpt,id_comptag,tmja,pc_pl,df2=self.extraire_donnees_annuelles(fichier)
+            self.remplir_dico(dico_annee,compteur,vma, voie, pr, absice,dep,gest, reseau,concession,type_poste,annee_cpt,id_comptag,tmja,pc_pl)
+            #traiteent des donnees mensuelles
+            donnees_mens=self.donnees_mensuelles(df2,id_comptag,annee_cpt)
+            if i==0 : 
+                donnees_mens_tot=donnees_mens.copy()
+            else : 
+                donnees_mens_tot=pd.concat([donnees_mens_tot,donnees_mens], sort=False, axis=0)
+        #attributs finaux
+        self.df_attr=pd.DataFrame(dico_annee)
+        self.df_attr_mens=donnees_mens_tot.copy()
+    
+    def classer_comptage_insert_update(self,bdd,table, schema):
+        """
+        repartir les donnes selon si les comptages sont a insrere ou mette a jour
+        là c'est un peu biaisé car on a que des comptages permanents sans nouveaux
+        """
+        #creation de l'existant
+        self.comptag_existant_bdd(bdd, table, schema=schema,dep='40', type_poste=False)
+        #mise a jour des noms selon la table de corresp existnate
+        self.corresp_nom_id_comptag(bdd,self.df_attr)
+        #classement
+        self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        
+    def update_bdd_40(self,bdd, schema, table):
+        valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag','tmja','pc_pl'])
+        dico_attr_modif={'tmja_2019':'tmja', 'pc_pl_2019':'pc_pl'}
+        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)
+    
 class Comptage_cd47(Comptage):
     """
     traiter les données du CD47, selon les traitement on creer les attributs :
