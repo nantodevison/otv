@@ -10,7 +10,7 @@ module d'importation des données de trafics forunies par les gestionnaires
 import pandas as pd
 import geopandas as gp
 import numpy as np
-import os, re, csv,statistics,filecmp
+import os, re, csv,statistics,filecmp, unidecode
 from geoalchemy2 import Geometry,WKTElement
 from shapely.geometry import Point
 
@@ -400,7 +400,15 @@ class Comptage():
             c.sqlAlchemyConn.execute(rqt_maj_geom)
             points_a_inserer=gp.GeoDataFrame.from_postgis(f'select * from {nom_table_temp}', c.sqlAlchemyConn, geom_col='geom',crs={'init': 'epsg:2154'})
         return points_a_inserer
-        
+
+    def filtrer_periode_ponctuels(self):
+        """
+        filtrer des periodesde vacances
+        """
+        #filtrer pt comptage pendant juillet aout
+        self.df_attr=self.df_attr.loc[self.df_attr.apply(lambda x : x['debut_periode'].month not in [7,8] and x['fin_periode'].month not in [7,8], 
+                                                         axis=1)].copy()
+    
     def donnees_existantes(self, bdd, table_linearisation_existante):
         """
         recuperer une linearisation existante et les points de comptages existants
@@ -1001,7 +1009,7 @@ class Comptage_cd47(Comptage):
     
     def modifier_type_cpt(self,new_type_cpt):
         """
-        mettre à jour le type_cptde l'objet
+        mettre à jour le type_cpt de l'objet
         """
         if new_type_cpt in self.liste_type_cpt:
             self.type_cpt=new_type_cpt
@@ -1043,7 +1051,11 @@ class Comptage_cd47(Comptage):
         ouvrir un fichier, prendre la bonne feuille, virer les NaN et renommer les colonnes
         """
         colonne=['jour','type_veh']+[str(i)+'_'+str(i+1)+'h' for i in range(24)]+['total','pc_pl']
-        data=pd.read_excel(os.path.join(dossier,fichier),sheet_name=-1, header=None)
+        toutes_feuilles=pd.read_excel(os.path.join(dossier,fichier),sheet_name=None, header=None)
+        try : 
+            data=toutes_feuilles[[a for a in list(toutes_feuilles.keys())[::-1] if a[:2]=='S_'][0]]#on ouvre la premiere feuille ne partany de ladroite qui a un prefixe avec S_
+        except IndexError : 
+            data=toutes_feuilles[[a for a in list(toutes_feuilles.keys())[::-1] if 'sens 3' in a.lower().strip()][0]]
         data.dropna(axis=0,how='all', inplace=True)
         data.columns=colonne
         return data
@@ -1052,30 +1064,63 @@ class Comptage_cd47(Comptage):
         """
         definir l'id_comptag à patir d'une df issue d'un fcihier xls (cf ouverture_fichier)
         """
-        pr_abs=data.loc[1,'jour'].split(' PR ')[1].strip()[:-1]
-        pr=int(pr_abs.split('+')[0])
-        absc=int(pr_abs.split('+')[1])
-        route=re.search('D[ ]{0,1}[0-9]+',data.loc[1,'jour'].split(' PR ')[0].split("(")[1].strip())[0].replace(' ','')
-        id_comptag='47-'+route+'-'+str(pr)+'+'+str(absc)
+        localisation=data.loc[1,'jour']
+        if 'PR' in localisation :
+            pr_abs=localisation.split(' PR')[1].strip()[:-1].split(' ')[0]
+            pr=int(pr_abs.split('+')[0])
+            absc=int(pr_abs.split('+')[1])
+            route=re.search('D[ ]{0,1}[0-9]+',localisation.split(' PR ')[0].split("(")[1].strip())[0].replace(' ','')
+            id_comptag='47-'+route+'-'+str(pr)+'+'+str(absc)
+        else : 
+            pr=None
+            absc=None
+            route=re.search('D[ ]{0,1}[0-9]+',localisation)
+            id_comptag=localisation
         return id_comptag,pr,absc,route
     
     def donnees_generales(self,data):
         """
         recuperer le pc_pl et le tmja et les periodes de mesures à patir d'une df issue d'un fcihier xls (cf ouverture_fichier)
         """
-        tmja=int(data.loc[data['jour']=='Moyenne journalière : ','5_6h'].values[0].split(' ')[0])
-        pc_pl=float(data.loc[data.loc[data['jour']=='Moyenne journalière : ','5_6h'].index+2,'5_6h'].values[0].split('(')[1][1:-3].replace(',','.'))
+        
+        for c in data.columns : #pour les cas bizrres ou les données ne sont pas à leurs places et  / ou sans calcul du pc_pl
+            try : 
+                tmja=int(data.loc[data['jour']=='Moyenne journalière : ',c].values[0].split(' ')[0])
+                try : 
+                    pc_pl=float(data.loc[data.loc[data['jour']=='Moyenne journalière : ',c].index+2,c].values[0].split('(')[1][1:-3].replace(',','.'))
+                except IndexError : 
+                    pc_pl=int(data.loc[data.loc[data['jour']=='Moyenne journalière : ',c].index+2,c].values[0].split(' ')[0])/tmja*100
+                break
+            except (AttributeError,ValueError) :
+                continue
         
         dico_date={a:b for (a,b) in zip(['janvier','février','mars' ,'avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'],
                            [a.lower() for a in ['January','February','March', 'April','May','June','July','August','September','October','November','December']])}
-        debut_periode=data.loc[1,'total'].lower().split('du')[1].split('au')[0].strip()
-        fin_periode=data.loc[1,'total'].lower().split('du')[1].split('au')[1].strip()
+        #trouver date de mesures peu importe la lign / colonne
+        test=data.loc[data.apply(lambda x : any(['Période ' in a for a in x.values if isinstance(a,str)]), axis=1)]
+        b_mask=test.apply(lambda x : 'Période ' in str(x.values), axis=0).to_numpy()
+        date_mes=test.to_numpy()[:,b_mask][0][0]
+        
+        debut_periode=date_mes.lower().split('du')[1].split('au')[0].strip()
+        fin_periode=date_mes.lower().split('du')[1].split('au')[1].strip()
         for k,v in dico_date.items() :
             debut_periode=debut_periode.replace(k,v)
             fin_periode=fin_periode.replace(k,v)
         debut_periode=pd.to_datetime(debut_periode)
         fin_periode=pd.to_datetime(fin_periode)
         return tmja, pc_pl,debut_periode,fin_periode
+    
+    def donnees_horaires(self, data):
+        """
+        Récuperer les valeurs unitaires de trafics
+        """
+        data_filtree=data.loc[data['jour']!='jour'].copy().reset_index(drop=True)
+        data_filtree['jour'].fillna(method='pad', inplace=True)
+        data_horaires=data_filtree.iloc[:data_filtree.loc[data_filtree['jour'].apply(lambda x : x[:7]=='Moyenne' if isinstance(x,str) else False)].index[0]].copy()
+        data_horaires.jour=pd.to_datetime(data_horaires.jour)
+        data_horaires=data_horaires[data_horaires.columns[:-2]].set_index('jour')
+        data_horaires=data_horaires.loc[data_horaires.type_veh.isin(['TV','PL'])].copy()
+        return data_horaires
     
     def remplir_dico_fichier(self):
         """
@@ -1087,32 +1132,49 @@ class Comptage_cd47(Comptage):
             for k,v in dico.items():
                 liste_tmja=[]
                 liste_pc_pl=[]
-                for fichier in v['fichier']:
+                for i,fichier in enumerate(v['fichier']):
                     data=self.ouverture_fichier(k,fichier)
                     id_comptag,pr,absc,route=self.id_comptag(data)
                     if not 'id_comptag' in v.keys() : 
                         v['id_comptag']=id_comptag
-                    tmja, pc_pl=self.donnees_generales(data)[0:2]
+                    tmja, pc_pl,debut_periode=self.donnees_generales(data)[:3]
+                    mois=unidecode.unidecode(debut_periode.month_name(locale='French')[:5].lower())
+                    if not 'mensuel' in v.keys() : 
+                        v['id_comptag']=id_comptag
                     liste_tmja.append(tmja)
                     liste_pc_pl.append(pc_pl)
+                    if i==0 : 
+                        v['horaire']=self.donnees_horaires(data.iloc[4:])
+                    else : 
+                        v['horaire']=pd.concat([v['horaire'],self.donnees_horaires(data.iloc[4:])], sort=False, axis=0)
                 v['tmja']=int(statistics.mean(liste_tmja))
                 v['pc_pl']=round(float(statistics.mean(liste_pc_pl)),1)
+                v['pr'], v['absc'],v['route'] =pr, absc, route
             dico_final={v['id_comptag']:{'tmja':v['tmja'],'pc_pl':v['pc_pl'], 'type_poste' : 'permanent','debut_periode':None,
-                                         'fin_periode':None,'pr':pr,'absc':absc,'route':route} for k,v in dico.items()}
+                                         'fin_periode':None,'pr':v['pr'],'absc':v['absc'],'route':v['route'], 'horaire':v['horaire']} for k,v in dico.items()}
         elif self.type_cpt.upper()=='TRAFICS PERIODIQUES' :
             for k,v in dico.items() :
                 for liste_fichier in v['fichier'] :
                     liste_tmja=[]
                     liste_pc_pl=[]
+                    i=0
                     for fichier in liste_fichier :
                         if 'Vitesse' not in fichier : 
                             data=self.ouverture_fichier(k,fichier)
-                            id_comptag,pr,absc,route=self.id_comptag(data) 
+                            try :
+                                id_comptag,pr,absc,route=self.id_comptag(data) 
+                            except :
+                                continue
                             tmja, pc_pl=self.donnees_generales(data)[0:2]
+                            if i==0 : 
+                                horaire=self.donnees_horaires(data.iloc[4:])
+                            else : 
+                                horaire=pd.concat([horaire,self.donnees_horaires(data.iloc[4:])], sort=False, axis=0)
+                            i+=1
                             liste_tmja.append(tmja)
-                            liste_pc_pl.append(pc_pl)  
+                            liste_pc_pl.append(pc_pl)       
                     dico_final[id_comptag]={'tmja' : int(statistics.mean(liste_tmja)), 'pc_pl' : round(float(statistics.mean(liste_pc_pl)),1), 
-                                            'type_poste' : 'tournant','debut_periode':None,'fin_periode':None,'pr':pr,'absc':absc,'route':route}  
+                                            'type_poste' : 'tournant','debut_periode':None,'fin_periode':None,'pr':pr,'absc':absc,'route':route, 'horaire':horaire}  
         elif self.type_cpt.upper()=='TRAFICS TEMPORAIRES' : 
             for k,v in dico.items():
                 for liste_fichier in v['fichier']:
@@ -1122,14 +1184,16 @@ class Comptage_cd47(Comptage):
                                 data=self.ouverture_fichier(k,fichier)
                                 id_comptag,pr,absc,route=self.id_comptag(data)
                                 tmja, pc_pl,debut_periode,fin_periode=self.donnees_generales(data)
+                                horaire=self.donnees_horaires(data.iloc[4:])
                                 dico_final[id_comptag]={'tmja':tmja, 'pc_pl':pc_pl,'type_poste' : 'ponctuel','debut_periode':debut_periode,
-                                                        'fin_periode':fin_periode,'pr':pr,'absc':absc,'route':route}
+                                                        'fin_periode':fin_periode,'pr':pr,'absc':absc,'route':route,'horaire':horaire}
                         else : 
                             data=self.ouverture_fichier(k,liste_fichier[0])
                             id_comptag,pr,absc,route=self.id_comptag(data)
                             tmja, pc_pl,debut_periode,fin_periode=self.donnees_generales(data)
+                            horaire=self.donnees_horaires(data.iloc[4:])
                             dico_final[id_comptag]={'tmja':tmja, 'pc_pl':pc_pl,'type_poste' : 'ponctuel','debut_periode':debut_periode,
-                                                        'fin_periode':fin_periode,'pr':pr,'absc':absc,'route':route}
+                                                        'fin_periode':fin_periode,'pr':pr,'absc':absc,'route':route,'horaire':horaire}
         return dico_final
 
     def regrouper_dico(self):
@@ -1150,15 +1214,21 @@ class Comptage_cd47(Comptage):
         """
         conversion d'un dico en df
         """
-        return pd.DataFrame.from_dict(dico, orient='index').reset_index().rename(columns={'index':'id_comptag'})
-    
-    def filtrer_periode_ponctuels(self):
-        """
-        filtrer des periodesde vacances
-        """
-        #filtrer pt comptage pendant juillet aout
-        self.df_attr=self.df_attr.loc[self.df_attr.apply(lambda x : x['debut_periode'].month not in [7,8] and x['fin_periode'].month not in [7,8], 
-                                                         axis=1)].copy()
+        df_agrege=pd.DataFrame.from_dict({k:{x:y for x,y in v.items() if x!='horaire'} for k, v in dico.items()},
+                                        orient='index').reset_index().rename(columns={'index':'id_comptag'})
+        df_agrege['src']='donnees_xls_sources'
+        
+        for (i,(k, v)) in enumerate(dico.items()) : 
+            for x,y in v.items()  : 
+                if x=='horaire' :
+                    df_horaire=y
+                    df_horaire['id_comptag']=k
+            if i==0 : 
+                df_horaire_tot=df_horaire.copy()
+            else : 
+                df_horaire_tot=pd.concat([df_horaire_tot,df_horaire], sort=False, axis=0)
+                
+        return df_agrege,df_horaire_tot
     
     def classer_comptage_update_insert(self,bdd):
         """
@@ -1167,15 +1237,20 @@ class Comptage_cd47(Comptage):
         """
         #creer le dico_tot
         self.regrouper_dico()
-        self.df_attr=self.dataframe_dico(self.dico_tot)
-        #filtrer les periodes de vacances
-        self.filtrer_periode_ponctuels()
+        self.df_attr=self.dataframe_dico(self.dico_tot)[0]
         #prende en compte les variation d'id_comptag en gti et le gest
         self.corresp_nom_id_comptag(bdd,self.df_attr)
         #compârer avec les donnees existantes
-        self.comptag_existant_bdd(bdd, 'na_2010_2018_p', dep='47')
+        self.comptag_existant_bdd(bdd, 'na_2010_2019_p', dep='47')
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+    
+    def update_bdd_47(self,bdd,schema,table,annee,df):
+        """
+        mise a jour base sur la fonction update bdd
+        """
+        val_txt=self.creer_valeur_txt_update(df, ['id_comptag','tmja','pc_pl','src'])
+        self.update_bdd(bdd,schema,table, val_txt,{f'tmja_{str(annee)}':'tmja',f'pc_pl_{str(annee)}':'pc_pl',f'src_{str(annee)}':'src'})
         
     def mise_en_forme_insert(self,annee):
         """
