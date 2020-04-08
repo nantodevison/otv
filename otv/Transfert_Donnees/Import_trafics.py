@@ -998,8 +998,9 @@ class Comptage_cd47(Comptage):
     -dico_tot
     PLUS TARD ON POURRA AJOUTER LA RECUPDES DONNEES HORAIRES
     """
-    def __init__(self,dossier,type_cpt ) :
+    def __init__(self,dossier,type_cpt,annee ) :
         self.dossier=dossier 
+        self.annee=annee
         self.liste_type_cpt=['TRAFICS PERIODIQUES','TRAFICS PERMANENTS','TRAFICS TEMPORAIRES']
         if type_cpt in self.liste_type_cpt:
             self.type_cpt=type_cpt
@@ -1130,28 +1131,24 @@ class Comptage_cd47(Comptage):
         dico=self.dico_fichier(self.liste_dossier())
         if self.type_cpt.upper()=='TRAFICS PERMANENTS' : 
             for k,v in dico.items():
-                liste_tmja=[]
-                liste_pc_pl=[]
+                v['mensuel']={'donnees_type':['tmja', 'pc_pl']}
                 for i,fichier in enumerate(v['fichier']):
                     data=self.ouverture_fichier(k,fichier)
                     id_comptag,pr,absc,route=self.id_comptag(data)
                     if not 'id_comptag' in v.keys() : 
                         v['id_comptag']=id_comptag
                     tmja, pc_pl,debut_periode=self.donnees_generales(data)[:3]
-                    mois=unidecode.unidecode(debut_periode.month_name(locale='French')[:5].lower())
-                    if not 'mensuel' in v.keys() : 
-                        v['id_comptag']=id_comptag
-                    liste_tmja.append(tmja)
-                    liste_pc_pl.append(pc_pl)
+                    mois=unidecode.unidecode(debut_periode.month_name(locale='French')[:4].lower())
+                    v['mensuel'][mois]=[tmja,pc_pl]
                     if i==0 : 
                         v['horaire']=self.donnees_horaires(data.iloc[4:])
                     else : 
                         v['horaire']=pd.concat([v['horaire'],self.donnees_horaires(data.iloc[4:])], sort=False, axis=0)
-                v['tmja']=int(statistics.mean(liste_tmja))
-                v['pc_pl']=round(float(statistics.mean(liste_pc_pl)),1)
+                v['tmja']=int(statistics.mean([a[0] for a in v['mensuel'].values() if not isinstance(a[0],str)]))
+                v['pc_pl']=round(float(statistics.mean([a[1] for a in v['mensuel'].values() if not isinstance(a[0],str)])),1)
                 v['pr'], v['absc'],v['route'] =pr, absc, route
             dico_final={v['id_comptag']:{'tmja':v['tmja'],'pc_pl':v['pc_pl'], 'type_poste' : 'permanent','debut_periode':None,
-                                         'fin_periode':None,'pr':v['pr'],'absc':v['absc'],'route':v['route'], 'horaire':v['horaire']} for k,v in dico.items()}
+                                         'fin_periode':None,'pr':v['pr'],'absc':v['absc'],'route':v['route'], 'horaire':v['horaire'], 'mensuel':v['mensuel']} for k,v in dico.items()}
         elif self.type_cpt.upper()=='TRAFICS PERIODIQUES' :
             for k,v in dico.items() :
                 for liste_fichier in v['fichier'] :
@@ -1227,8 +1224,23 @@ class Comptage_cd47(Comptage):
                 df_horaire_tot=df_horaire.copy()
             else : 
                 df_horaire_tot=pd.concat([df_horaire_tot,df_horaire], sort=False, axis=0)
-                
-        return df_agrege,df_horaire_tot
+        df_horaire_tot.columns=['type_veh','h0_1','h1_2','h2_3','h3_4','h4_5','h5_6','h6_7','h7_8','h8_9','h9_10','h10_11','h11_12','h12_13',
+                                'h13_14','h14_15','h15_16','h16_17','h17_18','h18_19','h19_20','h20_21','h21_22','h22_23','h23_24','id_comptag']
+        df_horaire_tot.reset_index(inplace=True)
+        
+        for (i,(k, v)) in enumerate(dico.items()) : 
+            for x,y in v.items()  : 
+                if x=='mensuel' :
+                    df_mensuel=pd.DataFrame(y, index=range(2))
+                    df_mensuel['id_comptag']=k
+                    df_mensuel['annee']=str(self.annee)
+            if i==0 : 
+                df_mensuel_tot=df_mensuel.copy()
+            else : 
+                df_mensuel_tot=pd.concat([df_mensuel_tot,df_mensuel], sort=False, axis=0)
+        df_mensuel_tot['annee']=str(self.annee)
+               
+        return df_agrege,df_horaire_tot, df_mensuel_tot
     
     def classer_comptage_update_insert(self,bdd):
         """
@@ -1237,7 +1249,7 @@ class Comptage_cd47(Comptage):
         """
         #creer le dico_tot
         self.regrouper_dico()
-        self.df_attr=self.dataframe_dico(self.dico_tot)[0]
+        self.df_attr, self.df_attr_horaire, self.df_attr_mens=self.dataframe_dico(self.dico_tot)
         #prende en compte les variation d'id_comptag en gti et le gest
         self.corresp_nom_id_comptag(bdd,self.df_attr)
         #compârer avec les donnees existantes
@@ -1245,27 +1257,27 @@ class Comptage_cd47(Comptage):
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
     
-    def update_bdd_47(self,bdd,schema,table,annee,df):
+    def update_bdd_47(self,bdd,schema,table,df):
         """
         mise a jour base sur la fonction update bdd
         """
         val_txt=self.creer_valeur_txt_update(df, ['id_comptag','tmja','pc_pl','src'])
-        self.update_bdd(bdd,schema,table, val_txt,{f'tmja_{str(annee)}':'tmja',f'pc_pl_{str(annee)}':'pc_pl',f'src_{str(annee)}':'src'})
+        self.update_bdd(bdd,schema,table, val_txt,{f'tmja_{str(self.annee)}':'tmja',f'pc_pl_{str(self.annee)}':'pc_pl',f'src_{str(self.annee)}':'src'})
         
-    def mise_en_forme_insert(self,annee):
+    def mise_en_forme_insert(self):
         """
         ajout des attributs à self.df_attr_insert attendu dans la table comptag avant transfert dans bdd
         in : 
             annee : string : annee sur 4 lettres pour mise enf orme nom attr
         """
-        if not isinstance(annee,str) : 
-            raise TypeError('annee doit un string sur 4 caracteres')
+        if not len(str(self.annee))==4 : 
+            raise TypeError('annee doit un string ou entier sur 4 caracteres')
         self.df_attr_insert['dep']='47'
         self.df_attr_insert['reseau']='RD'
         self.df_attr_insert['gestionnai']='CD47'
         self.df_attr_insert['concession']='N'
         self.df_attr_insert['obs']=self.df_attr_insert.apply(lambda x : f"""nouveau_point,{x['debut_periode'].strftime("%d/%m/%Y")}-{x['fin_periode'].strftime("%d/%m/%Y")}""" if not (pd.isnull(x['debut_periode']) and  pd.isnull(x['fin_periode'])) else None,axis=1)
-        self.df_attr_insert.rename(columns={'absc' : 'abs', 'tmja':'tmja_'+annee,'pc_pl':'pc_pl_'+annee,'obs':'obs_'+annee},inplace=True)
+        self.df_attr_insert.rename(columns={'absc' : 'abs', 'tmja':'tmja_'+str(self.annee),'pc_pl':'pc_pl_'+str(self.annee),'obs':'obs_'+str(self.annee)},inplace=True)
         self.df_attr_insert.drop(['debut_periode','fin_periode'],axis=1,inplace=True)
         
     class CptCd47_typeCptError(Exception):  
