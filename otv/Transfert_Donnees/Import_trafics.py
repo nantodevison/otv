@@ -558,7 +558,7 @@ class Comptage():
         """
         if isinstance(df, gp.GeoDataFrame) : 
             if df.geometry.name!='geom':
-                df=df.rename(columns={df.geometry.name : 'geom'}).set_geometry('geom')
+                df=O.gp_changer_nom_geom(df, 'geom')
                 df.geom=df.apply(lambda x : WKTElement(x['geom'].wkt, srid=2154), axis=1)
             with ct.ConnexionBdd(bdd) as c:
                 df.to_sql(table,c.sqlAlchemyConn,schema=schema,if_exists='append', index=False,
@@ -1634,17 +1634,25 @@ class Comptage_cd16(Comptage):
         valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag','tmja','pc_pl','src'])
         dico_attr_modif={'tmja_2018':'tmja', 'pc_pl_2018':'pc_pl','src_2018':'src'}
         self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)
+    
 
 class Comptage_cd86(Comptage):
     """
     les données fournies par le CD86 sont des fichiers excel pour les compteurs permanents et secondaires,
-    il y a un petit pb sur les compteurs permanents entre la donnees pr+abs chez nous et la leur dans le tableau, donc il faut la premiere fois tout passer dans la table de correspondance
+    il y a un petit pb sur les compteurs permanents entre la donnees pr+abs chez nous et la leur dans le tableau, donc il faut la premiere fois (2018) tout passer dans la table de correspondance
+    si un seul fichier avec 2 feuilles : renseigner le mm nom de fichier pour perm etsecondaire, et indiuqer les feuills
         fichier_perm : nom complet du fichier des comptages permanents
         fichier_secondaire : nom complet du fihcier des comptages secondaires
+        annee : integer annee des comptages
+        feuil_perm : si c le mm fihciers pour les comptages perm et secondaiere, nom de la feuille avec les comptages perm 
+        feuil_secondaire : si c le mm fihciers pour les comptages perm et secondaiere, nom de la feuille avec les comptages secondaires
     """
-    def __init__(self,fichier_perm,fichier_secondaire):
+    def __init__(self,fichier_perm,fichier_secondaire,annee, feuil_perm=None, feuil_secondaire=None):
         self.fichier_perm=fichier_perm
         self.fichier_secondaire=fichier_secondaire
+        self.annee=annee
+        self.feuil_perm=feuil_perm
+        self.feuil_secondaire=feuil_secondaire
     
     def ouvrir_cpt_perm_xls(self):
         """
@@ -1677,7 +1685,7 @@ class Comptage_cd86(Comptage):
 
     def cpt_second_xls(self):
         """
-        mettre en forme les comptages permannets
+        mettre en forme les comptages secondaires
         """  
         donnees_brutes_second=pd.read_excel(self.fichier_secondaire)
         donnees_brutes_second['route']=donnees_brutes_second.apply(lambda x : 'D'+str(x['RD']).strip(), axis=1)
@@ -1689,12 +1697,67 @@ class Comptage_cd86(Comptage):
         df_cpt_second=donnees_brutes_second.rename(columns={'TV':'tmja','% PL':'pc_pl'}).drop(['LIEUX', 'RD','PR','n° de compteur','PL'], axis=1)     
         return  df_cpt_second
     
-    def comptage_forme(self) : 
+    def ouvrir_fichier_unique(self) : 
+        donnees_brutes_perm=pd.read_excel(self.fichier_perm, sheet_name=self.feuil_perm)
+        donnees_brutes_perm=donnees_brutes_perm.loc[(donnees_brutes_perm['ANNEE_TRAFIC']==self.annee) & (~donnees_brutes_perm['PLOD'].isna()) &
+                            (~donnees_brutes_perm['ABSD'].isna()) & (~donnees_brutes_perm['TMJA'].isna()) & (~donnees_brutes_perm['POURCENTAGE_PL'].isna())].copy()
+        donnees_brutes_perm['route']=donnees_brutes_perm['AXE'].apply(lambda x : O.epurationNomRoute(x[3:]))
+        donnees_brutes_perm['pr_cumuld']=donnees_brutes_perm.apply(lambda x : int(x['CUMULD']//1000) if not pd.isnull(x['CUMULD']) else np.NaN, axis=1)
+        donnees_brutes_perm['absc_cumuld']=donnees_brutes_perm.apply(lambda x : int(x['CUMULD']%1000) if not pd.isnull(x['CUMULD']) else np.NaN, axis=1)
+        donnees_brutes_perm['id_gest_cumuld']=donnees_brutes_perm.apply(lambda x : f"86-{x['route']}-{x['pr_cumuld']}+{x['absc_cumuld']}", axis=1)
+        donnees_brutes_perm['pr_plod']=donnees_brutes_perm.apply(lambda x : int(x['PLOD']) if not pd.isnull(x['PLOD']) else np.NaN, axis=1)
+        donnees_brutes_perm['absc_absd']=donnees_brutes_perm.apply(lambda x : int(x['ABSD']) if not pd.isnull(x['ABSD']) else np.NaN, axis=1)
+        donnees_brutes_perm['id_gest_plod']=donnees_brutes_perm.apply(lambda x : f"86-{x['route']}-{x['pr_plod']}+{x['absc_absd']}", axis=1)
+        donnees_brutes_perm['POURCENTAGE_PL']=donnees_brutes_perm['POURCENTAGE_PL']*100
+        donnees_brutes_second=pd.read_excel(self.fichier_perm, sheet_name='secondaires', names=donnees_brutes_perm.columns, header=None)
+        donnees_brutes_second=donnees_brutes_second.loc[(donnees_brutes_second['ANNEE_TRAFIC']==2019) & (~donnees_brutes_second['PLOD'].isna()) &
+                            (~donnees_brutes_second['ABSD'].isna()) & (~donnees_brutes_second['TMJA'].isna()) & (~donnees_brutes_second['POURCENTAGE_PL'].isna())].copy()
+        donnees_brutes_second['route']=donnees_brutes_second['AXE'].apply(lambda x : O.epurationNomRoute(x[3:]))
+        donnees_brutes_second['pr_cumuld']=donnees_brutes_second.apply(lambda x : int(x['CUMULD']//1000) if not pd.isnull(x['CUMULD']) else np.NaN, axis=1)
+        donnees_brutes_second['absc_cumuld']=donnees_brutes_second.apply(lambda x : int(x['CUMULD']%1000) if not pd.isnull(x['CUMULD']) else np.NaN, axis=1)
+        donnees_brutes_second['id_gest_cumuld']=donnees_brutes_second.apply(lambda x : f"86-{x['route']}-{x['pr_cumuld']}+{x['absc_cumuld']}", axis=1)
+        donnees_brutes_second['pr_plod']=donnees_brutes_second.apply(lambda x : int(x['PLOD']) if not pd.isnull(x['PLOD']) else np.NaN, axis=1)
+        donnees_brutes_second['absc_absd']=donnees_brutes_second.apply(lambda x : int(x['ABSD']) if not pd.isnull(x['ABSD']) else np.NaN, axis=1)
+        donnees_brutes_second['id_gest_plod']=donnees_brutes_second.apply(lambda x : f"86-{x['route']}-{x['pr_plod']}+{x['absc_absd']}", axis=1)
+        donnees_brutes_second['POURCENTAGE_PL']=donnees_brutes_second['POURCENTAGE_PL']*100
+        donnees_concat=pd.concat([donnees_brutes_perm,donnees_brutes_second],axis=0, sort=False)
+        dico_corresp_type_poste={'Permanent':'permanent', 'Tournant':'ponctuel', 'Secondaire':'tournant'}
+        donnees_concat.TYPE_POSTE=donnees_concat.TYPE_POSTE.apply(lambda x : dico_corresp_type_poste[x])
+        return donnees_brutes_perm,donnees_brutes_second, donnees_concat
+    
+    def equivalence_id_comptag(self,bdd,table_cpt, df) : 
+        """
+        pour conserver soit l'id_comptag issu du plod, soit celui issu du cumul, si il est présent dans la liste des id_coptage ou dans liste des id_cgest de la table corresp
+        """
+        rqt_corresp_comptg='select * from comptage.corresp_id_comptag'
+        rqt_id_comtg=f"select * from comptage.{table_cpt} where dep='86'"
+        with ct.ConnexionBdd(bdd) as c:
+            list_corresp_comptg=pd.read_sql(rqt_corresp_comptg, c.sqlAlchemyConn).id_gest.tolist()
+            list_id_comptg=gp.GeoDataFrame.from_postgis(rqt_id_comtg, c.sqlAlchemyConn, geom_col='geom',crs={'init': 'epsg:2154'}).id_comptag.tolist()
+        
+        def maj_id_comptg(id_cpt_plod,id_cpt_cumuld, list_id_comptag,list_id_gest) : 
+            for a in  (id_cpt_plod,id_cpt_cumuld) : 
+                if a in list_id_comptag or a in list_id_gest : 
+                    return a
+            else : return id_cpt_plod
+    
+        df['id_comptag']=df.apply(lambda x : maj_id_comptg(x['id_gest_plod'], x['id_gest_cumuld'], list_id_comptg,list_corresp_comptg ), axis=1)
+    
+    def comptage_forme(self,bdd, table_cpt) : 
         """
         creer le df_attr a partir des donnees secondaire et permanent
+        2 cas de figuer pour le moment : en 2018 ajout des pr + abs issus de plod et abscd dans la liste de correspondance, en 2019 conservation des 2 colonnes et recherche si existants
         """
-        self.df_attr=pd.concat([self.forme_cpt_perm_xls(),self.cpt_second_xls()], axis=0, sort=False)
-        self.df_attr=self.df_attr.loc[~self.df_attr.isna().any(axis=1)].copy()
+        if not self.feuil_perm : 
+            self.df_attr=pd.concat([self.forme_cpt_perm_xls(),self.cpt_second_xls()], axis=0, sort=False)
+            self.df_attr=self.df_attr.loc[~self.df_attr.isna().any(axis=1)].copy()
+        else : 
+            donnees_concat=self.ouvrir_fichier_unique()[2]
+            self.equivalence_id_comptag(bdd, table_cpt, donnees_concat)
+            self.df_attr=donnees_concat[['TMJA','POURCENTAGE_PL','TYPE_POSTE','route','id_comptag']].rename(columns={a:a.lower() for a 
+                                        in donnees_concat[['TMJA','POURCENTAGE_PL','TYPE_POSTE','route','id_comptag']].columns}).rename(columns={'pourcentage_pl':'pc_pl'})
+            self.df_attr['pr']=self.df_attr.id_comptag.apply(lambda x : int(x.split('-')[2].split('+')[0]))
+            self.df_attr['absc']=self.df_attr.id_comptag.apply(lambda x : int(x.split('-')[2].split('+')[1]))
         self.df_attr['src']='tableur'
     
     
@@ -1709,8 +1772,20 @@ class Comptage_cd86(Comptage):
         mettre à jour la table des comptages dans le 16
         """
         valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag','tmja','pc_pl','src'])
-        dico_attr_modif={'tmja_2018':'tmja', 'pc_pl_2018':'pc_pl','src_2018':'src'}
-        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)   
+        dico_attr_modif={f'tmja_{str(self.annee)}':'tmja', f'pc_pl_{str(self.annee)}':'pc_pl',f'src_{str(self.annee)}':'src'}
+        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)
+    
+    def insert_bdd_86(self,bdd, schema_cpt, table_cpt):   
+        self.df_attr_insert['dep']='86'
+        self.df_attr_insert['reseau']='RD'
+        self.df_attr_insert['gestionnai']='CD86'
+        self.df_attr_insert['concession']='N'
+        self.df_attr_insert['obs']="nouveau_point 2019, denominationCD86 ='tournant'"
+        self.df_attr_insert.rename(columns={'absc' : 'abs', 'tmja':'tmja_'+str(self.annee),'pc_pl':'pc_pl_'+str(self.annee),'obs':'obs_'+str(self.annee), 'src':'src_'+str(self.annee)},inplace=True)
+        self.insert_bdd(bdd,schema_cpt,table_cpt, self.df_attr_insert)
+        #mettre à jour la geom
+        self.maj_geom(bdd, schema_cpt, table_cpt, dep='86')
+        
         
 class Comptage_cd24(Comptage):
     """
