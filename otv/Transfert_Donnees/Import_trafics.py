@@ -20,6 +20,8 @@ from Base_BdTopo import Import_outils as io
 from Base_BdTopo import Rond_points as rp
 from Base_BdTopo import Regroupement_correspondance as rc
 
+dico_mois={'janv':[1,'Janv','Janvier'], 'fevr':[2,'Fév','Février'], 'mars':[3,'Mars','Mars'], 'avri':[4,'Avril','Avril'], 'mai':[5,'Mai','Mai'], 'juin':[6,'Juin','Juin'], 
+           'juil':[7,'Juill','Juillet'], 'aout':[8,'Août','Aout'], 'sept':[9,'Sept','Septembre'], 'octo':[10,'Oct','Octobre'], 'nove':[11,'Nov','Novembre'], 'dece':[12,'Déc','Décembre']}
 
 def cd23(fichier=r'Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA\Doc_travail\Donnees_source\CD23\2018_CD23_trafics.xls'):
     """
@@ -97,26 +99,48 @@ class FIM():
         sens_uniq_nb_blocs : si sens_uniq : nb de bloc de donnees
         date_fin
     """
-    def __init__(self, fichier):
-        self.fichier=fichier
-        self.dico_corresp_type_veh={'TV':('1.T','2.','1.'),'VL':('2.V',),'PL':('3.P','2.P')}
-        self.dico_corresp_type_fichier={'mode3' : ('1.T','3.P'), 'mode4' : ('2.V','2.P'), 'mode2':('2.',), 'mode1' : ('1.',)}
+    def __init__(self, fichier, gest=None):
+        self.fichier_fim=fichier
+        self.dico_corresp_type_veh={'TV':('1.T','2.','1.'),'VL':('2.V','4.V'),'PL':('3.P','2.P','4.P')}
+        self.dico_corresp_type_fichier={'mode3' : ('1.T','3.P'), 'mode4' : ('2.V','2.P','4.V', '4.P'), 'mode2':('2.',), 'mode1' : ('1.',)}
+        self.gest=gest
 
     def ouvrir_fim(self):
         """
         ouvrir le fichier txt et en sortir la liste des lignes
         """
-        with open(self.fichier) as f :
+        with open(self.fichier_fim) as f :
             lignes=[e.strip() for e in f.readlines()]
         return lignes
+    
+    def corriger_mode(self,lignes, mode):
+        """
+        correction du fichier fim si mode = 4. dans le fichiers, pour pouvoir diiférencier VL et PL
+        """
+        i=0
+        for e,l in enumerate(lignes) :
+            if mode=='4.' : #porte ouvert pour d'auter corrections si beoisn
+                if '   4.   ' in l : 
+                    if i% 2==0 :
+                        lignes[e]=l.replace('   4.   ','   4.V   ')
+                        i+=1
+                    else : 
+                        lignes[e]=l.replace('   4.   ','   4.P   ') 
+                        i+=1
 
     def params_fim(self,lignes):
         """
         obtenir les infos générales du fichier : date_debut(anne, mois, jour, heure, minute), mode
         """
         annee,mois,jour,heure,minute,self.pas_temporel=(int(lignes[0].split('.')[i].strip()) for i in range(5,11))
+        #particularite CD16 : l'identifiant route et section est present dans le FIM
+        if self.gest=='CD16' : 
+            self.section_cp='_'.join([str(int(lignes[0].split('.')[a].strip())) for a in (2,3)])
         self.date_debut=pd.to_datetime(f'{jour}-{mois}-{annee} {heure}:{minute}', dayfirst=True)
         mode=lignes[0].split()[9]
+        if mode in ['4.',] : #correction si le mode est de type 4. sans distinction exlpicite de VL TV PL. porte ouvert à d'autre cas si besoin 
+            self.corriger_mode(lignes, mode)
+            mode=lignes[0].split()[9]
         self.mode=[k for k,v in self.dico_corresp_type_fichier.items() if any([e == mode for e in v])][0]
         if not self.mode : 
             raise self.fim_TypeModeError
@@ -1563,36 +1587,48 @@ class Comptage_cd16(Comptage):
         self.fichier_station_cpt=fichier_station_cpt
         self.annee=annee
         
-    def cpt_perm_xls(self):
+    def cpt_perm_xls(self, skiprows, cpt_a_ignorer=()):
         """
         mettre en forme les comptages permannets issu des fichiers de comptages au format xls B15 de route plus
+        in : 
+            skiprows : nb de lignes du fichiers excel a ignorer
+            cpt_a_ignorer : tuple de string des idc_omptag a ignorer au vu des commentaires du CD16
         """
-        donnees_brutes=pd.read_excel(self.fichier_b15_perm, skiprows=8)
+        donnees_brutes=pd.read_excel(self.fichier_b15_perm, skiprows=skiprows)
         donnees_filtrees=donnees_brutes[[a for a in donnees_brutes.columns if not isinstance(a, int) and 'Unnamed' not in a]].copy()
         # traiter et mettre en forme
         tmja=donnees_filtrees.loc[donnees_filtrees .apply(lambda x : x['Identif. Local.'][-2:]==' 3', axis=1)].copy()
-        tmja['pr']=tmja['PR Distance'].apply(lambda x : int(x))
-        tmja['absc']=tmja['PR Distance'].apply(lambda x : int((str(x)+'0'*(4-len(str(x).split('.')[1]))).split('.')[1]))
+        tmja['pr']=tmja['PR+Distance'].apply(lambda x : re.split('(\.|\+|,)',str(x))[0])
+        tmja['absc']=tmja['PR+Distance'].apply(lambda x : int(re.split('(\.|\+|,)',str(x))[2]+'0'*(4-len(re.split('(\.|\+|,)',str(x))[2]))) if re.search('(\.|\+|,)', str(x)) else 0)
         tmja['route']=tmja['Route'].apply(lambda x : O.epurationNomRoute(x[3:]))
         tmja['id_comptag']=tmja.apply(lambda x : f"16-{x['route']}-{x['pr']}+{x['absc']}", axis=1)
         tmja_final=tmja[['pr', 'absc', 'route', 'id_comptag', 'Année']].loc[(tmja['Année']!=' ') & (~tmja['Année'].isna())].rename(columns={'Année':'tmja'})
+        tmja_mens=tmja[[c for c in tmja.columns if c in [a[2] for a in dico_mois.values()]]+['id_comptag']].copy()
+        tmja_mens=tmja_mens.rename(columns={a:k for a in tmja_mens.columns if a!='id_comptag' for k,v in dico_mois.items() if a==v[2] })
+        tmja_mens['donnees_type']='tmja'
+        tmja_mens['annee']=str(self.annee)
         index_tmja=tmja.index.tolist()
         index_ppl=[a+1 for a in index_tmja]
         ppl=donnees_filtrees.loc[index_ppl].copy()
-        ppl['pr']=ppl['PR Distance'].apply(lambda x : int(x))
-        ppl['absc']=ppl['PR Distance'].apply(lambda x : int((str(x)+'0'*(4-len(str(x).split('.')[1]))).split('.')[1]))
+        ppl['pr']=ppl['PR+Distance'].apply(lambda x : re.split('(\.|\+|,)',str(x))[0])
+        ppl['absc']=ppl['PR+Distance'].apply(lambda x : int(re.split('(\.|\+|,)',str(x))[2]) if re.search('(\.|\+|,)', str(x)) else 0)
         ppl['route']=ppl['Route'].apply(lambda x : O.epurationNomRoute(x[3:]))
         ppl['id_comptag']=ppl.apply(lambda x : f"16-{x['route']}-{x['pr']}+{x['absc']}", axis=1)
         ppl['Année']=ppl['Année'].apply(lambda x : round(float(x),2) if x!=' ' else np.NaN)
+        ppl_mens=ppl[[c for c in ppl.columns if c in [a[2] for a in dico_mois.values()]]+['id_comptag']].copy()
+        ppl_mens=ppl_mens.rename(columns={a:k for a in ppl_mens.columns if a!='id_comptag' for k,v in dico_mois.items() if a==v[2] })
+        ppl_mens['donnees_type']='pc_pl'
+        ppl_mens['annee']=str(self.annee)
+        ppl_mens=ppl_mens.applymap(lambda x : round(x,2) if isinstance(x,float) else x)
         ppl_final=ppl[['pr', 'absc', 'route', 'id_comptag', 'Année']].rename(columns={'Année':'pc_pl'})
         df_trafic=tmja_final.merge(ppl_final[['pc_pl','id_comptag']], on='id_comptag')
+        donnees_mens=pd.concat([tmja_mens,ppl_mens], axis=0, sort=False)
         #filtrer selon comm CD16
-        di_comptag_filtre_cd16=('16-D103-1+17','16-D674-10+28','16-D674-22+660','16-D699-12-490','16-D737-22+93','16-D910-23+821','16-D939-1+575','16-D939-15+445','16-D939-23+778','16-D951-36+15','16-D1000-0+369','16-D1000-2+920',
-        '16-D1000-13+700','16-D1000-15+845', '16-D1000-16+350')
-        df_compt_perm=df_trafic.loc[~df_trafic.id_comptag.isin(di_comptag_filtre_cd16)].copy()
+        df_compt_perm=df_trafic.loc[~df_trafic.id_comptag.isin(cpt_a_ignorer)].copy()
+        donnees_mens=donnees_mens.loc[~donnees_mens.id_comptag.isin(cpt_a_ignorer)].copy()
         df_compt_perm['type_poste']='Per'
         df_compt_perm['src']='tableau B15'
-        return df_compt_perm
+        return df_compt_perm, donnees_mens
     
     def cpt_tmp_pigma(self):
         """
@@ -1601,7 +1637,7 @@ class Comptage_cd16(Comptage):
         donnees_brutes_tmp_lgn=gp.read_file(self.fichier_cpt_lgn)
         donnees_brutes_tmp_pt=gp.read_file(self.fichier_station_cpt)
         
-        donnees_brutes_tmp=donnees_brutes_tmp_pt[['AXE','PLOD','ABSD','SECTION']].merge(donnees_brutes_tmp_lgn[['AXE','TRAFIC_PL','TMJA','ANNEE_COMP', 'PRC','ABC','TYPE_COMPT']], 
+        donnees_brutes_tmp=donnees_brutes_tmp_pt[['AXE','PLOD','ABSD','SECTION']].merge(donnees_brutes_tmp_lgn[['AXE','TRAFIC_PL','TMJA','ANNEE_COMP', 'PRC','ABC','TYPE_COMPT','SECTION_CP']], 
                                                                                         left_on=['AXE','PLOD','ABSD'],right_on=['AXE','PRC','ABC'])
         donnees_tmp_liees=donnees_brutes_tmp.loc[(donnees_brutes_tmp['ANNEE_COMP']==self.annee) & (donnees_brutes_tmp['TYPE_COMPT']!='Per')].copy()
         donnees_tmp_filtrees=donnees_tmp_liees.rename(columns={'AXE':'route','PRC':'pr','ABC':'absc','TMJA':'tmja','TRAFIC_PL':'pc_pl','TYPE_COMPT':'type_poste'}).drop(['PLOD','ABSD','SECTION','ANNEE_COMP'], axis=1)
@@ -1609,11 +1645,56 @@ class Comptage_cd16(Comptage):
         donnees_tmp_filtrees['src']='sectionnement'
         return donnees_tmp_filtrees
     
-    def comptage_forme(self):
+    def donnees_horaires(self, donnees_tmp_filtrees, dossier):
+        """
+        à partir des FIM et du fichier geolocalise des comptages, creer le fichier horaire par pt de comptag
+        in : 
+            dossier : dosssier contenant les fichers FIM de donnees hoarires
+        """
+        def mise_en_forme_fim_horaire(donnees, id_comptag):
+            """
+            modifier la forme horaire des FIM pour le transfert dans la table des comptages horaires
+            """
+            donnees.reset_index(inplace=True)
+            donnees['jour']=donnees['date'].apply(lambda x : pd.to_datetime(x.strftime('%Y-%m-%d')))
+            donnees['heure']=donnees['date'].apply(lambda x : f"h{x.hour}_{x.hour+1 if x.hour!=24 else 24}")
+            donnees_tv=donnees[['jour', 'heure', 'tv']].pivot(index='jour',columns='heure', values='tv')
+            donnees_tv['type_veh']='TV'
+            donnees_pl=donnees[['jour', 'heure', 'pl']].pivot(index='jour',columns='heure', values='pl')
+            donnees_pl['type_veh']='PL'
+            donnees=pd.concat([donnees_tv,donnees_pl], axis=0, sort=False).reset_index()
+            donnees['id_comptag']=id_comptag
+            return donnees
+        
+        for e,fichier in enumerate(O.ListerFichierDossier(dossier,'')) : 
+            print(fichier)
+            fichier_fim=FIM(os.path.join(dossier, fichier), gest='CD16')
+            try : 
+                fichier_fim.resume_indicateurs()
+            except fichier_fim.fim_PasAssezMesureError as e : 
+                print(e, fichier)
+                continue
+            id_comptag=donnees_tmp_filtrees.loc[donnees_tmp_filtrees['SECTION_CP']==fichier_fim.section_cp].id_comptag.values[0]
+            donnees=fichier_fim.df_tot_heure[['tv_tot','pl_tot']].rename(columns={'tv_tot':'tv','pl_tot':'pl'}).copy()
+            donnees=mise_en_forme_fim_horaire(donnees,id_comptag)
+            if e==0: 
+                fichier_tot=donnees.copy()
+            else : 
+                fichier_tot=pd.concat([fichier_tot,donnees.copy()], sort=False, axis=0)
+        
+        return fichier_tot
+    
+    def comptage_forme(self, skiprows, cpt_a_ignorer, dossier_cpt_fim):
         """
         fusion des données de cpt_tmp_pigma() et cpt_perm_xls()
+        in : 
+            cf fonction cpt_perm_xls
         """
-        self.df_attr=pd.concat([self.cpt_perm_xls(),self.cpt_tmp_pigma()],sort=False, axis=0)
+        df_compt_perm, donnees_mens=self.cpt_perm_xls(skiprows, cpt_a_ignorer)
+        donnees_tmp_filtrees=self.cpt_tmp_pigma()
+        self.df_attr=pd.concat([df_compt_perm,donnees_tmp_filtrees],sort=False, axis=0)
+        self.df_attr_mens=donnees_mens
+        self.df_attr_horaire=self.donnees_horaires(donnees_tmp_filtrees, dossier_cpt_fim)
 
     def classer_comptage_update_insert(self,bdd,table_cpt):
         """
@@ -1632,7 +1713,7 @@ class Comptage_cd16(Comptage):
         mettre à jour la table des comptages dans le 16
         """
         valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag','tmja','pc_pl','src'])
-        dico_attr_modif={'tmja_2018':'tmja', 'pc_pl_2018':'pc_pl','src_2018':'src'}
+        dico_attr_modif={'tmja_'+str(self.annee):'tmja', 'pc_pl_'+str(self.annee):'pc_pl','src_'+str(self.annee):'src'}
         self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)
     
 
@@ -1855,12 +1936,13 @@ class Comptage_vinci(Comptage):
     inserer les donnees de comptage de Vinci
     POur info il y a une table de correspondance entre les donnees fournies par Vinci et les notre dans la base otv, scham source table asf_otv_tmja_2017
     """  
-    def __init__(self,fichier_perm):
+    def __init__(self,fichier_perm, annee):
         self.fichier_perm=fichier_perm
+        self.annee=annee
         self.comptage_forme()
     
     def ouvrir_fichier(self):
-        donnees_brutes=pd.read_excel(r'D:\temp\otv\Donnees_source\VINCI\2018_comptage_vitesse_moyenne_VINCI.xlsx').rename(columns={'(*) PR début':'pr_deb'})
+        donnees_brutes=pd.read_excel(self.fichier_perm).rename(columns={'(*) PR début':'pr_deb'})
         donnees_brutes=donnees_brutes.loc[~donnees_brutes.pr_deb.isna()].copy()
         return donnees_brutes
     
@@ -1875,13 +1957,197 @@ class Comptage_vinci(Comptage):
     def comptage_forme(self):
         donnees_brutes=self.ouvrir_fichier()
         base=self.importer_donnees_correspondance() 
-        self.df_attr=donnees_brutes[['pr_deb','TMJA 2018','Pc PL 2018']].merge(base[['pr_deb','ID']], on='pr_deb').rename(columns={'ID':'id_comptag','TMJA 2018':'tmja','Pc PL 2018':'pc_pl'})
+        self.df_attr=donnees_brutes[['pr_deb',f'TMJA {str(self.annee)}',f'Pc PL {str(self.annee)}']].merge(base[['pr_deb','ID']], on='pr_deb').rename(columns=
+                                                            {'ID':'id_comptag',f'TMJA {str(self.annee)}':'tmja',f'Pc PL {str(self.annee)}':'pc_pl'})
         self.df_attr['pc_pl']=self.df_attr.pc_pl.apply(lambda x : round(x,2))
         self.df_attr['src']='tableur'
         
+        tmjm_mens=donnees_brutes[[a for a in donnees_brutes.columns if a =='pr_deb' or 'TMJM '+str(self.annee) in a]].merge(base[['pr_deb','ID']], on='pr_deb').rename(columns=
+                                                            {'ID':'id_comptag'}).drop('pr_deb', axis=1)
+        tmjm_mens.rename(columns={c:k for c in tmjm_mens.columns if c!='id_comptag' for k, v in dico_mois.items()  if v[0]==int(c[-2:])}, inplace=True)
+        tmjm_mens=tmjm_mens.applymap(lambda x : int(x) if isinstance(x, float) else  x)
+        tmjm_mens['donnees_type']='tmja'
+        pc_pl_mens=donnees_brutes[[a for a in donnees_brutes.columns if a == 'pr_deb' or re.search('Pc PL [0-9]{2}$',a)]].merge(base[['pr_deb','ID']], on='pr_deb').rename(columns=
+                                                                    {'ID':'id_comptag'}).drop('pr_deb', axis=1)
+        pc_pl_mens.rename(columns={c:k for c in pc_pl_mens.columns if c!='id_comptag' for k, v in dico_mois.items()  if v[0]==int(c[-2:])}, inplace=True)
+        pc_pl_mens['donnees_type']='pc_pl'
+        self.df_attr_mens=pd.concat([tmjm_mens,pc_pl_mens], axis=0, sort=False).sort_values('id_comptag')
+        self.df_attr_mens['annee']=str(self.annee)
+        
+    def classer_comptage_update_insert(self,bdd, table_cpt):
+        """
+        uniquement pour verif, car normalemnet df_attr=df_atr_update et df_attr_insertest vide
+        """
+        self.comptag_existant_bdd(bdd, table_cpt)
+        self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        
+        
     def update_bdd_Vinci(self,bdd, schema, table):
         val_txt=self.creer_valeur_txt_update(self.df_attr, ['id_comptag','tmja','pc_pl', 'src'])
-        self.update_bdd(bdd, schema, table, val_txt,{'tmja_2018':'tmja','pc_pl_2018':'pc_pl', 'src_2018':'src'})
+        self.update_bdd(bdd, schema, table, val_txt,{f'tmja_{str(self.annee)}':'tmja',f'pc_pl_{str(self.annee)}':'pc_pl', f'src_{str(self.annee)}':'src'})
         
+class Comptage_alienor(Comptage):    
+    def __init__(self,fichier_perm, annee):
+        self.fichier_perm=fichier_perm
+        self.annee=annee
     
+    def ouvrir_et_separe_donnees(self):
+        donnees=pd.read_excel(self.fichier_perm).rename(columns={'ID':'id_comptag'})
+        donnees_agregees=donnees[[a for a in donnees.columns if a in ('id_comptag','TMJA_'+str(self.annee),'Pc_PL_'+str(self.annee))]].copy()
+        donnees_agregees.rename(columns={a:a.lower() for a in donnees_agregees.columns}, inplace=True)
+        donnees_agregees['tmja_'+str(self.annee)]=donnees_agregees['tmja_'+str(self.annee)].apply(lambda x : int(x))
+        donnees_agregees['src']='tableur'
+        tmjm_mens=donnees[[a for a in donnees.columns if a == 'id_comptag' or 'TMJM' in a]].copy()#or re.search('Pc_PL_[0-9]{4}_[0-9]{2}',a)
+        tmjm_mens.rename(columns={c:k for c in tmjm_mens.columns if c!='id_comptag' for k, v in dico_mois.items()  if v[0]==int(c[-2:])}, inplace=True)
+        tmjm_mens=tmjm_mens.applymap(lambda x : int(x) if isinstance(x, float) else  x)
+        tmjm_mens['donnees_type']='tmja'
+        pc_pl_mens=donnees[[a for a in donnees.columns if a == 'id_comptag' or re.search('Pc_PL_[0-9]{4}_[0-9]{2}',a)]].copy()
+        pc_pl_mens.rename(columns={c:k for c in pc_pl_mens.columns if c!='id_comptag' for k, v in dico_mois.items()  if v[0]==int(c[-2:])}, inplace=True)
+        pc_pl_mens['donnees_type']='pc_pl'
+        donnees_mens=pd.concat([tmjm_mens,pc_pl_mens], axis=0, sort=False).sort_values('id_comptag')
+        donnees_mens['annee']=str(self.annee)
+        self.df_attr=donnees_agregees.copy()
+        self.df_attr_mens=donnees_mens.copy()
     
+    def update_bdd_Alienor(self,bdd, schema, table):
+        val_txt=self.creer_valeur_txt_update(self.df_attr, ['id_comptag','tmja_'+str(self.annee),'pc_pl_'+str(self.annee), 'src'])
+        self.update_bdd(bdd, schema, table, val_txt,{'tmja_'+str(self.annee):'tmja_'+str(self.annee),'pc_pl_'+str(self.annee):'pc_pl_'+str(self.annee), 
+                                                     'src_'+str(self.annee):'src'})    
+
+class Comptage_atlandes(Comptage):    
+    def __init__(self,fichier_perm, annee):
+        self.fichier_perm=fichier_perm
+        self.annee=annee   
+        
+    def donnees_mens(self):
+        donnees=pd.read_excel(self.fichier_perm)
+        donnees=donnees.loc[(~donnees['TMJA 2 sens confondus'].isna()) & (~donnees['TMJM VL'].isna())].copy()
+        val_l0=donnees.iloc[0].values
+        col_tmjm_vl=donnees.columns[donnees.columns.tolist().index('TMJM VL'):donnees.columns.tolist().index('TMJM PL')]
+        dico_nom_tmjm_vl={a:'tmjm_vl_'+b for a, b in zip(col_tmjm_vl,val_l0[donnees.columns.tolist().index('TMJM VL'):donnees.columns.tolist().index('TMJM PL')])}
+        col_tmjm_pl=donnees.columns[donnees.columns.tolist().index('TMJM PL'):]
+        dico_nom_tmjm_pl={a:'tmjm_pl_'+b for a, b in zip(col_tmjm_pl,val_l0[donnees.columns.tolist().index('TMJM VL'):donnees.columns.tolist().index('TMJM PL')])}
+        donnees=donnees.rename(columns=dico_nom_tmjm_vl).rename(columns=dico_nom_tmjm_pl)
+        donnees=donnees.iloc[1:].copy()
+        donnees['id_comptag']=donnees.apply(lambda x : f"40-A63-{str(x['Echangeur de début de section Trafic'])}+{str(x['Unnamed: 2'])}"if x['Echangeur de début de section Trafic'] != 36 else
+                                          f"33-A63-{str(x['Echangeur de début de section Trafic'])}+{str(x['Unnamed: 2'])}", axis=1)
+        donnees_mens=donnees[[a for a in donnees.columns if a=='id_comptag' or 'tmjm' in a ]].copy()
+        #calcul du tmjm_tv
+        for m in dico_mois.values():
+            donnees_mens[f'tmjm_tv_{m[1]}']=donnees_mens[f'tmjm_vl_{m[1]}']+donnees_mens[f'tmjm_pl_{m[1]}']
+            donnees_mens[f'tmjm_pc_pl_{m[1]}']=donnees_mens.apply(lambda x : round(x[f'tmjm_pl_{m[1]}']/x[f'tmjm_tv_{m[1]}']*100,2), axis=1)
+        tmjm_tv_mens=donnees_mens[[a for a in donnees_mens.columns if 'tv' in a or a=='id_comptag']].copy()
+        tmjm_tv_mens.rename(columns={c:k for c in tmjm_tv_mens.columns if c!='id_comptag' for k, v in dico_mois.items()  if v[1]==c.split('_')[-1]}, inplace=True)
+        tmjm_tv_mens['donnees_type']='tmja'
+        tmjm_pl_mens=donnees_mens[[a for a in donnees_mens.columns if 'pc_pl_' in a or a=='id_comptag']].copy()
+        tmjm_pl_mens.rename(columns={c:k for c in tmjm_pl_mens.columns if c!='id_comptag' for k, v in dico_mois.items()  if v[1]==c.split('_')[-1]}, inplace=True)
+        tmjm_pl_mens['donnees_type']='pc_pl'
+        donnees_mens_final=pd.concat([tmjm_tv_mens,tmjm_pl_mens], axis=0, sort=False).sort_values('id_comptag')
+        donnees_mens_final['annee']=str(self.annee)
+        self.df_attr_mens=donnees_mens_final.copy() 
+        
+class Comptage_GrandPoitiers(Comptage):
+    def __init__(self,dossier, annee):
+        self.dossier=dossier
+        self.fichiers=O.ListerFichierDossier(dossier, 'xlsx')
+        self.annee=annee
+        
+    def donnnees_agregees(self, fichier):
+        donnees_agregees=pd.read_excel(os.path.join(self.dossier,fichier), sheet_name='Informations')  
+        tmja=int(donnees_agregees.iloc[10,5])
+        pc_pl=round(donnees_agregees.iloc[10,8]*100,2)
+        pl=int(donnees_agregees.iloc[10,7])
+        rue=donnees_agregees.iloc[1,1].split('(')[0].strip()
+        return donnees_agregees, rue, tmja, pc_pl, pl
+    
+    def donnees_horaires(self, fichier,start=8, step=34):
+        donnees_detaillees=pd.read_excel(os.path.join(self.dossier,fichier), sheet_name='Tableau', header=None)  
+        donnees_detaillees=donnees_detaillees.loc[:,[1,26,27]].copy()
+        donnees_detaillees.columns=['heure','tv','pl']
+        for i,j in enumerate(range(start,len(donnees_detaillees),step)):
+            date=donnees_detaillees.iloc[j,0]
+            donnees=donnees_detaillees.iloc[j+2:j+26,1:3]
+            date_index=pd.date_range(date, periods=24, freq='H')
+            donnees.index=date_index
+            donnees=donnees.reset_index().rename(columns={'index':'date'})
+            donnees['jour']=donnees['date'].apply(lambda x : pd.to_datetime(x.strftime('%Y-%m-%d')))
+            donnees['heure']=donnees['date'].apply(lambda x : f'h{x.hour}_{x.hour+1 if x.hour!=24 else 24}')
+            donnees=pd.concat([donnees[['jour', 'heure', 'tv']].pivot(index='jour',columns='heure', values='tv'),
+            donnees[['jour', 'heure', 'pl']].pivot(index='jour',columns='heure', values='pl')], axis=0, sort=False).reset_index()
+            donnees['type_veh']=['TV','PL']
+            if i==0 : 
+                donnees_horaire=donnees.copy()
+            else : 
+                donnees_horaire=pd.concat([donnees_horaire,donnees], axis=0, sort=False)
+            donnees_horaire.index.name='index' #juste pour lisibilite
+            donnees_horaire.columns.name=None
+        return donnees_horaire
+    
+    def cumul_sens(self, ref_pt, id_comptag):
+        """
+        faire la somme des deux sens quand on a une liste des deux fichiers de comptage
+        in : 
+            ref_pt : string des points relatif à un id_comptag, issu de la Bdd: comptag.gp_tmja_2015_p.id_comp
+            id_comptag : id_comptag auquel associe les fichiers
+        """
+        liste_tmja=[]
+        liste_pl=[]
+        liste_donnees_horaire=[]
+        if len(ref_pt)==1 :
+            fichiers_sens=[f for f in self.fichiers if f'Poste {ref_pt[0]} - sens' in f] if ref_pt[0]!='20' else [f for f in self.fichiers if re.search('Poste 20[A,B] - sens',f)]
+        elif len(ref_pt)==2 : 
+            fichiers_sens=[f for f in self.fichiers if (f'Poste {ref_pt[0]} - sens' in f or f'Poste {ref_pt[1]} - sens' in f)]
+        else  : 
+            print(f'pb nb de fichier : {ref_pt}')
+            raise Exception
+        
+        if not fichiers_sens : 
+            raise self.PasDeFichierError(ref_pt)
+        
+        for f in fichiers_sens : 
+            rue, tmja, pc_pl,pl=self.donnnees_agregees(f)[1:]
+            liste_tmja.append(tmja)
+            liste_pl.append(pl)
+            liste_donnees_horaire.append(self.donnees_horaires(f))
+        tmja=sum(liste_tmja) 
+        pc_pl=round(100*sum(liste_pl)/tmja, 2)
+        donnees_horaires_f=liste_donnees_horaire[0].set_index('jour').add(liste_donnees_horaire[1].set_index('jour')).reset_index() if len(fichiers_sens)>1 else liste_donnees_horaire[0]
+        donnees_horaires_f.type_veh=donnees_horaires_f.type_veh.apply(lambda x : x[:2])
+        donnees_horaires_f['id_comptag']=id_comptag
+        return tmja,pc_pl, donnees_horaires_f,fichiers_sens
+    
+    def comptage_forme(self, bdd):
+        with ct.ConnexionBdd(bdd) as c : 
+            rqt="select * from comptage.gp_tmja_2015_p"
+            points_existants=gp.read_postgis(rqt,c.sqlAlchemyConn)
+        i=0
+        dico_cpt={}
+        for p in points_existants.point_comp.tolist():
+            if isinstance(p, str) : #ne pas prendre en compte les points sans références
+                ref_pt=p.split('_')
+                id_comptag=points_existants.loc[points_existants['point_comp']==p].id_comptag.to_numpy()[0]
+                try :
+                    tmja,pc_pl, donnees_horaires_f,fichiers_sens=self.cumul_sens(ref_pt,id_comptag)
+                except self.PasDeFichierError : 
+                    continue
+                dico_cpt[id_comptag]={'tmja':tmja, 'pc_pl':pc_pl, 'src':f"tableurs : {', '.join(fichiers_sens)}"}
+                if i==0 :
+                    donnees_horaires_tot=donnees_horaires_f.copy()
+                else : donnees_horaires_tot=pd.concat([donnees_horaires_tot, donnees_horaires_f], axis=0, sort=False)
+                i+=1
+        self.df_attr=pd.DataFrame.from_dict(dico_cpt, orient='index').reset_index().rename(columns={'index':'id_comptag'})
+        self.df_attr_horaire=donnees_horaires_tot.copy()
+        
+    def update_bdd_grdPoi(self,bdd, schema, table):
+        val_txt=self.creer_valeur_txt_update(self.df_attr, ['id_comptag','tmja','pc_pl', 'src'])
+        self.update_bdd(bdd, schema, table, val_txt,{f'tmja_{str(self.annee)}':'tmja',f'pc_pl_{str(self.annee)}':'pc_pl', f'src_{str(self.annee)}':'src'})
+    
+    class PasDeFichierError(Exception): 
+        def __init__(self, ref_pt):
+            Exception.__init__(self,f'pas de fihcier pour les postes de comptage {ref_pt} ')  
+        
+        
+        
+        
+        
