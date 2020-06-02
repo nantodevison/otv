@@ -16,12 +16,13 @@ from shapely.geometry import Point
 
 import Connexion_Transfert as ct
 import Outils as O
+from Decorateurs import concat_df
 from Base_BdTopo import Import_outils as io
 from Base_BdTopo import Rond_points as rp
 from Base_BdTopo import Regroupement_correspondance as rc
 
-dico_mois={'janv':[1,'Janv','Janvier'], 'fevr':[2,'Fév','Février'], 'mars':[3,'Mars','Mars'], 'avri':[4,'Avril','Avril'], 'mai':[5,'Mai','Mai'], 'juin':[6,'Juin','Juin'], 
-           'juil':[7,'Juill','Juillet'], 'aout':[8,'Août','Aout'], 'sept':[9,'Sept','Septembre'], 'octo':[10,'Oct','Octobre'], 'nove':[11,'Nov','Novembre'], 'dece':[12,'Déc','Décembre']}
+dico_mois={'janv':[1,'Janv','Janvier'], 'fevr':[2,'Fév','Février','févr'], 'mars':[3,'Mars','Mars'], 'avri':[4,'Avril','Avril'], 'mai':[5,'Mai','Mai'], 'juin':[6,'Juin','Juin'], 
+           'juil':[7,'Juill','Juillet', 'juil'], 'aout':[8,'Août','Aout'], 'sept':[9,'Sept','Septembre'], 'octo':[10,'Oct','Octobre'], 'nove':[11,'Nov','Novembre'], 'dece':[12,'Déc','Décembre']}
 
 def cd23(fichier=r'Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA\Doc_travail\Donnees_source\CD23\2018_CD23_trafics.xls'):
     """
@@ -271,7 +272,7 @@ class FIM():
         #selon le nombre de jour comptés on prend soit tous les jours sauf les 1ers et derniers, soit on somme les 1ers et derniers
         #si le nb de jours est inéfrieur à 7 on leve une erreur
         if len(self.df_tot_jour)<7 : 
-            raise self.fim_PasAssezMesureError(len(self.df_tot_jour))
+            raise PasAssezMesureError(len(self.df_tot_jour))
         elif len(self.df_tot_jour) in (7,8) : 
             traf_list=self.df_tot_jour.tv_tot.tolist()
             self.tmja=int(statistics.mean([traf_list[0]+traf_list[-1]]+traf_list[1:-1]))
@@ -309,13 +310,7 @@ class FIM():
         """     
         def __init__(self):
             Exception.__init__(self,f'le mode n\'est pas reconnu, cf focntion params_fim()')
-            
-    class fim_PasAssezMesureError(Exception):
-        """
-        Exception levee si le fichier comport emoins de 7 jours
-        """     
-        def __init__(self, nbjours):
-            Exception.__init__(self,f'le fichier comporte moins de 7 jours de mesures. Nb_jours: : {nbjours} ')
+
     
     class fimNbBlocDonneesError(Exception):
         """
@@ -1429,7 +1424,7 @@ class Comptage_cd87(Comptage):
                     obj_fim=FIM(os.path.join(self.dossier,e['fichiers'][0]))
                     try : 
                         obj_fim.resume_indicateurs()
-                    except obj_fim.fim_PasAssezMesureError : 
+                    except PasAssezMesureError : 
                         continue
                     except Exception as ex : 
                         print(f"erreur : {ex} \n dans fichier : {e['fichiers'][0]}")
@@ -1442,13 +1437,16 @@ class Comptage_cd87(Comptage):
                         print(f)
                         try : 
                             obj_fim.resume_indicateurs()
-                        except (obj_fim.fim_PasAssezMesureError,obj_fim.fimNbBlocDonneesError)  : 
+                        except (PasAssezMesureError,obj_fim.fimNbBlocDonneesError)  : 
                             continue
                         except Exception as ex : 
                             print(f"erreur : {ex} \n dans fichier : {f}")
                         list_tmja.append(obj_fim.tmja)
                         list_pc_pl.append(obj_fim.pc_pl)
-                    e['tmja'], e['pc_pl'], e['date_debut'], e['date_fin']=int(statistics.mean(list_tmja)), round(statistics.mean(list_pc_pl),2),np.NaN, np.NaN
+                    #pour faire les moyennes et gérer les valeurs NaN de pc_pl
+                    list_pc_pl=[p for p in list_pc_pl if p>0]
+                    e['tmja'], e['date_debut'], e['date_fin']=int(statistics.mean(list_tmja)),np.NaN, np.NaN
+                    e['pc_pl']=round(statistics.mean([p for p in list_pc_pl if p>0]),2) if list_pc_pl else np.NaN
     
     def remplir_type_poste_dico(self):
         """
@@ -1671,7 +1669,7 @@ class Comptage_cd16(Comptage):
             fichier_fim=FIM(os.path.join(dossier, fichier), gest='CD16')
             try : 
                 fichier_fim.resume_indicateurs()
-            except fichier_fim.fim_PasAssezMesureError as e : 
+            except PasAssezMesureError as e : 
                 print(e, fichier)
                 continue
             id_comptag=donnees_tmp_filtrees.loc[donnees_tmp_filtrees['SECTION_CP']==fichier_fim.section_cp].id_comptag.values[0]
@@ -2147,7 +2145,319 @@ class Comptage_GrandPoitiers(Comptage):
         def __init__(self, ref_pt):
             Exception.__init__(self,f'pas de fihcier pour les postes de comptage {ref_pt} ')  
         
+
+class Comptage_Niort(Comptage): 
+    def __init__(self,dossier, annee) : 
+        """
+        debut en 2020, fichiers csv fourni par sens, les fichiers csv fournis ressemble aux fichiers mdb de la ville d'Anglet et Angouleme
+        on part comme criter de VL ou PL un longueur à 7,2 m
+        # voiture : <5,2m
+        # camionnete : >=5.2 à <7.2
+        # bus et PL : >=7.2 à <10.9
+        # PL remorque : >=10.9 à <22
+        """
+        self.dossier=dossier
+        self.annee=annee
         
+    def creer_dico(self, dico_id_comptag):
+        """
+        creeru dico avec en cle les id_comptag et en value les fchiers concernes
+        dico_id_comptag : dico de correspondance entre les dossier fournis par la ville de Niort et les id_comptag
+        """
+        dico_fichier={}
+        for chemin, dossier, files in os.walk(self.dossier) : 
+            for d in dossier : 
+                dico_fichier[d]=[chemin+os.sep+d+os.sep+f for f in O.ListerFichierDossier(os.path.join(chemin,d),'csv')]
+        #pour les dossier cotenat plus de 2 fichiers csv (i.e plus de 1 pt de comptage
+        dico_fichier_separe={}
+        for k, v in dico_fichier.items() : 
+            if len(v)>2 : 
+                dico_fichier_separe[k+'_1']=[a for a in v if '1.csv' in a or '2.csv' in a]
+                dico_fichier_separe[k+'_2']=[a for a in v if '3.csv' in a or '4.csv' in a]
+            else :
+                dico_fichier_separe[k]=v
+                
+        dico_fichiers_final={}
+        for k, v in dico_fichier_separe.items() : 
+            for c,val in dico_id_comptag.items() : 
+                if k==val :
+                    dico_fichiers_final[c]=v
         
+        return dico_fichiers_final
+    
+    def formater_fichier_csv(self, fichier):
+        """
+        à partir des fichiers csv, obtenir une df avec modification de la date si le fichier comporte uniquement 8 jours, i.e : 6 jours plein et 2 demi journée
+        """    
+        fichier=pd.read_csv(fichier)
+        fichier.DateTime=pd.to_datetime(fichier.DateTime)
+        nb_jours_mesure=len(fichier.set_index('DateTime').resample('D'))
+        jourMin=fichier.DateTime.apply(lambda x : x.dayofyear).min()
+        jourMax=fichier.DateTime.apply(lambda x : x.dayofyear).max()
+        if nb_jours_mesure==8 : #si le nombre total de jours est inférieur à 9, il faudra regrouper les jours de début et de fin pour avoir une journée complete, ou alors c'est qu'une erreur a ete commise lors de la mesure de trafic (duree < 7 jours)
+            fichier.loc[fichier.DateTime.apply(lambda x : x.dayofyear==jourMin), 'DateTime']=fichier.loc[fichier.DateTime.apply(lambda x : x.dayofyear==jourMin)].DateTime.apply(lambda x : x+pd.Timedelta('7D'))
+        elif nb_jours_mesure>8 : 
+            fichier=fichier.loc[fichier.DateTime.apply(lambda x : (x.dayofyear!=jourMin) & (x.dayofyear!=jourMax))].copy()
+        else : 
+            raise PasAssezMesureError(nb_jours_mesure)
+        return fichier
+             
+    def csv_identifier_type_veh(self,df_brute):
+        """
+        separer les vl des pl à partir de la df de données brutes creer avec formater_fichier_csv
+        """        
+        vl=df_brute.loc[(df_brute['Length']<7.2) & (df_brute['AdviceCode']!=128)].copy()
+        pl=df_brute.loc[(df_brute['Length']>=7.2) & (df_brute['Length']<22) & (df_brute['AdviceCode']!=128) ].copy()
+        return vl,pl
+    
+    def csv_agrege_donnees_brutes(self,vl,pl):
+        """
+        prendre les donnees issues de identifier_type_veh et les regrouper par heure et jour
+        """
+        vl_agrege_h=vl.set_index('DateTime').resample('H').AdviceCode.count().reset_index().rename(columns={'AdviceCode':'nb_veh'})
+        vl_agrege_j=vl.set_index('DateTime').resample('D').AdviceCode.count().reset_index().rename(columns={'AdviceCode':'nb_veh'})
+        pl_agrege_h=pl.set_index('DateTime').resample('H').AdviceCode.count().reset_index().rename(columns={'AdviceCode':'nb_veh'})
+        pl_agrege_j=pl.set_index('DateTime').resample('D').AdviceCode.count().reset_index().rename(columns={'AdviceCode':'nb_veh'})
+        return vl_agrege_h,vl_agrege_j, pl_agrege_h, pl_agrege_j
+    
+    def csv_indicateurs_agrege(self,vl_agrege_j,pl_agrege_j ):
+        """
+        calcul des indicateurs tmja et nb_pl
+        """
+        nb_vl=round(vl_agrege_j.mean().values[0])
+        nb_pl=round(pl_agrege_j.mean().values[0])
+        tmja=nb_vl+nb_pl
+        pc_pl=round(nb_pl*100/tmja,2)
+        return nb_vl, nb_pl, tmja, pc_pl
+    
+    def csv_donnees_horaires(self,vl_agrege_h,pl_agrege_h):
+        """
+        renvoyer la df des donnees horaires en tv et pl
+        """
+        vl_agrege_h['jour']=vl_agrege_h['DateTime'].apply(lambda x : pd.to_datetime(x.strftime('%Y-%m-%d')))
+        vl_agrege_h['heure']=vl_agrege_h['DateTime'].apply(lambda x : f'h{x.hour}_{x.hour+1 if x.hour!=24 else 24}')
+        pl_agrege_h['jour']=pl_agrege_h['DateTime'].apply(lambda x : pd.to_datetime(x.strftime('%Y-%m-%d')))
+        pl_agrege_h['heure']=pl_agrege_h['DateTime'].apply(lambda x : f'h{x.hour}_{x.hour+1 if x.hour!=24 else 24}')
         
+        pl_agrege_h=pl_agrege_h[['jour', 'heure', 'nb_veh']].pivot(index='jour',columns='heure', values='nb_veh')
+        calcul_agreg_h=pd.concat([vl_agrege_h[['jour', 'heure', 'nb_veh']].pivot(index='jour',columns='heure', values='nb_veh'),
+                  pl_agrege_h], axis=0, sort=False)
+        tv_agrege_h=calcul_agreg_h.groupby('jour').sum()
+        tv_agrege_h['type_veh']='TV'
+        pl_agrege_h['type_veh']='PL'
+        donnees_horaires=pd.concat([tv_agrege_h,pl_agrege_h], axis=0, sort=False).fillna(0).reset_index()
+        return donnees_horaires
+    
+    def traiter_csv_sens_unique(self, fichier):
+        """
+        concatenation des ofnctions permettant d'aboutir aux donnees agrege et horaire d'un fichier csv de comptage pour un sens
+        """
+        f=self.formater_fichier_csv(fichier)
+        vl,pl=self.csv_identifier_type_veh(f)
+        vl_agrege_h,vl_agrege_j, pl_agrege_h, pl_agrege_j=self.csv_agrege_donnees_brutes(vl,pl)
+        nb_vl, nb_pl, tmja, pc_pl=self.csv_indicateurs_agrege(vl_agrege_j,pl_agrege_j)
+        donnees_horaires=self.csv_donnees_horaires(vl_agrege_h,pl_agrege_h)
+        return nb_vl, nb_pl, tmja, pc_pl, donnees_horaires
+    
+    def horaire_2_sens(self, id_comptag,df_sens1, df_sens2):
+        """
+        creer une df des donnes horaires pour les 2 sens d'un id_comptage
+        """
+        df_finale=pd.concat([df_sens1, df_sens2], axis=0, sort=False)
+        df_finale=df_finale.groupby(['jour','type_veh']).sum().reset_index()
+        df_finale['id_comptag']=id_comptag
+        return df_finale
+    
+    def horaire_tout_cpt(self,dico_fichiers_final):
+        """
+        creation de la df horaire pour tout les cpt
+        in :
+            dico_fichiers_final : dico d'association de l'id_comptag et de sfichiers creer par creer_dico
+        """
+        self.df_attr_horaire=pd.concat([self.horaire_2_sens(k,*[self.traiter_csv_sens_unique(f)[4] for f in v]) for k, v in dico_fichiers_final.items()], axis=0, sort=False)
+    
+
+    def indic_agreg_2sens_1_cpt(self,id_comptag, fichiers):
+        list_resultat=[self.traiter_csv_sens_unique(f)[1:3] for f in fichiers]
+        tmja, nb_pl=[list_resultat[0][1],list_resultat[1][1]], [list_resultat[0][0],list_resultat[1][0]]
+        tmja=sum(tmja)
+        pc_pl=sum(nb_pl)/tmja*100
+        src=list(set([os.path.split(f)[0] for f in fichiers]))[0]
+        return pd.DataFrame.from_dict({'id_comptag':[id_comptag,],'tmja':[tmja,],'pc_pl':pc_pl, 'src':src})
+    
+    
+    def agrege_tout_cpt(self,dico_fichiers_final ):
+        """
+        creation de la df des donnees agregees pour tout les indicatuers
+        """
+        @concat_df
+        def indic_agreg_2sens(id_comptag, fichiers):
+            list_resultat=[self.traiter_csv_sens_unique(f)[1:3] for f in fichiers]
+            tmja, nb_pl=[list_resultat[0][1],list_resultat[1][1]], [list_resultat[0][0],list_resultat[1][0]]
+            tmja=sum(tmja)
+            pc_pl=sum(nb_pl)/tmja*100
+            src=list(set([os.path.split(f)[0] for f in fichiers]))[0]
+            return pd.DataFrame.from_dict({'id_comptag':[id_comptag,],'tmja':[tmja,],'pc_pl':pc_pl, 'src':src})
+        
+        self.df_attr=indic_agreg_2sens(list(dico_fichiers_final.items()))
+        
+class Comptage_GrandDax(Comptage): 
+    def __init__(self, fichiers_pt_comptages):
+        """
+        pour le moment je me base sur un fichier de geolocalisation creer à la main qui reprend aussi les principales info 
+        pour creer l'di_comptag et les noms de fichiers a utiliser pour creer les donnees
+        """
+        self.fichiers_pt_comptages=gp.read_file(fichiers_pt_comptages, encoding='UTF-8')
+        self.MaJ_fichiers_pt_comptages()
+    
+    def MaJ_fichiers_pt_comptages(self):
+        """
+        ajouter les attributs necessaires au fichier de pt de comptage
+        """
+        self.fichiers_pt_comptages['x_wgs84']=self.fichiers_pt_comptages.geometry.to_crs({'proj':'longlat', 'ellps':'WGS84', 'datum':'WGS84'}).apply(lambda x: round(x.x,4))
+        self.fichiers_pt_comptages['y_wgs84']=self.fichiers_pt_comptages.geometry.to_crs({'proj':'longlat', 'ellps':'WGS84', 'datum':'WGS84'}).apply(lambda x: round(x.y,4))
+        self.fichiers_pt_comptages['id_comptag']=self.fichiers_pt_comptages.apply(lambda x : f'GrdDax-{x.nom_rte}-{str(x.x_wgs84)};{str(x.y_wgs84)}', axis=1)
+        self.fichiers_pt_comptages['dep']='40'
+        self.fichiers_pt_comptages['reseau']='VC'
+        self.fichiers_pt_comptages['gestionnai']='GrdDax'
+        self.fichiers_pt_comptages['concession']='N'
+        self.fichiers_pt_comptages['type_poste']='ponctuel'
+        self.fichiers_pt_comptages['src_geo']='plan pdf'
+        self.fichiers_pt_comptages['x_l93']=self.fichiers_pt_comptages.geometry.apply(lambda x : round(x.x,3))
+        self.fichiers_pt_comptages['y_l93']=self.fichiers_pt_comptages.geometry.apply(lambda x : round(x.y,3))
+     
+    def ouvrir_feuille_infos(self, dossier, fichier):
+        donnees_generale=pd.read_excel(os.path.join(dossier, fichier), sheet_name='Informations')
+        donnees_gal_sansNa=donnees_generale.dropna(how='all').dropna(axis=1,how='all')
+        return donnees_generale,donnees_gal_sansNa 
+    
+    def recup_infos(self,donnees_gal_sansNa, lgn_date_deb, lgn_date_fin):
+        #dates et duree
+        def dates_cpt(ligne, donnees_gal_sansNa):
+            txt=donnees_gal_sansNa.loc[ligne,'Unnamed: 7'].split()
+            for k, v in dico_mois.items():
+                if txt[2] in [a.lower() for a in v if isinstance(a, str)] : 
+                    mois=str(v[0])
+            return pd.to_datetime('-'.join([txt[1],mois,txt[3]]), dayfirst=True)
+    
+        date_debut=dates_cpt(lgn_date_deb,donnees_gal_sansNa)
+        date_fin=dates_cpt(lgn_date_fin,donnees_gal_sansNa)
+        duree_cpt=int(donnees_gal_sansNa.loc[15,'Unnamed: 29'])
+        annee=str(date_debut.year)
+        return date_debut, date_fin, duree_cpt, annee
+    
+    def recup_donnees_agregees(self,donnees_gal_sansNa):
+        #donnees_trafic
+        tmja_vl=round(donnees_gal_sansNa.loc[19,'Unnamed: 12'],0)
+        tmjo_vl=round(donnees_gal_sansNa.loc[20,'Unnamed: 12'],0)
+        tmja_pl=round(donnees_gal_sansNa.loc[19,'Unnamed: 23'],0)
+        tmjo_pl=round(donnees_gal_sansNa.loc[20,'Unnamed: 23'],0)
+        pc_pl_ja=round((donnees_gal_sansNa.loc[19,'Unnamed: 32'])*100,1)
+        pc_pl_jo=round((donnees_gal_sansNa.loc[20,'Unnamed: 32'])*100,1)
+        tmja=tmja_vl+tmja_pl
+        tmjo=tmjo_vl+tmjo_pl
+        return tmja_vl,tmjo_vl, pc_pl_ja, tmjo_pl, tmjo, pc_pl_jo, tmja, tmja_pl
+        
+    def creer_df_agrege(self):
+        """
+        creer la df de tout les points de comptage avec indicateur agreges
+        """
+        #importer fichiers georeferencedes pt de comptag contenat id_comptag et reference vers le dossier et ou fichier      
+        dico={}
+        dico['id_comptag']=[]
+        dico['obs_geo']=[]
+        for a in range(2011,2021) : 
+            dico[f'tmja_{str(a)}']=[]
+            dico[f'pc_pl_{str(a)}']=[]
+            dico[f'src_{str(a)}']=[]
+            
+        for dossier, fichiers, id_comptag in zip(self.fichiers_pt_comptages.dossier.tolist(),self.fichiers_pt_comptages.nom_fich.tolist(),
+                                                 self.fichiers_pt_comptages.id_comptag.tolist()) : 
+            dico['id_comptag'].append(id_comptag)
+            dico['obs_geo'].append(dossier)
+            if fichiers==None : #si pas de fichiers renseigne normelent seulement 2 IFX dans le dossier
+                fichiers=O.ListerFichierDossier(dossier,extension='.IFX')
+            else : 
+                fichiers=fichiers.split(';')
+    
+            for f in fichiers : # si j'ai oublie l'extension 
+                if not f.endswith('.IFX') : 
+                    fichiers[fichiers.index(f)]+='.IFX'
+    
+            # recup des infos de dates
+            donnees_gal_sansNa=self.ouvrir_feuille_infos(dossier, fichiers[0])[1]
+            duree_cpt, annee=self.recup_infos(donnees_gal_sansNa, 10, 11)[2:]
+    
+    
+            donnees_agregees=[self.recup_donnees_agregees(self.ouvrir_feuille_infos(dossier, f)[1])[6:] for f in fichiers]
+            tmja=sum(i[0] for i in donnees_agregees)
+            pc_pl=round(sum(i[1] for i in donnees_agregees)/tmja*100,1)
+    
+            for a in range(2011,2021) : 
+                if int(annee)==a : 
+                    dico[f'tmja_{a}'].append(tmja)
+                    dico[f'pc_pl_{a}'].append(pc_pl)
+                    dico[f'src_{a}'].append(';'.join([os.path.join(dossier, f) for f in fichiers]))
+                else : 
+                    dico[f'tmja_{a}'].append(np.NaN)
+                    dico[f'pc_pl_{a}'].append(np.NaN)
+                    dico[f'src_{a}'].append(np.NaN)
+            
+        self.df_attr=self.fichiers_pt_comptages[['id_comptag','geometry','dep','reseau','gestionnai','concession','type_poste','src_geo','x_l93','y_l93']].merge(pd.DataFrame.from_dict(dico), on='id_comptag')
+        
+    def creer_donnees_source(self, dossier, fichier,date_debut,duree_cpt):
+        return [(pd.read_excel(os.path.join(dossier, fichier), sheet_name=f'Tableau {i+1}'),date_debut+pd.Timedelta(f'{i}D')) for i in range(duree_cpt)]
+    
+    def creer_df_horaire_brutes(self,donnees_horaires_brutes, date) : #pour 1 journee
+        donnees=([donnees_horaires_brutes,'VL','Unnamed: 29'], [donnees_horaires_brutes,'PL','Unnamed: 30'])
+        
+        def df_horaire_brute(donnees_horaires_brutes,type_veh,attr) : #pourcahque type de veh
+            test=donnees_horaires_brutes.loc[15:38,['TABLEAU HORAIRE DE SYNTHESE DES RESULTATS JOURNALIERS',attr]].copy()
+            test['type_veh']=type_veh
+            test.rename(columns={'TABLEAU HORAIRE DE SYNTHESE DES RESULTATS JOURNALIERS':'heure',attr:'nb_veh'}, inplace=True)
+            return test
+        
+    
+        test=pd.concat([df_horaire_brute(*d) for d in donnees], axis=0, sort=False).reset_index(drop=True)
+        df_horaire=pd.concat([test.loc[test.type_veh==v[1]].pivot(index='type_veh',columns='heure', values='nb_veh') for v in donnees], axis=0, sort=False)
+        df_horaire.loc['TV',:]=df_horaire.sum(axis=0)
+        df_horaire.reset_index(inplace=True)
+        df_horaire.drop(0, inplace=True)
+        df_horaire['jour']=date
+        return df_horaire
+    
+    def creer_df_horaire_tt_jour(self, donnees_tout_jour):
+        return pd.concat([self.creer_df_horaire_brutes(*d) for d in donnees_tout_jour], axis=0, sort=False)
+    
+    #pour 2 fihciers (2sens)
+    def creer_df_horaire_2_sens(self, dossier,liste_fichiers, id_comptag):
+        if liste_fichiers==None : #si pas de fichiers renseigne normelent seulement 2 IFX dans le dossier
+            liste_fichiers=O.ListerFichierDossier(dossier,extension='.IFX')
+        else : 
+            liste_fichiers=liste_fichiers.split(';')
+        for f in liste_fichiers : # si j'ai oublie l'extension 
+            if not f.endswith('.IFX') : 
+                liste_fichiers[liste_fichiers.index(f)]+='.IFX'     
+        donnees_gal_sansNa=self.ouvrir_feuille_infos(dossier, liste_fichiers[0])[1]
+        date_debut, date_fin, duree_cpt, annee=self.recup_infos(donnees_gal_sansNa, 10, 11)
+        
+        donnees_tout_jour=(self.creer_donnees_source(dossier, f,date_debut,duree_cpt) for f in liste_fichiers)
+        df_2_sens = pd.concat([self.creer_df_horaire_tt_jour(d) for d in donnees_tout_jour], axis=0, sort=False)
+        df_2_sens=df_2_sens.groupby(['jour', 'type_veh']).sum().reset_index()
+        df_2_sens['id_comptag']=id_comptag
+        df_2_sens.rename(columns={k:f"h{k.replace('H','').replace('-','_')}" for k in df_2_sens.columns if k[-1]=='H'},inplace=True )
+        return df_2_sens
+    
+    def df_horaire_final(self):
+        self.df_attr_horaire=pd.concat([self.creer_df_horaire_2_sens(dossier,fichiers, id_comptag) 
+                     for dossier, fichiers, id_comptag in zip(self.fichiers_pt_comptages.dossier.tolist(),self.fichiers_pt_comptages.nom_fich.tolist(),
+                                                              self.fichiers_pt_comptages.id_comptag.tolist())],
+                     axis=0, sort=False)
+        
+class PasAssezMesureError(Exception):
+    """
+    Exception levee si le fichier comport emoins de 7 jours
+    """     
+    def __init__(self, nbjours):
+        Exception.__init__(self,f'le fichier comporte moins de 7 jours de mesures. Nb_jours: : {nbjours} ')   
         
