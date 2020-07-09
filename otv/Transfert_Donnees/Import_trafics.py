@@ -83,7 +83,7 @@ def cd23(fichier=r'Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA\Doc_travail\Donnees_
 
 class FIM():
     """
-    classe dediée aux fichiers FIM de comptage brut
+    classe dedié aux fichiers FIM de comptage brut
     attributs : 
         dico_corresp_type_veh : dico poutr determiner le type de vehicule selon en-tete
         dico_corresp_type_fichier : dico poutr determiner le mode de comptag selon en-tete
