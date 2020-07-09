@@ -1260,7 +1260,7 @@ class Comptage_cd47(Comptage):
         df_mensuel_tot['annee']=str(self.annee)
                
         return df_agrege,df_horaire_tot, df_mensuel_tot
-    
+ #   
     def classer_comptage_update_insert(self,bdd):
         """
         a prtir du dico tot (regrouper_dico), separer les comptages a mettre a jour et ceux à inserer dans les attributs
