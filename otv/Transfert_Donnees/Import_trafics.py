@@ -385,19 +385,22 @@ class Comptage():
         self.df_attr=self.df_attr.loc[self.df_attr.apply(lambda x : x['debut_periode'].month not in [7,8] and x['fin_periode'].month not in [7,8], 
                                                          axis=1)].copy()
     
-    def donnees_existantes(self, bdd, table_linearisation_existante):
+    def donnees_existantes(self, bdd, table_linearisation_existante,table_cpt):
         """
         recuperer une linearisation existante et les points de comptages existants
         in : 
             bdd : string : identifiant de connexion à la bdd
             table_linearisation_existante : string : schema-qualified table de linearisation de reference
+            table_cpt : string : table des comptages
         """    
         with ct.ConnexionBdd(bdd) as c:
             lin_precedente=gp.GeoDataFrame.from_postgis(f'select * from {table_linearisation_existante}',c.sqlAlchemyConn, 
                                                     geom_col='geom',crs={'init': 'epsg:2154'})
+            pt_cpt=pd.read_sql(f'select id_comptag,type_poste from comptage.{table_cpt}',c.sqlAlchemyConn)
+            lin_precedente=lin_precedente.merge(pt_cpt, how='left', on='id_comptag')
         return lin_precedente
     
-    def plus_proche_voisin_comptage_a_inserer(self,df,bdd, schema_temp,nom_table_temp,table_linearisation_existante,table_pr):
+    def plus_proche_voisin_comptage_a_inserer(self,df,bdd, schema_temp,nom_table_temp,table_linearisation_existante,table_pr,table_cpt):
         """
         trouver si nouveau point de comptage est sur  un id_comptag linearise
         in:
@@ -406,11 +409,12 @@ class Comptage():
             nom_table_temp : string : nom de latable temporaire en bdd opur calcul geom, cf localiser_comptage_a_inserer
             table_linearisation_existante : string : schema-qualified table de linearisation de reference cf donnees_existantes
             table_pr : string : schema qualifyed nom de la table de reference des pr
+            table_cpt : string : table des comptages
         """
         #mettre en forme les points a inserer
         points_a_inserer=self.localiser_comptage_a_inserer(df,bdd, schema_temp,nom_table_temp,table_linearisation_existante, table_pr)
         #recuperer les donnees existante
-        lin_precedente=self.donnees_existantes(bdd, table_linearisation_existante)
+        lin_precedente=self.donnees_existantes(bdd, table_linearisation_existante, table_cpt)
         
         #ne conserver que le spoints a inserer pour lesquels il y a une geometrie
         points_a_inserer_geom=points_a_inserer.loc[~points_a_inserer.geom.isna()].copy()
@@ -456,7 +460,7 @@ class Comptage():
         return dico_corresp
     
     def corresp_old_new_comptag(self,bdd, schema_temp,nom_table_temp,table_linearisation_existante,
-                                schema, table_graph,table_vertex,id_name,table_pr):
+                                schema, table_graph,table_vertex,id_name,table_pr,table_cpt):
         """
         trouver la correspndance entre des comptages gestionnaires nouveau et les données dans la base gti de comptage, pour des 
         comptages n'ayant pas tout a fait les mm pr+abs.
@@ -474,6 +478,7 @@ class Comptage():
             table_vertex : string : nom de la table des vertex de la topoolgie
             id_name : nom de l'identifiant uniq en integer de la table_graoh
             table_pr : string : schema qualifyed nom de la table de reference des pr
+            table_cpt : string : table des comptages
         """
         
         def pt_corresp(id_ign_lin,id_ign_cpt_new,dico_corresp) : 
@@ -487,7 +492,7 @@ class Comptage():
             raise io.ManqueColonneError(col_manquante)
 
         ppv_final,points_a_inserer_geom=self.plus_proche_voisin_comptage_a_inserer(self.df_attr_insert,bdd, schema_temp,nom_table_temp,
-                                                             table_linearisation_existante, table_pr)
+                                                             table_linearisation_existante, table_pr,table_cpt)
         print('plus proche voisin fait')
         dico_corresp=self.troncon_elemntaires(bdd, schema, table_graph,table_vertex,ppv_final.id_ign_lin.tolist(),id_name)
         print('tronc elem fait')
@@ -1539,6 +1544,7 @@ class Comptage_cd87(Comptage):
             table_graph : string : nom de la table topologie (normalement elle devrait etre issue de table_linearisation_existante
             table_vertex : string : nom de la table des vertex de la topoolgie
             id_name : nom de l'identifiant uniq en integer de la table_graoh
+            table_cpt : string : table des comptages
         """
         #fare le tri avec les comptages existants : 
         #recuperer les compmtages existants
@@ -1547,7 +1553,7 @@ class Comptage_cd87(Comptage):
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         #obtenir une cle de correspondace pour les comptages tournants et permanents
         df_correspondance,points_a_inserer_geom=self.corresp_old_new_comptag(bdd, schema_temp,nom_table_temp,table_linearisation_existante,
-                                        schema_graph, table_graph,table_vertex,id_name,table_pr)
+                                        schema_graph, table_graph,table_vertex,id_name,table_pr,table_cpt)
         #passer la df de correspondance dans le table corresp_id_comptage
         self.insert_bdd(bdd, schema_cpt, 'corresp_id_comptag', 
                df_correspondance.rename(columns={'id_comptag_lin':'id_gti','id_comptag':'id_gest'})[['id_gest','id_gti']])
