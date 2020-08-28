@@ -12,7 +12,10 @@ import geopandas as gp
 import numpy as np
 import os, re, csv,statistics,filecmp, unidecode
 from geoalchemy2 import Geometry,WKTElement
-from shapely.geometry import Point
+from shapely.geometry import Point, LineString
+from shapely.ops import transform
+from itertools import combinations
+from collections import Counter
 
 import Connexion_Transfert as ct
 import Outils as O
@@ -21,65 +24,10 @@ from Base_BdTopo import Import_outils as io
 from Base_BdTopo import Rond_points as rp
 from Base_BdTopo import Regroupement_correspondance as rc
 
-dico_mois={'janv':[1,'Janv','Janvier'], 'fevr':[2,'Fév','Février','févr'], 'mars':[3,'Mars','Mars'], 'avri':[4,'Avril','Avril'], 'mai':[5,'Mai','Mai'], 'juin':[6,'Juin','Juin'], 
-           'juil':[7,'Juill','Juillet', 'juil'], 'aout':[8,'Août','Aout'], 'sept':[9,'Sept','Septembre'], 'octo':[10,'Oct','Octobre'], 'nove':[11,'Nov','Novembre'], 'dece':[12,'Déc','Décembre']}
+dico_mois={'janv':[1,'Janv','Janvier'], 'fevr':[2,'Fév','Février','févr','Fevrier'], 'mars':[3,'Mars','Mars'], 'avri':[4,'Avril','Avril'], 'mai':[5,'Mai','Mai'], 'juin':[6,'Juin','Juin'], 
+           'juil':[7,'Juill','Juillet', 'juil'], 'aout':[8,'Août','Aout'], 'sept':[9,'Sept','Septembre'], 'octo':[10,'Oct','Octobre'], 'nove':[11,'Nov','Novembre'], 'dece':[12,'Déc','Décembre','Decembre']}
 
-def cd23(fichier=r'Q:\DAIT\TI\DREAL33\2019\C19SA0035_OTR-NA\Doc_travail\Donnees_source\CD23\2018_CD23_trafics.xls'):
-    """
-    Import des données de la creuse
-    attention : pour le point de comptage D941 6+152 à Aubusson, le pR est 32 et non 6. il faut donc corriger à la main le fihcier excel
-    Pour le moment tous les points sont déjà dans  la base, dc pas de traitement de type insert prévus
-    en entree : 
-        fichier : raw string le nom du tableur excel contenant les données
-    """
-    # ouvrir le classeur
-    df_excel=pd.read_excel(fichier,skiprows=11)
-    # renomer les champs
-    df_excel_rennome=df_excel.rename(columns={'1er trimestre  du 01 janvier au 31 mars':'trim1_TV', 'Unnamed: 9':'trim1_pcpl',
-                             '2ème trimestre du 01 avril au 30 juin':'trim2_TV', 'Unnamed: 11':'trim2_pcpl',
-                             '3ème trimestre du 01 juillet au 30 septembre':'trim3_TV', 'Unnamed: 13':'trim3_pcpl',
-                             '4ème trimestre du 01 octobre au 31 décembre':'trim4_TV', 'Unnamed: 15':'trim4_pcpl',
-                             'Unnamed: 17':'pc_pl', 'TMJA 2018':'tmja'})
-    #supprimer la 1ere ligne
-    df_excel_filtre=df_excel_rennome.loc[1:,:].copy()
-    #mise en forme attribut
-    df_excel_filtre['Route']=df_excel_filtre.apply(lambda x : str(x['Route']).upper(), axis=1)
-    annee_cpt='2018'
-    #attribut id_comptag
-    for i in ['DEP','PR','ABS'] : 
-        df_excel_filtre[i]=df_excel_filtre.apply(lambda x : str(int(x[i])),axis=1)
-    df_excel_filtre['id_comptag']=df_excel_filtre.apply(lambda x : '-'.join([x['DEP'],'D'+str(x['Route']),
-                                                                         x['PR']+'+'+x['ABS']]),axis=1)
-    
-    #donnees_mensuelles
-    list_id_comptag=[val for val in df_excel_filtre.id_comptag.tolist() for _ in (0, 1)]
-    donnees_type=['tmja','pc_pl']*len(df_excel_filtre.id_comptag.tolist())
-    annee_df=['2018']*2*len(df_excel_filtre.id_comptag.tolist())
-    janv, fev, mars,avril,mai,juin,juil,aout,sept,octo,nov,dec=[],[],[],[],[],[],[],[],[],[],[],[]
-    for i in range(len(df_excel_filtre.id_comptag.tolist())) :
-        for j in (janv, fev, mars) :
-            j.extend([df_excel_filtre.trim1_TV.tolist()[i],df_excel_filtre.trim1_pcpl.tolist()[i]])
-        for k in (avril,mai,juin) :
-            k.extend([df_excel_filtre.trim2_TV.tolist()[i],df_excel_filtre.trim2_pcpl.tolist()[i]])
-        for l in (juil,aout,sept) :
-            l.extend([df_excel_filtre.trim3_TV.tolist()[i],df_excel_filtre.trim3_pcpl.tolist()[i]])
-        for m in (octo,nov,dec) :
-            m.extend([df_excel_filtre.trim4_TV.tolist()[i],df_excel_filtre.trim4_pcpl.tolist()[i]])
-    donnees_mens=pd.DataFrame({'id_comptag':list_id_comptag,'donnees_type':donnees_type,'annee':annee_df,'janv':janv,'fevr':fev,'mars':mars,'avri':avril,
-                  'mai':mai,'juin':juin,'juil':juil,'aout':aout,'sept':sept,'octo':octo,'nove':nov,'dece':dec})
-    
-    #Mise à jour bdd
-    with ct.ConnexionBdd('gti_otv') as c :
-        c.curs.execute("select distinct id_comptag from comptage.na_2010_2018_p where dep='23' order by id_comptag")
-        listerecord=[record[0] for record in c.curs]
-        for id_comptag,tmja, pc_pl  in zip(df_excel_filtre.id_comptag.tolist(), df_excel_filtre.tmja.tolist(),df_excel_filtre.pc_pl.tolist()) : 
-            if id_comptag in listerecord :
-                c.curs.execute("update comptage.na_2010_2018_p set tmja_2018=%s, pc_pl_2018=%s, ann_cpt=%s where id_comptag=%s",(tmja, pc_pl,annee_cpt,id_comptag))
-            else : 
-                print (f'{id_comptag} nouveau, à traiter')
-        print('fini')
-        c.connexionPsy.commit()
-        donnees_mens.to_sql('na_2010_2018_mensuel', c.sqlAlchemyConn,schema='comptage',if_exists='append',index=False)
+
 
 class FIM():
     """
@@ -281,7 +229,10 @@ class FIM():
         else : 
             self.tmja=int(self.df_tot_jour.iloc[1:-1].tv_tot.mean())
             self.pl=int(self.df_tot_jour.iloc[1:-1].pl_tot.mean()) if self.mode not in ('mode2','mode1') else np.NaN
-        self.pc_pl=round(self.pl*100/self.tmja,1) if self.mode not in ('mode2','mode1') else np.NaN
+        if self.tmja==0 : 
+            self.pc_pl=0
+        else :
+            self.pc_pl=round(self.pl*100/self.tmja,1) if self.mode not in ('mode2','mode1') else np.NaN
     
     def resume_indicateurs(self):
         """
@@ -401,9 +352,15 @@ class Comptage():
                 c.sqlAlchemyConn.execute(rqt_geom)
                 c.sqlAlchemyConn.execute(rqt_attr)
                 
-    def localiser_comptage_a_inserer(self,df,bdd, schema_temp,nom_table_temp):
+    def localiser_comptage_a_inserer(self,df,bdd, schema_temp,nom_table_temp, table_ref, table_pr):
         """
         récupérer la geometrie de pt de comptage à inserer dans une df sans les inserer dans la Bdd
+        in : 
+            df : les données de comptage nouvelles, normalement c'est self.df_attr_insert (cf Comptage_Cd17 ou Compatge cd47
+            schema_temp : string : nom du schema en bdd opur calcul geom, cf localiser_comptage_a_inserer
+            nom_table_temp : string : nom de latable temporaire en bdd opur calcul geom, cf localiser_comptage_a_inserer
+            table_ref : string : schema qualifyed nom de la table de reference du lineaire
+            table_pr : string : schema qualifyed nom de la table de reference des pr
         """
         with ct.ConnexionBdd(bdd) as c:
             #passer les données dans Bdd
@@ -414,10 +371,10 @@ class Comptage():
             c.sqlAlchemyConn.execute(rqt_ajout_geom)
             #mettre a jour la geometrie. attention, il faut un fichier de référentiel qui va bein, cf fonction geoloc_pt_comptag dans la Bdd
             rqt_maj_geom=f"""update {schema_temp}.{nom_table_temp}
-                             set geom=(select geom_out  from comptage.geoloc_pt_comptag(id_comptag))
+                             set geom=(select geom_out  from comptage.geoloc_pt_comptag('{table_ref}','{table_pr}',id_comptag))
                              where geom is null"""
             c.sqlAlchemyConn.execute(rqt_maj_geom)
-            points_a_inserer=gp.GeoDataFrame.from_postgis(f'select * from {nom_table_temp}', c.sqlAlchemyConn, geom_col='geom',crs={'init': 'epsg:2154'})
+            points_a_inserer=gp.GeoDataFrame.from_postgis(f'select * from {schema_temp}.{nom_table_temp}', c.sqlAlchemyConn, geom_col='geom',crs={'init': 'epsg:2154'})
         return points_a_inserer
 
     def filtrer_periode_ponctuels(self):
@@ -440,7 +397,7 @@ class Comptage():
                                                     geom_col='geom',crs={'init': 'epsg:2154'})
         return lin_precedente
     
-    def plus_proche_voisin_comptage_a_inserer(self,df,bdd, schema_temp,nom_table_temp,table_linearisation_existante):
+    def plus_proche_voisin_comptage_a_inserer(self,df,bdd, schema_temp,nom_table_temp,table_linearisation_existante,table_pr):
         """
         trouver si nouveau point de comptage est sur  un id_comptag linearise
         in:
@@ -448,9 +405,10 @@ class Comptage():
             schema_temp : string : nom du schema en bdd opur calcul geom, cf localiser_comptage_a_inserer
             nom_table_temp : string : nom de latable temporaire en bdd opur calcul geom, cf localiser_comptage_a_inserer
             table_linearisation_existante : string : schema-qualified table de linearisation de reference cf donnees_existantes
+            table_pr : string : schema qualifyed nom de la table de reference des pr
         """
         #mettre en forme les points a inserer
-        points_a_inserer=self.localiser_comptage_a_inserer(df,bdd, schema_temp,nom_table_temp)
+        points_a_inserer=self.localiser_comptage_a_inserer(df,bdd, schema_temp,nom_table_temp,table_linearisation_existante, table_pr)
         #recuperer les donnees existante
         lin_precedente=self.donnees_existantes(bdd, table_linearisation_existante)
         
@@ -460,7 +418,7 @@ class Comptage():
         ppv=O.plus_proche_voisin(points_a_inserer_geom,lin_precedente[['id_ign','geom']],5,'id_comptag','id_ign')
         #verifier si il y a un id comptage sur la ligne la plus proche, ne conserver que les lignes où c'est le cas, et recuperer la geom de l'id_comptag_lin 
         #(les points issu de lin sans geom ne sont pas conserves, et on a besoin de passer les donnees en gdf)
-        ppv_id_comptagLin=ppv.merge(lin_precedente[['id_ign','id_comptag']].rename(columns={'id_comptag':'id_comptag_lin'}), on='id_ign')
+        ppv_id_comptagLin=ppv.merge(lin_precedente[['id_ign','id_comptag','type_poste']].rename(columns={'id_comptag':'id_comptag_lin','type_poste':'type_poste_lin'}), on='id_ign')
         ppv_id_comptagLin=ppv_id_comptagLin.loc[~ppv_id_comptagLin.id_comptag_lin.isna()].copy().merge(self.existant[['geom','id_comptag']].rename(columns=
                                                 {'geom':'geom_cpt_lin','id_comptag':'id_comptag_lin'}),on='id_comptag_lin')
         ppv_id_comptagLin_p=gp.GeoDataFrame(ppv_id_comptagLin.rename(columns={'id_ign':'id_ign_cpt_new'}),geometry=ppv_id_comptagLin.geom_cpt_lin)
@@ -469,7 +427,7 @@ class Comptage():
         ppv_total=O.plus_proche_voisin(ppv_id_comptagLin_p,lin_precedente[['id_ign','geom']],5,'id_comptag_lin','id_ign')
         ppv_final=ppv_total.merge(ppv_id_comptagLin_p,on='id_comptag_lin').merge(df[['id_comptag','type_poste']]
                     ,on='id_comptag').rename(columns={'id_ign':'id_ign_lin','type_poste':'type_poste_new'}).drop_duplicates()
-        return ppv_final
+        return ppv_final,points_a_inserer_geom
     
     def troncon_elemntaires(self,bdd, schema, table_graph,table_vertex,liste_lignes,id_name):    
         """
@@ -498,14 +456,14 @@ class Comptage():
         return dico_corresp
     
     def corresp_old_new_comptag(self,bdd, schema_temp,nom_table_temp,table_linearisation_existante,
-                                schema, table_graph,table_vertex,id_name):
+                                schema, table_graph,table_vertex,id_name,table_pr):
         """
         trouver la correspndance entre des comptages gestionnaires nouveau et les données dans la base gti de comptage, pour des 
         comptages n'ayant pas tout a fait les mm pr+abs.
         attention, traitement de plusieurs heures possible.
         Attention, si le comptage de la base linearise existante est aussi dans les données de comptage, en plus du nouveau point, alors on le conserve dans les points
         a inserer
-        ON PEUT NE FAIRE LA CORRESPONDANCE QU'AVEC LES IMPORTANCES 1,2,3,4 pour les comptages perm et tourn, mais pourça il faut recreer un graph ou mettre a jour l'existant
+        ON FAIT LA CORRESPONDANCE QU'AVEC LES IMPORTANCES 1,2,3,4 pour tout les types de points, mais pourça il faut recreer un graph ou mettre a jour l'existant
         in : 
             bdd : string : id de la base a laquelle se connecter (cf module id_connexion)
             schema_temp : string : nom du schema en bdd opur calcul geom, cf localiser_comptage_a_inserer
@@ -515,7 +473,7 @@ class Comptage():
             table_graph : string : nom de la table topologie (normalement elle devrait etre issue de table_linearisation_existante
             table_vertex : string : nom de la table des vertex de la topoolgie
             id_name : nom de l'identifiant uniq en integer de la table_graoh
-             : 
+            table_pr : string : schema qualifyed nom de la table de reference des pr
         """
         
         def pt_corresp(id_ign_lin,id_ign_cpt_new,dico_corresp) : 
@@ -528,16 +486,15 @@ class Comptage():
         if not flag_col : 
             raise io.ManqueColonneError(col_manquante)
 
-        ppv_final=self.plus_proche_voisin_comptage_a_inserer(self.df_attr_insert,bdd, schema_temp,nom_table_temp,table_linearisation_existante)
+        ppv_final,points_a_inserer_geom=self.plus_proche_voisin_comptage_a_inserer(self.df_attr_insert,bdd, schema_temp,nom_table_temp,
+                                                             table_linearisation_existante, table_pr)
         print('plus proche voisin fait')
         dico_corresp=self.troncon_elemntaires(bdd, schema, table_graph,table_vertex,ppv_final.id_ign_lin.tolist(),id_name)
         print('tronc elem fait')
         ppv_final['correspondance']=ppv_final.apply(lambda x : pt_corresp(x['id_ign_lin'],x['id_ign_cpt_new'],dico_corresp),axis=1)
         df_correspondance=ppv_final.loc[(ppv_final['correspondance']) & 
-              (~ppv_final['id_comptag_lin'].isin(self.df_attr.id_comptag.tolist())) &
-              (ppv_final.type_poste_new.isin(['permanent','tournant']))
-             ].copy()[['id_comptag_lin','id_comptag','type_poste_new']]
-        return df_correspondance
+              (~ppv_final['id_comptag_lin'].isin(self.df_attr.id_comptag.tolist()))].copy()[['id_comptag_lin','type_poste_lin','id_comptag','type_poste_new']]
+        return df_correspondance,points_a_inserer_geom
     
     def creer_valeur_txt_update(self, df, liste_attr):
         """
@@ -585,6 +542,75 @@ class Comptage():
         elif isinstance(df, pd.DataFrame) : 
             with ct.ConnexionBdd(bdd) as c:
                 df.to_sql(table,c.sqlAlchemyConn,schema=schema,if_exists='append', index=False )
+
+class Comptage_cd23(Comptage):
+    """
+    Pour le moment dans le 23 on ne reçoit qu'un fichier des comptages tournant, format xls
+    attention : pour le point de comptage D941 6+152 à Aubusson, le pR est 32 et non 6. il faut donc corriger à la main le fihcier excel
+    car il y a 2 pr 6+32 sur la d941
+    """
+    def __init__(self,fichier, annee) : 
+        self.fichier=fichier
+        self.annee=annee
+        
+    def ouvrirMiseEnForme(self):
+        """
+        ouvertur, nettoyage du fichier
+        """
+        # ouvrir le classeur
+        df_excel=pd.read_excel(r'Q:\DAIT\TI\DREAL33\2020\OTV\Doc_travail\Donnees_source\CD23\2019-CD23_trafics.xls',skiprows=11)
+        # renomer les champs
+        df_excel_rennome=df_excel.rename(columns={'1er trimestre  du 01 janvier au 31 mars':'trim1_TV', 'Unnamed: 9':'trim1_pcpl',
+                         '2ème trimestre du 01 avril au 30 juin':'trim2_TV', 'Unnamed: 11':'trim2_pcpl',
+                         '3ème trimestre du 01 juillet au 30 septembre':'trim3_TV', 'Unnamed: 13':'trim3_pcpl',
+                         '4ème trimestre du 01 octobre au 31 décembre':'trim4_TV', 'Unnamed: 15':'trim4_pcpl',
+                         'Unnamed: 17':'pc_pl', f'TMJA {self.annee}':'tmja'})
+        #supprimer la 1ere ligne
+        df_excel_filtre=df_excel_rennome.loc[1:,:].copy()
+        #mise en forme attribut
+        df_excel_filtre['Route']=df_excel_filtre.apply(lambda x : str(x['Route']).upper(), axis=1)
+        #attribut id_comptag
+        for i in ['DEP','PR','ABS'] : 
+            df_excel_filtre[i]=df_excel_filtre.apply(lambda x : str(int(x[i])),axis=1)
+        df_excel_filtre['id_comptag']=df_excel_filtre.apply(lambda x : '-'.join([x['DEP'],'D'+str(x['Route']),
+                                                                                 x['PR']+'+'+x['ABS']]),axis=1)
+        df_excel_filtre['fichier']=self.fichier
+        df_excel_filtre['src']='tableur CD23'
+        self.df_attr=df_excel_filtre
+        
+    def classer_comptage_update_insert(self,bdd, table_cpt):
+        """
+        separer les donnes a mettre a jour de celles a inserer, selon les correspondances connues et les points existants
+        """
+        self.corresp_nom_id_comptag(bdd,self.df_attr)
+        self.comptag_existant_bdd(bdd, table_cpt, dep='23')
+        self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        
+    def update_bdd_23(self,bdd, schema, table):
+        valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag','tmja','pc_pl','src', 'fichier'])
+        dico_attr_modif={f'tmja_{self.annee}':'tmja', f'pc_pl_{self.annee}':'pc_pl',f'src_{self.annee}':'src', 'fichier':'fichier'}
+        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)
+    
+    def donneesMens(self):
+        """
+        calcul des données mensuelles uniquement sur la base du fichier excel de regroupement
+        """
+        list_id_comptag=[val for val in self.df_attr.id_comptag.tolist() for _ in (0, 1)]
+        donnees_type=['tmja','pc_pl']*len(self.df_attr.id_comptag.tolist())
+        annee_df=[str(self.annee)]*2*len(self.df_attr.id_comptag.tolist())
+        janv, fev, mars,avril,mai,juin,juil,aout,sept,octo,nov,dec=[],[],[],[],[],[],[],[],[],[],[],[]
+        for i in range(len(self.df_attr.id_comptag.tolist())) :
+            for j in (janv, fev, mars) :
+                j.extend([self.df_attr.trim1_TV.tolist()[i],self.df_attr.trim1_pcpl.tolist()[i]])
+            for k in (avril,mai,juin) :
+                k.extend([self.df_attr.trim2_TV.tolist()[i],self.df_attr.trim2_pcpl.tolist()[i]])
+            for l in (juil,aout,sept) :
+                l.extend([self.df_attr.trim3_TV.tolist()[i],self.df_attr.trim3_pcpl.tolist()[i]])
+            for m in (octo,nov,dec) :
+                m.extend([self.df_attr.trim4_TV.tolist()[i],self.df_attr.trim4_pcpl.tolist()[i]])
+        self.df_attr_mensuel=pd.DataFrame({'id_comptag':list_id_comptag,'donnees_type':donnees_type,'annee':annee_df,'janv':janv,'fevr':fev,'mars':mars,'avri':avril,
+                      'mai':mai,'juin':juin,'juil':juil,'aout':aout,'sept':sept,'octo':octo,'nove':nov,'dece':dec})
             
 class Comptage_cd17(Comptage) :
     """
@@ -864,10 +890,12 @@ class Comptage_cd19(Comptage):
     
     def classer_comptage_update_insert(self,bdd,table_cpt,schema_cpt,
                                        schema_temp,nom_table_temp,table_linearisation_existante,
-                                       schema_graph, table_graph,table_vertex,id_name) : 
+                                       schema_graph, table_graph,table_vertex,id_name,table_pr) : 
         """
         classer les comptage a insrere ou mettre a jour, selon leur correspondance ou non avec des comptages existants.
         se base sur la creation de graph variable selon le type de comptage, pour prendsre en compte ou non certaines categories de vehicules
+        in : 
+            table_pr : string : schema qualifyed nom de la table de reference des pr
         """
         #creation de l'existant
         self.comptag_existant_bdd(bdd, schema=schema_cpt, table=table_cpt,dep='19', type_poste=False)
@@ -877,8 +905,8 @@ class Comptage_cd19(Comptage):
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         #recherche de correspondance
-        corresp_cd19=self.corresp_old_new_comptag(bdd, schema_temp,nom_table_temp,table_linearisation_existante,
-                                       schema_graph, table_graph,table_vertex,id_name)
+        corresp_cd19,points_a_inserer_geom=self.corresp_old_new_comptag(bdd, schema_temp,nom_table_temp,table_linearisation_existante,
+                                       schema_graph, table_graph,table_vertex,id_name,table_pr)
         #insertion des correspondance dans la table dediee
         self.insert_bdd(bdd,schema_cpt,'corresp_id_comptag',corresp_cd19[['id_comptag','id_comptag_lin']].rename(columns={'id_comptag':'id_gest','id_comptag_lin':'id_gti'}))
         #ajout de correspondance manuelle (3, à cause de nom de voie notamment) et creation d'un unique opint a insert
@@ -1374,10 +1402,12 @@ class Comptage_cd87(Comptage):
             nom_voie=O.epurationNomRoute(re.sub('( |_)','',re.search('[D][( |_)]{0,1}[0-9]{1,5}([A-O]|[Q-Z]|[a-o]|[q-z]){0,3}',fichier).group(0))).upper()
             pr=re.search('(PR[( |_)]{0,1})([0-9]{1,2})([+]{0,1})([0-9]{0,3})',re.sub("(!|\()",'+',fichier)).group(2)
             absc=re.search('(PR[( |+)]{0,1})([0-9]{1,2})([+]{0,1})([0-9]{0,3})',re.sub("(!|\(|_|x)",'+',fichier)).group(4)
-            if len(absc)<3 :
+            if absc!='' and len(absc)<3 :
                 absc, pr = int(pr[-(3-len(absc))] + absc), int(pr[0:-(3-2)])
-            else : 
+            elif absc!='' : 
                 absc, pr=int(absc),int(pr)
+            else :
+                pr,absc=int(pr),0
             if nom_voie in self.dico_voie.keys():
                 for e in self.dico_voie[nom_voie] :
                     if pr==e['pr'] : 
@@ -1419,6 +1449,9 @@ class Comptage_cd87(Comptage):
         """
         for k, v in self.dico_voie.items() : 
             for i,e in enumerate(v) : 
+                if 'tmja' in e.keys() : #pour pouvoir relancer le traitement sans refaire ce qui estdeja traite
+                    print(f"fichier {e['fichiers']} deja traites")
+                    continue
                 if len(e['fichiers'])==1 : 
                     print(e['fichiers'][0])
                     obj_fim=FIM(os.path.join(self.dossier,e['fichiers'][0]))
@@ -1491,7 +1524,7 @@ class Comptage_cd87(Comptage):
     
     def classer_comptage_update_insert(self,bdd,table_cpt,schema_cpt,
                                        schema_temp,nom_table_temp,table_linearisation_existante,
-                                       schema_graph, table_graph,table_vertex,id_name):
+                                       schema_graph, table_graph,table_vertex,id_name,table_pr):
         """
         classer la df des comptage (self.df_attr) selon le spoints à mettre à jour et ceux à inserer, en prenant en compte les points diont l'id_comptag
         diffère mais qui sont sur le mm troncon elemnraire
@@ -1513,8 +1546,8 @@ class Comptage_cd87(Comptage):
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         #obtenir une cle de correspondace pour les comptages tournants et permanents
-        df_correspondance=self.corresp_old_new_comptag(bdd, schema_temp,nom_table_temp,table_linearisation_existante,
-                                        schema_graph, table_graph,table_vertex,id_name)
+        df_correspondance,points_a_inserer_geom=self.corresp_old_new_comptag(bdd, schema_temp,nom_table_temp,table_linearisation_existante,
+                                        schema_graph, table_graph,table_vertex,id_name,table_pr)
         #passer la df de correspondance dans le table corresp_id_comptage
         self.insert_bdd(bdd, schema_cpt, 'corresp_id_comptag', 
                df_correspondance.rename(columns={'id_comptag_lin':'id_gti','id_comptag':'id_gest'})[['id_gest','id_gti']])
@@ -1870,8 +1903,9 @@ class Comptage_cd24(Comptage):
     """
     pour le moment on ne traite que les cpt perm de 2018 issus de D:\temp\otv\Donnees_source\CD24\2018_CD24_trafic.csv
     """ 
-    def __init__(self,fichier_perm):
+    def __init__(self,fichier_perm, annee):
         Comptage.__init__(self, fichier_perm)
+        self.annee=annee
     
     def cpt_perm_csv(self):
         donnees_brutes=self.ouvrir_csv()
@@ -1883,17 +1917,23 @@ class Comptage_cd24(Comptage):
         donnees_traitees['tmja']=donnees_traitees.tmja.apply(lambda x : int(x))
         donnees_traitees['pc_pl']=donnees_traitees.pc_pl.apply(lambda x : float(x.replace(',','.')))
         donnees_traitees.rename(columns={'Data':'route', 'PRC':'pr', 'ABC':'abs'}, inplace=True)
-        gdf_finale = gp.GeoDataFrame(donnees_traitees, geometry=gp.points_from_xy(donnees_traitees.Longitude, donnees_traitees.Latitude), crs={'init': 'epsg:4326'})
-        gdf_finale=gdf_finale.to_crs({'init': 'epsg:2154'})
+        gdf_finale = gp.GeoDataFrame(donnees_traitees, geometry=gp.points_from_xy(donnees_traitees.Longitude, donnees_traitees.Latitude), crs='epsg:4326')
+        gdf_finale=gdf_finale.to_crs('epsg:2154')
         gdf_finale['type_poste']='permanent'
-        gdf_finale['geometry']=gdf_finale.apply(lambda x : None if x['Latitude']==0 else x['geometry'], axis=1)
-        gdf_finale['src']='tableau cpt permanent 2018'
+        gdf_finale['geometry']=gdf_finale.apply(lambda x : 0 if x['Latitude']==0 else x['geometry'], axis=1)
+        gdf_finale['src']=f'tableau cpt permanent {str(self.annee)}'
+        gdf_finale['fichier']=self.fichier
         return gdf_finale
     
     def comptage_forme(self):
         donnees_finales=self.cpt_perm_csv()
-        donnees_finales=donnees_finales[['id_comptag', 'tmja', 'pc_pl','route', 'pr', 'abs','src', 'geometry', 'type_poste']].copy()
+        donnees_mens=donnees_finales[[a for a in donnees_finales.columns if a in [m for e in dico_mois.values() for m in e]]+['id_comptag']].copy()
+        donnees_mens.rename(columns={c:k for c in donnees_mens.columns if c!='id_comptag' for k, v in dico_mois.items() if c in v}, inplace=True)
+        donnees_mens['donnees_type']='tmja'
+        donnees_mens['annee']=str(self.annee)
+        donnees_finales=donnees_finales[['id_comptag', 'tmja', 'pc_pl','route', 'pr', 'abs','src', 'geometry', 'type_poste', 'fichier']].copy()
         self.df_attr=donnees_finales
+        self.df_attr_mens=donnees_mens
         
     def classer_comptage_update_insert(self,bdd, table_cpt):
         """
@@ -1911,8 +1951,8 @@ class Comptage_cd24(Comptage):
         """
         
     def update_bdd_24(self,bdd, schema, table):
-        valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag','tmja','pc_pl','src'])
-        dico_attr_modif={'tmja_2018':'tmja', 'pc_pl_2018':'pc_pl','src_2018':'src'}
+        valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag','tmja','pc_pl','src', 'fichier'])
+        dico_attr_modif={f'tmja_{self.annee}':'tmja', f'pc_pl_{self.annee}':'pc_pl',f'src_{self.annee}':'src', 'fichier':'fichier'}
         self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif) 
     
     def insert_bdd_24(self,bdd, schema, table):
@@ -2149,7 +2189,7 @@ class Comptage_GrandPoitiers(Comptage):
 class Comptage_Niort(Comptage): 
     def __init__(self,dossier, annee) : 
         """
-        debut en 2020, fichiers csv fourni par sens, les fichiers csv fournis ressemble aux fichiers mdb de la ville d'Anglet et Angouleme
+        fichiers csv fourni par sens, les fichiers csv fournis ressemble aux fichiers mdb de la ville d'Anglet et Angouleme
         on part comme criter de VL ou PL un longueur à 7,2 m
         # voiture : <5,2m
         # camionnete : >=5.2 à <7.2
@@ -2189,18 +2229,21 @@ class Comptage_Niort(Comptage):
         """
         à partir des fichiers csv, obtenir une df avec modification de la date si le fichier comporte uniquement 8 jours, i.e : 6 jours plein et 2 demi journée
         """    
-        fichier=pd.read_csv(fichier)
-        fichier.DateTime=pd.to_datetime(fichier.DateTime)
-        nb_jours_mesure=len(fichier.set_index('DateTime').resample('D'))
-        jourMin=fichier.DateTime.apply(lambda x : x.dayofyear).min()
-        jourMax=fichier.DateTime.apply(lambda x : x.dayofyear).max()
+        df_fichier=pd.read_csv(fichier)
+        df_fichier.DateTime=pd.to_datetime(df_fichier.DateTime)
+        nb_jours_mesure=len(df_fichier.set_index('DateTime').resample('D'))
+        jourMin=df_fichier.DateTime.apply(lambda x : x.dayofyear).min()
+        jourMax=df_fichier.DateTime.apply(lambda x : x.dayofyear).max()
         if nb_jours_mesure==8 : #si le nombre total de jours est inférieur à 9, il faudra regrouper les jours de début et de fin pour avoir une journée complete, ou alors c'est qu'une erreur a ete commise lors de la mesure de trafic (duree < 7 jours)
-            fichier.loc[fichier.DateTime.apply(lambda x : x.dayofyear==jourMin), 'DateTime']=fichier.loc[fichier.DateTime.apply(lambda x : x.dayofyear==jourMin)].DateTime.apply(lambda x : x+pd.Timedelta('7D'))
+            df_fichier.loc[df_fichier.DateTime.apply(lambda x : x.dayofyear==jourMin), 'DateTime']=df_fichier.loc[df_fichier.DateTime.apply(lambda x : x.dayofyear==jourMin)].DateTime.apply(lambda x : x+pd.Timedelta('7D'))
         elif nb_jours_mesure>8 : 
-            fichier=fichier.loc[fichier.DateTime.apply(lambda x : (x.dayofyear!=jourMin) & (x.dayofyear!=jourMax))].copy()
+            df_fichier=df_fichier.loc[df_fichier.DateTime.apply(lambda x : (x.dayofyear!=jourMin) & (x.dayofyear!=jourMax))].copy()
+        elif nb_jours_mesure==7: 
+            df_fichier.loc[df_fichier.DateTime.apply(lambda x : x.dayofyear==jourMin), 'DateTime']=df_fichier.loc[df_fichier.DateTime.apply(lambda x : x.dayofyear==jourMin)].DateTime.apply(lambda x : x+pd.Timedelta('6D'))
         else : 
+            print(f'pas assez de jour de mesure sur {fichier}')
             raise PasAssezMesureError(nb_jours_mesure)
-        return fichier
+        return df_fichier
              
     def csv_identifier_type_veh(self,df_brute):
         """
@@ -2259,11 +2302,12 @@ class Comptage_Niort(Comptage):
         donnees_horaires=self.csv_donnees_horaires(vl_agrege_h,pl_agrege_h)
         return nb_vl, nb_pl, tmja, pc_pl, donnees_horaires
     
-    def horaire_2_sens(self, id_comptag,df_sens1, df_sens2):
+    def horaire_2_sens(self, id_comptag,list_df_sens):
         """
         creer une df des donnes horaires pour les 2 sens d'un id_comptage
         """
-        df_finale=pd.concat([df_sens1, df_sens2], axis=0, sort=False)
+
+        df_finale=pd.concat(list_df_sens, axis=0, sort=False) 
         df_finale=df_finale.groupby(['jour','type_veh']).sum().reset_index()
         df_finale['id_comptag']=id_comptag
         return df_finale
@@ -2274,7 +2318,20 @@ class Comptage_Niort(Comptage):
         in :
             dico_fichiers_final : dico d'association de l'id_comptag et de sfichiers creer par creer_dico
         """
-        self.df_attr_horaire=pd.concat([self.horaire_2_sens(k,*[self.traiter_csv_sens_unique(f)[4] for f in v]) for k, v in dico_fichiers_final.items()], axis=0, sort=False)
+        list_dfs,list_2sens=[],[]
+        for k, v in dico_fichiers_final.items() : 
+            for f in v : 
+                try : 
+                    list_2sens.append(self.traiter_csv_sens_unique(f)[4])
+                except PasAssezMesureError:
+                    list_2sens=[]
+                    break
+            if not list_2sens : 
+                continue
+            list_dfs.append(self.horaire_2_sens(k,list_2sens) )
+        self.df_attr_horaire=pd.concat(list_dfs, axis=0, sort=False)
+        
+        #self.df_attr_horaire=pd.concat([self.horaire_2_sens(k,[self.traiter_csv_sens_unique(f)[4] for f in v]) for k, v in dico_fichiers_final.items()], axis=0, sort=False)
     
 
     def indic_agreg_2sens_1_cpt(self,id_comptag, fichiers):
@@ -2290,16 +2347,25 @@ class Comptage_Niort(Comptage):
         """
         creation de la df des donnees agregees pour tout les indicatuers
         """
-        @concat_df
         def indic_agreg_2sens(id_comptag, fichiers):
-            list_resultat=[self.traiter_csv_sens_unique(f)[1:3] for f in fichiers]
-            tmja, nb_pl=[list_resultat[0][1],list_resultat[1][1]], [list_resultat[0][0],list_resultat[1][0]]
+            list_resultat=[]
+            for f in fichiers : 
+                try :
+                    list_resultat.append(self.traiter_csv_sens_unique(f)[1:3])
+                except PasAssezMesureError :
+                    return pd.DataFrame([])
+            tmja, nb_pl=[list_resultat[i][1] for i in range(len(fichiers))], [list_resultat[i][0] for i in range(len(fichiers))]
             tmja=sum(tmja)
-            pc_pl=sum(nb_pl)/tmja*100
+            pc_pl=round(sum(nb_pl)/tmja*100,2)
             src=list(set([os.path.split(f)[0] for f in fichiers]))[0]
             return pd.DataFrame.from_dict({'id_comptag':[id_comptag,],'tmja':[tmja,],'pc_pl':pc_pl, 'src':src})
         
-        self.df_attr=indic_agreg_2sens(list(dico_fichiers_final.items()))
+        self.df_attr=pd.concat([indic_agreg_2sens(k,v) for k,v in dico_fichiers_final.items()], axis=0,sort=False)
+        
+    def update_bdd_Niort(self,bdd, schema, table):
+        valeurs_txt=self.creer_valeur_txt_update(self.df_attr,['id_comptag','tmja','pc_pl'])
+        dico_attr_modif={f'tmja_{self.annee}':'tmja', f'pc_pl_{self.annee}':'pc_pl'}
+        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)
         
 class Comptage_GrandDax(Comptage): 
     def __init__(self, fichiers_pt_comptages):
@@ -2453,7 +2519,299 @@ class Comptage_GrandDax(Comptage):
                      for dossier, fichiers, id_comptag in zip(self.fichiers_pt_comptages.dossier.tolist(),self.fichiers_pt_comptages.nom_fich.tolist(),
                                                               self.fichiers_pt_comptages.id_comptag.tolist())],
                      axis=0, sort=False)
+
+class Comptage_Limoges_Metropole(Comptage): 
+    def __init__(self, fichiers_shape, fichier_zone) : 
+        """
+        je me base sur un fichier shape généré à partir de qgis, depuis le service arcgis ici : https://siglm.agglo-limoges.fr/servernf/rest/services/_TRANSPORTS/transports_consult/featureServer
+        """
+        df_trafic=gp.read_file(fichiers_shape, encoding='UTF8').set_index('objectid')
+        df_trafic.drop_duplicates(['date_deb', 'date_fin','tv_moyjour','position','direction','type','nom_voie','codcomm' ], inplace=True)
+        self.df_trafic=df_trafic.loc[(df_trafic.geometry!=None) & (~df_trafic.tv_moyjour.isna()) & 
+                                     (df_trafic['type_capt']!='Manuel')].copy()
+        self.fichier_zone=fichier_zone
+        self.df_trafic['geom_wgs84']=self.df_trafic.geometry.to_crs(epsg='4326')
+        self.df_trafic['geom_wgs84_x']=self.df_trafic.geom_wgs84.apply(lambda x : str(round(x.x, 4)))
+        self.df_trafic['geom_wgs84_y']=self.df_trafic.geom_wgs84.apply(lambda x : str(round(x.y, 4)))
         
+        
+    #fonction de recherche des points regroupable
+    def groupe_point(self):
+        """
+        regroupe les points selon un fichier de zones creer mano
+        in : 
+           fichier_zone : str : raw_strinf de localisation du fichier
+        """
+        zone_grp=gp.read_file(self.fichier_zone)
+        #jointure
+        self.df_trafic=gp.sjoin(self.df_trafic,zone_grp, op='within')
+    
+    def isoler_zone(self, num_zone):
+        """
+        pour tout les points d'une zone, les grouper par type et caracteriser les types selon le nombre de 
+        géométries differentes presentes
+        in : 
+            num_zone : integer présent dans le fichier des zones
+        """
+        zone_cbl=self.df_trafic.loc[self.df_trafic['id_groupe']==num_zone][['type', 'geometry', 'date_deb','date_fin', 'tv_moyjour',
+                'pl_pourcen', 'id_groupe', 'nom_voie', 'position','geom_wgs84_x', 'geom_wgs84_y']].sort_values(['type', 'date_deb']).copy()
+        zone_cbl['annee']=zone_cbl.date_deb.apply(lambda x : x[:4])
+        #filtre vacances
+        zone_cbl=zone_cbl.loc[(zone_cbl.apply(lambda x : pd.to_datetime(x.date_deb).month not in [7,8] if not pd.isnull(x.date_deb) else True, axis=1)) & 
+                    (zone_cbl.apply(lambda x : pd.to_datetime(x.date_fin).month not in [7,8] if not pd.isnull(x.date_fin) else True, axis=1))].copy()
+        zone_cbl_grp_type=zone_cbl.groupby('type')
+        carac_geom_type=zone_cbl_grp_type.geometry.unique().apply(lambda x : len(x))
+        return zone_cbl, zone_cbl_grp_type, carac_geom_type
+    
+    def calcul_attributs_commun(self,format_cpt,geom,nom_voie, wgs84_geom_x, wgs84_geom_y,num_zone):
+        #geometry
+        format_cpt=gp.GeoDataFrame(format_cpt, geometry=[geom])
+        format_cpt['src_geo']='export Webservice, cf atribut fichier'
+        format_cpt['fichier']='Q:\DAIT\TI\DREAL33\2020\OTV\Doc_travail\Donnees_source\LIMOGES\Limoge_Web_service.shp'
+        #reference au fichier cree et à la geolocalisation
+        format_cpt['obs_supl']=f'numero de zone dans fichier geoloc : {num_zone}'
+        format_cpt['id_comptag']=f'LimMet-{nom_voie.lower()}-{wgs84_geom_x};{wgs84_geom_y}' if nom_voie else f'LimMet-??-{wgs84_geom_x};{wgs84_geom_y}'
+    
+    def simplifier1PtComptage(self,zone_cbl,geom, wgs84_geom_x, wgs84_geom_y, num_zone, type):
+        """
+        convertir les données issue de isoler_zone() vers le format des données de la Bdd OTR
+        in : 
+           zone_cbl : df issue de  isoler_zone()
+           geom : geometry shapely du point
+           wgs84_geom_x, wgs84_geom_y : coordonnes en wgs84 arrondi à 10-3,
+           num_zone : integer : numero de la zone issu du fichier self.fichier_zone
+           type : string : 'Simple',  'Double', 'DETECTEUR_PC' : issu du type de comptage dans le fichier de Limoge Metropole
+        """
+        def conversion_date(date_deb, date_fin):
+            if date_deb and date_fin : 
+                return f"{pd.to_datetime(date_deb).strftime('%d/%m/%Y')}-{pd.to_datetime(date_fin).strftime('%d/%m/%Y')}"
+            elif date_deb : 
+                return f"{pd.to_datetime(date_deb).strftime('%d/%m/%Y')}-??"
+            elif date_fin : 
+                return f"??-{pd.to_datetime(date_fin).strftime('%d/%m/%Y')}"
+            else : 
+                return "pas de date de mesure connues"
+            
+        dbl=zone_cbl.loc[zone_cbl['type']==type]
+        #gestion duc cas où plusieurs comptages dans l'année
+        dbl_max=dbl.loc[dbl['tv_moyjour']==dbl.groupby('annee').tv_moyjour.transform(max)].copy()
+        dbl_max['obs']=dbl_max.apply(lambda x : conversion_date(x['date_deb'], x['date_fin']), axis=1)
+        format_cpt=dbl_max[['type', 'annee','tv_moyjour','pl_pourcen','id_groupe', 'obs']].pivot(index='id_groupe', columns='annee',
+                            values=['tv_moyjour','pl_pourcen', 'obs'])
+        #pour convertir les noms de colonnes
+        annees=format_cpt.columns.levels[1]
+        colonnes_name=['tmja_'+a for a in annees]+['pc_pl_'+a for a in annees]+['obs_'+a for a in annees]
+        format_cpt.columns=format_cpt.columns.droplevel()
+        format_cpt.columns=colonnes_name
+        for a in annees:
+            format_cpt[f'src_{a}']='Webservice Limoges Metropole'
+        #nom de voies
+        nom_voie=zone_cbl.loc[zone_cbl['type']==type].apply(lambda x : x.nom_voie if not pd.isnull(x.nom_voie) else x.position, axis=1).unique()[0]
+        self.calcul_attributs_commun(format_cpt,geom,nom_voie, wgs84_geom_x, wgs84_geom_y,num_zone )
+        #regrouper les années antérieure à 2010 dans une colonne 'autre'
+        dico_toutes_annee_autre={a:{'tmja':format_cpt[f'tmja_{a}'].values[0],'pc_pl':format_cpt[f'pc_pl_{a}'].values[0],
+                    'obs':format_cpt[f'obs_{a}'].values[0],'src':format_cpt[f'src_{a}'].values[0]} for a in annees if a<'2010'}
+        if dico_toutes_annee_autre : 
+            dico_annee_autre_max=dico_toutes_annee_autre[max(dico_toutes_annee_autre.keys())]
+            format_cpt['ann_autr']=max(dico_toutes_annee_autre.keys())
+            for c in ('tmja', 'pc_pl', 'obs','src') : 
+                format_cpt[f'{c}_autr']=dico_annee_autre_max[c]
+            format_cpt.drop([f'{c}_{a}' for c in ('tmja', 'pc_pl', 'obs', 'src') for a in dico_toutes_annee_autre.keys()],axis=1, inplace=True)
+        return format_cpt
+    
+    def df_intermediaire(self,zone_cbl, zone_cbl_grp_type, carac_geom_type, reprojection, num_zone):
+        """
+        creer une df concatenable à partir des données de Limoges metropole. va dépendre du type de comptage, des zones et des nombre 
+        de géométries différents
+        in : 
+            reprojection : vecteur de transformation selon la methode de shapely
+            num_zone : integer : numero de la zone issu du fichier self.fichier_zone
+        """
+        if 'Double' in carac_geom_type.index : 
+            geom, wgs84_geom_x, wgs84_geom_y=self.creer_geom('Double',carac_geom_type,zone_cbl_grp_type,zone_cbl, reprojection )
+            df=self.simplifier1PtComptage(zone_cbl, geom, wgs84_geom_x, wgs84_geom_y,num_zone,'Double')
+            df['obs_supl']=df['obs_supl']+' ; comptage 2 sens'
+        elif (zone_cbl['type']=='Simple').all() : 
+            geom, wgs84_geom_x, wgs84_geom_y=self.creer_geom('Simple',carac_geom_type,zone_cbl_grp_type,zone_cbl, reprojection )
+            if carac_geom_type['Simple']==1 : 
+                df=self.simplifier1PtComptage(zone_cbl, geom, wgs84_geom_x, wgs84_geom_y,num_zone,'Simple')
+                df['obs_supl']=df['obs_supl']+' ; comptage 1 sens'
+            else : 
+                if carac_geom_type['Simple']==2 :
+                    zone_cbl=zone_cbl.loc[zone_cbl['type']=='Simple'][['type','geometry','date_deb','date_fin','id_groupe','nom_voie','position','geom_wgs84_x','geom_wgs84_y','annee']].merge(
+                                zone_cbl.loc[zone_cbl['type']=='Simple'].groupby('annee')['tv_moyjour'].sum(), left_on='annee', right_index=True).merge(
+                                zone_cbl.loc[zone_cbl['type']=='Simple'].groupby('annee')['pl_pourcen'].mean(), left_on='annee', right_index=True).drop_duplicates(
+                                ['annee','tv_moyjour'])
+                    df=self.simplifier1PtComptage(zone_cbl, geom, wgs84_geom_x, wgs84_geom_y,num_zone,'Simple')
+                    df['fictif']='t'
+                    df['obs_supl']=df['obs_supl']+' ; comptage 2 sens'
+                else : 
+                    raise ValueError('cas non traite')
+        elif (zone_cbl['type']=='DETECTEUR_PC').all() :
+            geom, wgs84_geom_x, wgs84_geom_y=self.creer_geom('DETECTEUR_PC',carac_geom_type,zone_cbl_grp_type,zone_cbl, reprojection ) 
+            if carac_geom_type['DETECTEUR_PC']==1 :
+                df=self.simplifier1PtComptage(zone_cbl, geom, wgs84_geom_x, wgs84_geom_y,num_zone,'DETECTEUR_PC')
+                df['obs_supl']=df['obs_supl']+' ; comptage 1 sens'
+            else : 
+                raise ValueError('cas non traite')
+        else : 
+            geom, wgs84_geom_x, wgs84_geom_y=self.creer_geom('Mix',carac_geom_type,zone_cbl_grp_type,zone_cbl, reprojection )
+            if len(zone_cbl)==1 : 
+                format_cpt=zone_cbl[['geometry','tv_moyjour','pl_pourcen']].copy()
+                annee=zone_cbl.annee.values[0]
+                format_cpt.rename(columns={'tv_moyjour':f'tmja_{annee}', 'pl_pourcen':f'pc_pl_{annee}'}, inplace=True)
+                df=self.calcul_attributs_commun(format_cpt,geom, zone_cbl.nom_voie.values[0], wgs84_geom_x, wgs84_geom_y,num_zone)
+                df['obs_supl']=df['obs_supl']+' ; comptage 1 sens' 
+            else : 
+                if carac_geom_type['Simple']==1 : 
+                    df=self.simplifier1PtComptage(zone_cbl, geom, wgs84_geom_x, wgs84_geom_y,num_zone,'Simple')
+                    df['obs_supl']=df['obs_supl']+' ; comptage 1 sens'
+                elif carac_geom_type['Simple']==2:
+                    zone_cbl=zone_cbl.loc[zone_cbl['type']=='Simple'][['type','geometry','date_deb','date_fin','id_groupe','nom_voie','position','geom_wgs84_x','geom_wgs84_y','annee']].merge(
+                                zone_cbl.loc[zone_cbl['type']=='Simple'].groupby('annee')['tv_moyjour'].sum(), left_on='annee', right_index=True).merge(
+                                zone_cbl.loc[zone_cbl['type']=='Simple'].groupby('annee')['pl_pourcen'].mean(), left_on='annee', right_index=True).drop_duplicates(
+                                ['date_deb','date_fin','id_groupe','nom_voie','tv_moyjour','pl_pourcen']).drop_duplicates(['annee','tv_moyjour'])
+                    df=self.simplifier1PtComptage(zone_cbl, geom, wgs84_geom_x, wgs84_geom_y,num_zone,'Simple')
+                    df['fictif']='t'
+                    df['obs_supl']=df['obs_supl']+' ; comptage 2 sens'
+                else : 
+                    raise ValueError('cas non traite')
+        return df
+    
+    def creer_geom(self,cas, carac_geom_type,zone_cbl_grp_type,zone_cbl, reprojection):
+        """
+        creer la geometrie : differe si le type de cpt est 'Double','Simple','DETECTEUR_PC', ou 'Mix'. depend aussi du nombre de geom differentes
+        in : 
+            cas : string : 'Double','Simple','DETECTEUR_PC', ou 'Mix'
+            carac_geom_type,zone_cbl_grp_type,zone_cbl : iisu de isoler_zone()
+            reprojection : vecteur de transformation selon la methode de shapely
+        """
+        if (cas=='Double' or (cas in ('Simple','DETECTEUR_PC') and carac_geom_type[cas]==1) 
+            or (cas=='Mix' and carac_geom_type['Simple']==1))  : 
+            if cas=='Mix' and carac_geom_type['Simple']==1 : 
+                cas='Simple'
+            geom=zone_cbl_grp_type.geometry.unique()[cas][0]
+            wgs84_geom_x=zone_cbl_grp_type.geom_wgs84_x.unique()[cas][0]
+            wgs84_geom_y=zone_cbl_grp_type.geom_wgs84_y.unique()[cas][0]
+        elif (cas=='Simple' and carac_geom_type[cas]==2) or (cas=='Mix' and carac_geom_type['Simple']==2) :
+            list_geom=zone_cbl.loc[zone_cbl['type']=='Simple'].geometry.unique()
+            geom=LineString(list_geom).centroid
+            wgs84_geom_x=str(round(transform(reprojection, geom).x,3))
+            wgs84_geom_y=str(round(transform(reprojection, geom).y,3))
+        elif cas=='Mix' and len(zone_cbl)==1 : 
+            geom=zone_cbl.geometry.values[0]
+            wgs84_geom_x=str(round(transform(reprojection, geom).x,3))
+            wgs84_geom_y=str(round(transform(reprojection, geom).y,3))
+        return geom, wgs84_geom_x, wgs84_geom_y
+    
+    def df_regroupee(self):
+        """
+        produire une df globale de l'ensemble des points de comptages représentatifs
+        """
+        list_dfs=[]
+        reprojection=O.reprojeter_shapely(None, '2154', '4326')[0]
+        for i in self.df_trafic.id_groupe.unique() :
+            zone_cbl, zone_cbl_grp_type, carac_geom_type=self.isoler_zone(i)
+            if zone_cbl.empty : 
+                continue
+            list_dfs.append(self.df_intermediaire(zone_cbl, zone_cbl_grp_type, carac_geom_type, reprojection, i))
+        return list_dfs
+    
+    def df_regroupee_complete(self, list_dfs):
+        """
+        ajouter à la df creee par df_regroupee() les attributs généraux. creer le fichier self.df_attr
+        """
+        def type_compteur(ligne):
+            if all([not pd.isnull(ligne[f'tmja_{annee}']) for annee in (str(i) for i in range(2015,2020))]) : 
+                return 'permanent'
+            elif ((Counter([not pd.isnull(ligne[f'tmja_{annee}']) for annee in (str(i) for i in range(2010,2020))])[True]>=3) and 
+                  any([not pd.isnull(ligne[f'tmja_{annee}']) for annee in (str(i) for i in range(2015,2020))]) ): 
+                return 'tournant'
+            else :
+                return 'ponctuel'
+        gdf=gp.GeoDataFrame(pd.concat(list_dfs, axis=0, sort=False))
+        gdf['route']=gdf.id_comptag.apply(lambda x : x.split('-')[1])
+        gdf['type_poste']=gdf.apply(lambda x : type_compteur(x), axis=1)
+        self.df_attr=gdf.assign(dep='87',reseau='VC', gestionnai='Limoges Metropole',concession='N',
+                       x_l93=lambda x : round(x.geometry.x,3),y_l93=lambda x : round(x.geometry.y,3))
+        
+class Comptage_LaRochelle(Comptage):  
+    """
+    pour LaRochelle n dispose de fichierde comptage .xls de chez sterela, à combiner pour obtenir les deux sens
+    POur ce fair on s'appuie sur une création mano de l agéométrie des points de comptage, qui recencse dans l'attr id_cpt les noms
+    des fchiers concernés
+    """ 
+    def __init__(self, dossier):  
+        """
+        in : 
+            dossier : chemin du dossier contenant tous les fchiers
+        """  
+        self.dossier=dossier
+    
+    def extraireDonneesSterela(self,fichier):
+        """
+        sortir le tmja, pc_pl et les df horaires PL et TV d'unfichier de comptage Sterela 
+        """
+        print(fichier)
+        df=pd.read_excel(os.path.join(self.dossier,fichier))
+        tmja=round(df.loc[38,'Unnamed: 6'])
+        pl=round(df.loc[42,'Unnamed: 6'])
+        periode=df.iloc[1,16]
+        index_date=pd.date_range(start=pd.to_datetime(periode.split(' au ')[0][3:], dayfirst=True), end=pd.to_datetime(periode.split(' au ')[1], dayfirst=True))
+        df_pl=df.iloc[17:24,2:26].copy()
+        df_tv=df.iloc[27:34,2:26].copy()
+        df_pl.columns=[f'h{str(i)}_{str(i+1)}' for i in range(24)]
+        df_tv.columns=[f'h{str(i)}_{str(i+1)}' for i in range(24)]
+        df_pl=df_pl.assign(jour=index_date, type_veh='PL')
+        df_tv=df_tv.assign(jour=index_date, type_veh='TV')
+        return tmja, pl, periode, df_tv, df_pl
+     
+    def listCptCreer(self):
+        """
+        interroger la bdd pour cpnnaitre les cpt localisés à la main avec les noms de fichiers inscrits
+        """ 
+        with ct.ConnexionBdd('gti_otv_pg11') as c : 
+            rqt="select id_comptag, id_cpt from comptage.na_2010_2019_p where id_cpt is not null"
+            ids=pd.read_sql(rqt, c.sqlAlchemyConn)
+        return ids
+        
+    def sommer2sens(self, id_comptag, id_cpt):
+        """
+        calculer les données argegees et horaires à partir d'un id_comptag et de la référence aux fichier
+        in : 
+            id_comptag : string, issu d'une requete sql sur la table comptag cf listCptCreer()
+            id_cpt : string, issu d'une requete sql sur la table comptag, continet le nom des fchiers separes par ';' cf listCptCreer()
+        """ 
+        Donnees2Sens=list(zip(*[self.extraireDonneesSterela(fichier) for fichier in [f"SEMAINE {i}{os.sep}{a.replace('SEMAINE 1',f'SEMAINE {i}')}" for a in id_cpt.split(';') for i in range(1,4)]]))
+        tmja=sum(Donnees2Sens[0])
+        pl,pc_pl=sum(Donnees2Sens[1]),round(sum(Donnees2Sens[1])*100/tmja,2)
+        df_tv=pd.concat([*Donnees2Sens[3]], axis=0, sort=False).groupby('jour').sum().assign(type_veh='TV', id_comptag=id_comptag).reset_index()
+        df_pl=pd.concat([*Donnees2Sens[4]], axis=0, sort=False).groupby('jour').sum().assign(type_veh='PL', id_comptag=id_comptag).reset_index()  
+        return tmja, pl,pc_pl, df_tv, df_pl
+    
+    def creer_dfs(self,ids):
+        """
+        fusionner l'ensemble des données de trafic dans les df des données agrégées et celes des données horaires
+        in : 
+            ids : la liste des id_comptag et id_cpt issues de listCptCreer
+        """
+        list_id_comptag,list_fichiers=ids.id_comptag.tolist(), ids.id_cpt.tolist()
+        list_tmja, list_pc_pl, list_df_tv, list_df_pl=[],[],[],[]
+        for id_comptag,id_cpt in zip(list_id_comptag,list_fichiers) : 
+            tmja, pl,pc_pl, df_tv, df_pl=self.sommer2sens(id_comptag, id_cpt)
+            list_tmja.append(tmja)
+            list_pc_pl.append(pc_pl)
+            list_df_tv.append(df_tv)
+            list_df_pl.append(df_pl)
+        self.df_attr=pd.DataFrame({'id_comptag':list_id_comptag, 'tmja_2015':list_tmja, 'pc_pl_2015':list_pc_pl,'src_2015':'agglo LaRochelle',
+                      'fichier':[self.dossier+a for a in list_fichiers]})
+        self.df_attr_horaire=pd.concat([*list_df_tv,*list_df_pl],axis=0, sort=False)
+        
+    def update_bdd_LaRochelle(self,bdd, schema, table):
+        valeurs_txt=self.creer_valeur_txt_update(self.df_attr,['id_comptag','tmja_2015','pc_pl_2015','src_2015', 'fichier'])
+        dico_attr_modif={f'tmja_2016':'tmja_2015', f'pc_pl_2016':'pc_pl_2015',f'src_2016':'src_2015', 'fichier':'fichier'}
+        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)   
+    
 class PasAssezMesureError(Exception):
     """
     Exception levee si le fichier comport emoins de 7 jours
