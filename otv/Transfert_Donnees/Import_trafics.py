@@ -289,7 +289,7 @@ class Comptage():
             df.replace('', np.NaN, inplace=True)
         return  df
    
-    def comptag_existant_bdd(self,bdd, table, schema='comptage',dep=False, type_poste=False):
+    def comptag_existant_bdd(self,bdd, table, schema='comptage',dep=False, type_poste=False, gest=False):
         """
         recupérer les comptages existants dans une df
         en entree : 
@@ -301,12 +301,18 @@ class Comptage():
         en sortie : 
             existant : df selon la structure de la table interrogée
         """
-        if not dep and not type_poste : rqt=f"select * from {schema}.{table}"
-        elif dep and not type_poste : rqt=f"select * from {schema}.{table} where dep='{dep}'"
-        elif dep and isinstance(type_poste, str) : rqt=f"select * from {schema}.{table} where dep='{dep}' and type_poste='{type_poste}'"
-        elif dep and isinstance(type_poste, list) : 
+        if not dep and not type_poste and not gest: rqt=f"select * from {schema}.{table}"
+        elif not dep and not type_poste and gest: rqt=f"select * from {schema}.{table} where gestionnai='{gest}'"
+        elif dep and not type_poste and not gest: rqt=f"select * from {schema}.{table} where dep='{dep}'"
+        elif dep and not type_poste and gest : rqt=f"select * from {schema}.{table} where dep='{dep}' and gestionnai='{gest}'"
+        elif dep and isinstance(type_poste, str) and not gest : rqt=f"select * from {schema}.{table} where dep='{dep}' and type_poste='{type_poste}'"
+        elif dep and isinstance(type_poste, str) and gest : rqt=f"select * from {schema}.{table} where dep='{dep}' and type_poste='{type_poste}' and gestionnai='{gest}' "
+        elif dep and isinstance(type_poste, list) and not gest : 
             list_type_poste='\',\''.join(type_poste)
             rqt=f"""select * from {schema}.{table} where dep='{dep}' and type_poste in ('{list_type_poste}')"""
+        elif dep and isinstance(type_poste, list) and gest : 
+            list_type_poste='\',\''.join(type_poste)
+            rqt=f"""select * from {schema}.{table} where dep='{dep}' and type_poste in ('{list_type_poste}') and gestionnai='{gest}'"""
         with ct.ConnexionBdd(bdd) as c:
             self.existant=gp.GeoDataFrame.from_postgis(rqt, c.sqlAlchemyConn, geom_col='geom',crs={'init': 'epsg:2154'})
     
@@ -324,25 +330,27 @@ class Comptage():
         df['id_comptag']=df.apply(lambda x : corresp_comptg.loc[corresp_comptg['id_gest']==x['id_comptag']].id_gti.values[0] 
                                                     if x['id_comptag'] in corresp_comptg.id_gest.tolist() else x['id_comptag'], axis=1)
     
-    def maj_geom(self,bdd, schema, table, dep=False):
+    def maj_geom(self,bdd, schema, table, nom_table_ref,nom_table_pr,dep=False):
         """
         mettre à jour les lignes de geom null
         en entree : 
             bdd: txt de connexion à la bdd que l'on veut (cf ficchier id_connexions)
             schema : string nom du schema de la table
             table : string : nom de la table
+            nom_table_ref : string : nom de table contenant le referntiel (schema qualified)
+            nom_table_pr : string : nom de table contenant les pr (schema qualified)
             dep : string : code departement sur 2 chiffres
         """
         if dep : 
             rqt_geom=f""" update {schema}.{table}
-              set geom=(select geom_out  from comptage.geoloc_pt_comptag(id_comptag))
+              set geom=(select geom_out  from comptage.geoloc_pt_comptag('{nom_table_ref}','{nom_table_pr}',id_comptag))
               where dep='{dep}' and geom is null"""
             rqt_attr=f""" update {schema}.{table}
               set src_geo='pr+abs', x_l93=round(st_x(geom)::numeric,3), y_l93=round(st_y(geom)::numeric,3)
               where dep='{dep}' and src_geo is null and geom is not null"""
         else :
             rqt_geom=f""" update {schema}.{table}
-              set geom=(select geom_out  from comptage.geoloc_pt_comptag(id_comptag))
+              set geom=(select geom_out  from comptage.geoloc_pt_comptag('{nom_table_ref}','{nom_table_pr}',id_comptag))
               where geom is null""" 
             rqt_attr=f""" update {schema}.{table}
               set src_geo='pr+abs', x_l93=round(st_x(geom)::numeric,3), y_l93=round(st_y(geom)::numeric,3)
@@ -512,7 +520,7 @@ class Comptage():
                                for elem in zip(*[df[a].tolist() for a in liste_attr])]))[1:-1]
         return valeurs_txt
     
-    def update_bdd(self,bdd, schema, table, valeurs_txt,dico_attr_modif):
+    def update_bdd(self,bdd, schema, table, valeurs_txt,dico_attr_modif,filtre=None):
         """
         mise à jour des id_comptag deja presents dans la base
         en entree : 
@@ -522,10 +530,13 @@ class Comptage():
             valeurs_txt : tuple des valeurs pour mise à jour, issu de creer_valeur_txt_update
             dico_attr_modif : dico de string avec en clé les nom d'attribut à mettre à jour, en value des noms des attributs source dans la df (ne pas mettre id_comptag,
                             garder les attributsdans l'ordre issu de creer_valeur_txt_update)
+            filtre : string : condition de requete where a ajouter. le permeir 'and' ne doit pas etre ecrit
         """
         rqt_attr=','.join(f'{attr_b}=v.{attr_f}' for (attr_b,attr_f) in dico_attr_modif.items())
         attr_fichier=','.join(f'{attr_f}' for attr_f in dico_attr_modif.values())
         rqt_base=f'update {schema}.{table}  as c set {rqt_attr} from (values {valeurs_txt}) as v(id_comptag,{attr_fichier}) where v.id_comptag=c.id_comptag'
+        if filtre : 
+            rqt_base=rqt_base+f' and {filtre}'
         with ct.ConnexionBdd(bdd) as c:
                 c.sqlAlchemyConn.execute(rqt_base)
 
@@ -1347,9 +1358,11 @@ class Comptage_cd87(Comptage):
         dossier : nom du dossier contenant les fchiers
         liste_nom_simple : list edes fihciers avce un n om explicite
         liste_nom_foireux : liste des fichiers avec un nom pourri
+        annee : string : annee des comptages
     """
-    def __init__(self,dossier):
+    def __init__(self,dossier, annee):
         self.dossier=dossier
+        self.annee=annee
         self.liste_fichier=O.ListerFichierDossier(dossier,'.FIM')
     
 
@@ -1555,7 +1568,13 @@ class Comptage_cd87(Comptage):
         df_correspondance,points_a_inserer_geom=self.corresp_old_new_comptag(bdd, schema_temp,nom_table_temp,table_linearisation_existante,
                                         schema_graph, table_graph,table_vertex,id_name,table_pr,table_cpt)
         #passer la df de correspondance dans le table corresp_id_comptage
-        self.insert_bdd(bdd, schema_cpt, 'corresp_id_comptag', 
+        #verifier si cette clé n'existent pas deja dans la table de correspondance et passer les nouvelles dedans
+        rqt_corresp_comptg='select * from comptage.corresp_id_comptag'
+        with ct.ConnexionBdd(bdd) as c:
+            corresp_comptg=pd.read_sql(rqt_corresp_comptg, c.sqlAlchemyConn)
+        df_correspondance=df_correspondance[0].loc[~df_correspondance[0]['id_comptag'].isin(corresp_comptg.id_gest.tolist())]
+        if not df_correspondance.empty:
+            self.insert_bdd(bdd, 'comptage', 'corresp_id_comptag', 
                df_correspondance.rename(columns={'id_comptag_lin':'id_gti','id_comptag':'id_gest'})[['id_gest','id_gti']])
         #faire la correspondance entre les noms de comptage
         self.corresp_nom_id_comptag(bdd,self.df_attr)
@@ -1571,15 +1590,20 @@ class Comptage_cd87(Comptage):
         self.df_attr_update['obs']=self.df_attr_update.apply(lambda x : x['date_debut'].strftime('%d/%m/%Y')+'-'+ x['date_fin'].strftime('%d/%m/%Y') if not pd.isnull(x['date_debut']) else '', axis=1)
         self.df_attr_update.loc[self.df_attr_update.pc_pl.isna(),'obs']='pc_pl inconnu'
         self.df_attr_update.loc[self.df_attr_update.pc_pl.isna(),'pc_pl']=-99
+        self.df_attr_update['src']='fichiers FIM'
+        self.df_attr_update['fichier']=self.dossier
         #preparer update
-        valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update, ['id_comptag','tmja','pc_pl','obs'])
-        dico_attr={'tmja_2018':'tmja','pc_pl_2018':'pc_pl','obs_2018':'obs'}
+        valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update, ['id_comptag','tmja','pc_pl','obs','src','fichier'])
+        dico_attr={'tmja_'+self.annee:'tmja','pc_pl_'+self.annee:'pc_pl','obs_'+self.annee:'obs','src_'+self.annee:'src','fichier':'fichier'}
         #update
         self.update_bdd(bdd, schema_cpt, table_cpt, valeurs_txt,dico_attr)
         
-    def insert_bdd_d87(self,bdd,table_cpt,schema_cpt):
+    def insert_bdd_d87(self,bdd,table_cpt,schema_cpt,nom_table_ref,nom_table_pr):
         """
         inserer les point df_attr_insert qui n'était pas à mettre à jour
+        in : 
+            nom_table_ref : string : nom de table contenant le referntiel (schema qualified)
+            nom_table_pr : string : nom de table contenant les pr (schema qualified)
         """
         #mettre en forme le insert
         dbl=self.df_attr_insert.loc[self.df_attr_insert.duplicated('id_comptag', False)].copy()
@@ -1588,17 +1612,16 @@ class Comptage_cd87(Comptage):
         dbl_traite=dbl.loc[dbl.tmja==dbl.groupby('id_comptag').tmja.transform(max)].drop_duplicates().copy()
         self.df_attr_insert=pd.concat([dbl_traite,ss_dbl], axis=0, sort=False)
         self.df_attr_insert.pc_pl.fillna(-99, inplace=True)
-        annee='2018'
         self.df_attr_insert['dep']='87'
         self.df_attr_insert['reseau']='RD'
         self.df_attr_insert['gestionnai']='CD87'
         self.df_attr_insert['concession']='N'
         self.df_attr_insert['obs']=self.df_attr_insert.apply(lambda x : f"""nouveau_point,{x['date_debut'].strftime("%d/%m/%Y")}-{x['date_fin'].strftime("%d/%m/%Y")}""" if not (pd.isnull(x['date_debut']) and  pd.isnull(x['date_fin'])) else None,axis=1)
-        self.df_attr_insert.rename(columns={'absc' : 'abs', 'tmja':'tmja_'+annee,'pc_pl':'pc_pl_'+annee,'obs':'obs_'+annee},inplace=True)
+        self.df_attr_insert.rename(columns={'absc' : 'abs', 'tmja':'tmja_'+self.annee,'pc_pl':'pc_pl_'+self.annee,'obs':'obs_'+self.annee},inplace=True)
         self.df_attr_insert.drop(['date_debut','date_fin','route'],axis=1,inplace=True)
-        self.insert_bdd(self,bdd,table_cpt,schema_cpt, self.df_attr_insert)
+        self.insert_bdd(bdd,schema_cpt,table_cpt, self.df_attr_insert)
         #mettre à jour la geom
-        self.maj_geom(bdd, schema_cpt, table_cpt, dep='87')
+        self.maj_geom(bdd, schema_cpt, table_cpt,nom_table_ref,nom_table_pr, dep='87')
     
     class CptCd87_ManqueFichierDansDicoError(Exception):  
         """
@@ -2816,7 +2839,145 @@ class Comptage_LaRochelle(Comptage):
     def update_bdd_LaRochelle(self,bdd, schema, table):
         valeurs_txt=self.creer_valeur_txt_update(self.df_attr,['id_comptag','tmja_2015','pc_pl_2015','src_2015', 'fichier'])
         dico_attr_modif={f'tmja_2016':'tmja_2015', f'pc_pl_2016':'pc_pl_2015',f'src_2016':'src_2015', 'fichier':'fichier'}
-        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)   
+        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)  
+        
+class Comptage_Dira(Comptage):
+    """
+    pour la DIRA on a besoinde connaitre le nom du fichierde syntheses tmja par section, 
+    et le nom du dossier qui contient les fichiers excel de l'année complete
+    """ 
+    def __init__(self,fichierTmjaParSection, dossierAnneeComplete, annee):
+        self.fichierTmjaParSection=fichierTmjaParSection
+        self.dossierAnneeComplete=dossierAnneeComplete
+        self.annee=annee
+        
+    def ouvrirMiseEnFormeFichierTmja(self):
+        """
+        a partir du fichier, on limite les données, on ajoute le type de donnees, on supprime les NaN, on prepare un id de jointure sans carac spéciaux, 
+        on change les noms de mois
+        """
+        dfBase=pd.read_excel(self.fichierTmjaParSection, engine='odf', sheet_name=f'TMJM_{self.annee}')
+        dfLimitee=dfBase.iloc[:,0:14]
+        mois,colonnes=[m for m in dfLimitee.iloc[0,1:].tolist() if m in [a for v in dico_mois.values() for a in v]] ,['nom']+dfLimitee.iloc[0,1:].tolist()
+        dfLimitee.columns=colonnes
+        dfFiltree=dfLimitee.loc[dfLimitee.apply(lambda x : not all([pd.isnull(x[m]) for m in mois]), axis=1)].iloc[2:,:].copy()
+        #mise en forme données mensuelles
+        dfFiltree.loc[~dfFiltree.nom.isna(),'donnees_type']='tmja'
+        dfFiltree.loc[dfFiltree.nom.isna(),'donnees_type']='pc_pl'
+        dfFiltree.nom=dfFiltree.nom.fillna(method='pad')
+        dfFiltree.nom=dfFiltree.nom.apply(lambda x : re.sub('(é|è|ê)','e',re.sub('( |_|-)','',x.lower())))
+        dfFiltree.rename(columns={c:k for k, v in dico_mois.items()  for c in dfFiltree.columns if c not in ('nom','MJA','donnees_type') if c in v}, inplace=True)
+        return dfFiltree
+    
+    def decomposeObsSupl(self,obs_supl, id_comptag) : 
+        """
+        decomposer le obs_supl des comptages existant de la base de donnees en 2 lignes renoyant au mm id_comptag pour la mise a jour des donnees mesnuelle
+        """
+        if obs_supl :
+            if 'voie : ' in obs_supl : 
+                voie=obs_supl.split(';')[0].split('voie : ')[1]
+                nb_voie=len(voie.split(',')) 
+                site=obs_supl.split(';')[3].split('nom_site : ')[1]
+                df=pd.DataFrame({'id_comptag':[id_comptag]*nb_voie, 'voie':voie.split(','), 'site':[site]*nb_voie})
+                df['id_dira']=df.apply(lambda x : re.sub('(é|è|ê)','e',re.sub('( |_|-)','',x['site'].lower()))+'('+re.sub('(é|è|ê)','e',re.sub('( |_)','',x['voie'].lower()))+')', axis=1).reset_index(drop=True)
+                return df
+        return pd.DataFrame([])
+    
+    def correspIdsExistant(self,bdd,table_cpt):
+        """
+        obtenir une df de correspndance entre l'id_comptag et les valeusr stockées dans obs_supl de la Bdd
+        """
+        self.comptag_existant_bdd(bdd, table_cpt, schema='comptage',dep=False, type_poste=False, gest='DIRA')
+        return pd.concat([self.decomposeObsSupl(b,c) for b,c in zip(self.existant.obs_supl.tolist(),self.existant.id_comptag.tolist())], axis=0, sort=False)
+    
+    def jointureExistantFichierTmja(self,bdd,table_cpt):
+        """
+        creer une df jointe entre les pointsde comptages existants dans la bdd et le fichier excel de comptage
+        """
+        #fonction de mise en form des données contenues dans l'existant pour jointure avec tableur excel        
+        #recuperation de l'existant
+        
+        #jointure avec donnees mensuelle
+        dfFiltree=self.ouvrirMiseEnFormeFichierTmja()
+        dfMens=dfFiltree.merge(self.correspIdsExistant(bdd,table_cpt),left_on='nom',right_on='id_dira')
+        return dfMens
+    
+    def verifValiditeMensuelle(self,dfMens) : 
+        """
+        pour tout les id_comptag il faut vérifier que si 2 sens sont présent, alors on a bien les données 2 
+        sens pour calculer la valeur mensuelle
+        """
+        verifValidite=dfMens.merge(dfMens.groupby('id_comptag').id_dira.count().reset_index().rename(columns={'id_dira':'nb_lgn'}), on='id_comptag')
+        for idComptag in verifValidite.id_comptag.tolist() :
+            test=verifValidite.loc[verifValidite['id_comptag']==idComptag]
+            if (test.nb_lgn==4).all() : 
+                #pour le tmja
+                testTmja=test.loc[test['donnees_type']=='tmja']
+                colInvalidesTmja=testTmja.columns.to_numpy()[testTmja.isnull().any().to_numpy()]
+                verifValidite.loc[(verifValidite['donnees_type']=='tmja')&(verifValidite['id_comptag']==idComptag),colInvalidesTmja]=-99
+                #pour le pc_pl
+                testTmja=test.loc[test['donnees_type']=='pc_pl']
+                colInvalidesTmja=testTmja.columns.to_numpy()[testTmja.isnull().any().to_numpy()]
+                verifValidite.loc[(verifValidite['donnees_type']=='pc_pl')&(verifValidite['id_comptag']==idComptag),colInvalidesTmja]=-99
+            elif  test.nb_lgn.isin((1,2)).all() : 
+                verifValidite.loc[verifValidite['id_comptag']==idComptag]=verifValidite.loc[verifValidite['id_comptag']==idComptag].fillna(-99)
+            else : 
+                print('cas non prevu')
+        return verifValidite
+    
+    def MiseEnFormeMensuelleAnnuelle(self,verifValidite):
+        #regroupement par id_comptag
+        dfMensGrpTmja=verifValidite.loc[verifValidite['donnees_type']=='tmja'][['id_comptag','MJA']+[k for k in dico_mois.keys()]].groupby('id_comptag').sum().assign(
+                                 donnees_type='tmja')
+        dfMensGrpTmja.MJA=dfMensGrpTmja.MJA.astype('int64')
+        dfMensGrpPcpl=pd.concat([verifValidite.loc[verifValidite['donnees_type']=='pc_pl'][[k for k in dico_mois.keys()]+['MJA']].astype('float64')*100,
+                   verifValidite.loc[verifValidite['donnees_type']=='pc_pl'][['id_comptag']]], axis=1, sort=False).groupby('id_comptag').mean().assign(
+                                 donnees_type='pc_pl')
+        dfMensGrpPcpl=dfMensGrpPcpl.loc[dfMensGrpPcpl['MJA']<=99]#cas bizarre avec 100% PL
+        dfMensGrp=pd.concat([dfMensGrpPcpl,dfMensGrpTmja], axis=0, sort=False).sort_values('id_comptag').reset_index()
+        cond = dfMensGrp[[k for k in dico_mois.keys()]] > 0
+        valMoins99=dfMensGrp[[k for k in dico_mois.keys()]].where(cond,-99)
+        dfMensGrpHomogene=pd.concat([valMoins99,dfMensGrp[['id_comptag','MJA','donnees_type']]], axis=1, sort=False).set_index('id_comptag')
+        return dfMensGrpHomogene
+    
+    def MiseEnFormeAnnuelle(self,dfMensGrp,idComptagAexclure=None):
+        #mise à jour des TMJA null dans la Bdd
+        idComptagAexclure=idComptagAexclure if isinstance(idComptagAexclure,list) else [idComptagAexclure,]
+        dfMensGrpFiltre=dfMensGrp.loc[~dfMensGrp.index.isin(idComptagAexclure)].copy()
+        self.df_attr=dfMensGrpFiltre.loc[dfMensGrpFiltre['donnees_type']=='tmja'][['MJA']].rename(columns={'MJA':'tmja'}).merge(
+                        dfMensGrpFiltre.loc[dfMensGrpFiltre['donnees_type']=='pc_pl'][['MJA']].rename(columns={'MJA':'pc_pl'}),how='left', right_index=True, left_index=True)
+        self.df_attr['src']='donnees_mensuelle tableur'
+        self.df_attr['fichier']=self.fichierTmjaParSection
+        self.df_attr.reset_index(inplace=True)
+        
+    def MiseEnFormeMensuelle(self,dfMensGrp, idComptagAexclure=None):
+        """
+        Mise en forme des données avant intégration dans a base.
+        in :
+            idComptagAexclure string ou list de string : id_comptag à ne pas prendre en compte
+        """
+        self.df_attr_mens=dfMensGrp.fillna(-99).drop('MJA', axis=1)
+        idComptagAexclure=idComptagAexclure if isinstance(idComptagAexclure,list) else [idComptagAexclure,]
+        self.df_attr_mens=self.df_attr_mens.loc[~self.df_attr_mens.index.isin(idComptagAexclure)].copy()
+        self.df_attr_mens.loc[self.df_attr_mens['donnees_type']=='pc_pl','janv':'dece']=self.df_attr_mens.loc[
+            self.df_attr_mens['donnees_type']=='pc_pl','janv':'dece'].applymap(lambda x : round(x,2))
+        self.df_attr_mens.reset_index(inplace=True)
+        self.df_attr_mens['annee']=self.annee
+        
+    def update_bdd_Dira(self,bdd, schema, table, nullOnly=True):
+        """
+        metter à jour la table des comptage
+        in : 
+            nullOnly : boolean : True si la requet de Mise a jour ne concerne que les voies dont le tmja est null, false pour mettre 
+                      toute les lignes à jour
+        """
+        valeurs_txt=self.creer_valeur_txt_update(self.df_attr,['id_comptag','tmja','pc_pl','src', 'fichier'])
+        dico_attr_modif={f'tmja_{self.annee}':'tmja', f'pc_pl_{self.annee}':'pc_pl',f'src_{self.annee}':'src', 'fichier':'fichier'}
+        if nullOnly : 
+            self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif,'c.tmja_2019 is null')
+        else : 
+            self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)
+    
     
 class PasAssezMesureError(Exception):
     """
