@@ -28,6 +28,41 @@ dico_mois={'janv':[1,'Janv','Janvier'], 'fevr':[2,'Fév','Février','févr','Fev
            'juil':[7,'Juill','Juillet', 'juil'], 'aout':[8,'Août','Aout'], 'sept':[9,'Sept','Septembre'], 'octo':[10,'Oct','Octobre'], 'nove':[11,'Nov','Novembre'], 'dece':[12,'Déc','Décembre','Decembre']}
 
 
+def statsHoraires(df_horaire,attributHeure, typeVeh,typeJour='semaine'):
+    """
+    Calculer qq stats à partir d'une df des données horaires formattée comme dans la Bdd  
+    in : 
+        attributHeure : nom de l'heuer a verifier, a coorlere avec les noms de colonne dans la bdd horaires
+        typeVeh : type de vehiicules, 'PL', 'TV', 'VL'
+        typeJour : string : semaine ou we
+    """    
+    df=df_horaire.loc[(df_horaire['type_veh']==typeVeh)&(~df_horaire[attributHeure].isna())&
+        (df_horaire['jour'].apply(lambda x : x.dayofweek in (0,1,2,3,4)))][attributHeure] if typeJour=='semaine' else df_horaire.loc[(df_horaire['type_veh']==typeVeh)&(~df_horaire[attributHeure].isna())&
+        (df_horaire['jour'].apply(lambda x : x.dayofweek in (5,6)))][attributHeure]
+    ecartType=df.std()
+    moyenne=df.mean()
+    median=df.median()
+    plageMin=moyenne-2*ecartType
+    plageMax=moyenne+2*ecartType
+    return ecartType,moyenne,median,plageMin,plageMax
+
+def correctionHoraire(df_horaire):
+    """
+    corriger une df horaire en passant à -99 les valeurs qui semble non correlées avec le reste des valeusr
+    """
+    #corriger les valuers inférieures à moyenne-2*ecart_type
+    for attributHeure, typeVeh, typeJour in [e+s for e in [(h,t) for h in [f'h{i}_{i+1}' for i in range (24)] 
+                                                           for t in ('VL','PL')] for s in (('semaine',), ('we',))] :
+        plageMinSemaine=statsHoraires(df_horaire,attributHeure, typeVeh, typeJour)[3]
+        plageMinWe=statsHoraires(df_horaire,attributHeure, typeVeh, typeJour)[3]
+        if typeJour=='semaine' :
+            df_horaire.loc[(df_horaire['type_veh']==typeVeh)&
+                   (df_horaire['jour'].apply(lambda x : x.dayofweek in (0,1,2,3,4)))&
+                   (df_horaire[attributHeure]<plageMinSemaine),attributHeure]=-99
+        if typeJour=='we' :
+            df_horaire.loc[(df_horaire['type_veh']==typeVeh)&
+                   (df_horaire['jour'].apply(lambda x : x.dayofweek in (5,6)))&
+                   (df_horaire[attributHeure]<plageMinWe),attributHeure]=-99
 
 class FIM():
     """
@@ -2845,11 +2880,13 @@ class Comptage_Dira(Comptage):
     """
     pour la DIRA on a besoinde connaitre le nom du fichierde syntheses tmja par section, 
     et le nom du dossier qui contient les fichiers excel de l'année complete
+    on ajoute aussi le nom de table et de schema comptagede la Bdd pour pouvoir de suite se connecter et obtenir les infos des points existants
     """ 
-    def __init__(self,fichierTmjaParSection, dossierAnneeComplete, annee):
+    def __init__(self,fichierTmjaParSection, dossierAnneeComplete, annee,bdd, table):
         self.fichierTmjaParSection=fichierTmjaParSection
         self.dossierAnneeComplete=dossierAnneeComplete
         self.annee=annee
+        self.dfCorrespExistant=self.correspIdsExistant(bdd, table)
         
     def ouvrirMiseEnFormeFichierTmja(self):
         """
@@ -2899,7 +2936,7 @@ class Comptage_Dira(Comptage):
         
         #jointure avec donnees mensuelle
         dfFiltree=self.ouvrirMiseEnFormeFichierTmja()
-        dfMens=dfFiltree.merge(self.correspIdsExistant(bdd,table_cpt),left_on='nom',right_on='id_dira')
+        dfMens=dfFiltree.merge(self.dfCorrespExistant,left_on='nom',right_on='id_dira')
         return dfMens
     
     def verifValiditeMensuelle(self,dfMens) : 
@@ -2964,6 +3001,80 @@ class Comptage_Dira(Comptage):
         self.df_attr_mens.reset_index(inplace=True)
         self.df_attr_mens['annee']=self.annee
         
+        
+    def enteteFeuilHoraire(self, fichier,feuille):
+        site=' '.join(fichier[feuille].iloc[2,0].split(' ')[5:])[1:-1]
+        voie=fichier[feuille].iloc[3,0].split('Voie : ')[1]
+        idDira=re.sub('ç','c',re.sub('(é|è|ê)','e',re.sub('( |_|-)','',site.lower())))+'('+re.sub('ç','c',re.sub('(é|è|ê)','e',re.sub('( |_)','',voie.lower())))+')'
+        return site,voie,idDira
+    
+    def miseEnFormeFeuille(self,fichier,feuille):
+        """
+        transformer une feuille horaire en df
+        """
+        idDira=self.enteteFeuilHoraire(fichier,feuille)[2]
+        if not idDira in self.dfCorrespExistant.id_dira.tolist() : #il n'y a pas de correspondance avec un point de comptage
+            raise self.BoucleNonConnueError(idDira)
+        colonnes=['jour','type_veh']+['h'+c[:-1].replace('-','_') for c in fichier[feuille].iloc[4,:].values if c[-1]=='h']
+        df_horaire=fichier[feuille].iloc[5:fichier[feuille].loc[fichier[feuille].iloc[:,0]=='Moyenne Jours'].index.values[0]-1,:26]
+        df_horaire.columns=colonnes
+        df_horaire.jour.fillna(method='pad', inplace=True)
+        df_horaire['id_dira']=idDira
+        df_horaire=df_horaire.merge(self.dfCorrespExistant, on='id_dira')
+        return df_horaire
+    
+    def miseEnFormeFichier(self,nomFichier):
+        """
+        transofrmer un fichier complet en df
+        in : 
+            nomFichier : nom du fichier, sans le chemin (deja stocke dan self.dossierAnneeComplete
+        """
+        fichier=pd.read_excel(os.path.join(self.dossierAnneeComplete,nomFichier),sheet_name=None)#A63_Ech24_Trimestre2_2019.xls
+        listFeuille=[]
+        for feuille in fichier.keys() : 
+            try :
+                listFeuille.append(self.miseEnFormeFeuille(fichier,feuille))
+            except self.BoucleNonConnueError : 
+                continue
+        if listFeuille :
+            dfHoraireFichier=pd.concat(listFeuille, axis=0, sort=False)
+            dfHoraireFichier.fillna(-99, inplace=True)
+        else : 
+            raise self.AucuneBoucleConnueError(nomFichier)   
+        return dfHoraireFichier
+    
+    def concatIndicateurFichierHoraire(self,dfHoraireFichier):
+        """
+        creer les données TV et PL à partir dela dfHOraire creee par miseEnFormeFichier()
+        il y a un jeu entre les fillna() de la presente et de miseEnFormeFichier() pour garder les valeusr NaN malgé les sommes
+        """
+        dfTv=dfHoraireFichier[['jour','id_comptag']+[f'h{i}_{i+1}' for i in range (24)]].groupby(['jour','id_comptag']).sum().assign(type_veh='TV').reset_index()
+        dfPl=dfHoraireFichier.loc[dfHoraireFichier['type_veh']=='PL'][['jour','id_comptag']+[f'h{i}_{i+1}' for i in range (24)]].groupby(['jour','id_comptag']).sum().assign(type_veh='PL').reset_index()
+        dfHoraireFinale=pd.concat([dfTv,dfPl], axis=0, sort=False)
+        dfHoraireFinale.replace({a:np.NaN for a in [-198,-396]}, inplace=True)
+        return dfHoraireFinale
+    
+    def concatTousFichierHoraire(self):
+        """
+        rassemebler l'intégraliteé des données de fcihiers horaires dans une df
+        """
+        listDf=[]
+        for i,fichier in enumerate(os.listdir(self.dossierAnneeComplete)) : 
+            if fichier.endswith('.xls') : 
+                print(i, fichier)
+                try :
+                    listDf.append(self.concatIndicateurFichierHoraire(self.miseEnFormeFichier(fichier)))
+                except self.AucuneBoucleConnueError : 
+                    print('    aucune boucle dans ce fichier')
+            continue
+        dfTousFichier=pd.concat(listDf, axis=0, sort=False)
+        dblATraiter=dfTousFichier.loc[dfTousFichier.duplicated(['id_comptag', 'jour','type_veh'], keep=False)]
+        idCptNonAffectes=self.dfCorrespExistant.loc[~self.dfCorrespExistant['id_comptag'].isin(
+            dfTousFichier.id_comptag.tolist())].id_comptag.tolist()
+        idCptNonAffectes.sort()
+        return dfTousFichier,idCptNonAffectes,dblATraiter
+         
+        
     def update_bdd_Dira(self,bdd, schema, table, nullOnly=True):
         """
         metter à jour la table des comptage
@@ -2978,6 +3089,19 @@ class Comptage_Dira(Comptage):
         else : 
             self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)
     
+    class BoucleNonConnueError(Exception):
+        """
+        Exception levee si la reference d'une boucle n'est pas dans le fichier des id_existant de la Bdd
+        """     
+        def __init__(self, refBoucle):
+            Exception.__init__(self,f'la boucle {refBoucle} n\'est pas dans le champs obs_supl d\'un des points de la bdd')
+            
+    class AucuneBoucleConnueError(Exception):
+        """
+        Exception levee si l'ensemble des boucles d'un fichier n'est pas dans le fichier des id_existant de la Bdd
+        """     
+        def __init__(self, nomFichier):
+            Exception.__init__(self,f'le fichier {nomFichier} ne comporte aucune boucle dans le champs obs_supl d\'un des points de la bdd') 
     
 class PasAssezMesureError(Exception):
     """
