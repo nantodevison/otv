@@ -28,41 +28,6 @@ dico_mois={'janv':[1,'Janv','Janvier'], 'fevr':[2,'Fév','Février','févr','Fev
            'juil':[7,'Juill','Juillet', 'juil'], 'aout':[8,'Août','Aout'], 'sept':[9,'Sept','Septembre'], 'octo':[10,'Oct','Octobre'], 'nove':[11,'Nov','Novembre'], 'dece':[12,'Déc','Décembre','Decembre']}
 
 
-def statsHoraires(df_horaire,attributHeure, typeVeh,typeJour='semaine'):
-    """
-    Calculer qq stats à partir d'une df des données horaires formattée comme dans la Bdd  
-    in : 
-        attributHeure : nom de l'heuer a verifier, a coorlere avec les noms de colonne dans la bdd horaires
-        typeVeh : type de vehiicules, 'PL', 'TV', 'VL'
-        typeJour : string : semaine ou we
-    """    
-    df=df_horaire.loc[(df_horaire['type_veh']==typeVeh)&(~df_horaire[attributHeure].isna())&
-        (df_horaire['jour'].apply(lambda x : x.dayofweek in (0,1,2,3,4)))][attributHeure] if typeJour=='semaine' else df_horaire.loc[(df_horaire['type_veh']==typeVeh)&(~df_horaire[attributHeure].isna())&
-        (df_horaire['jour'].apply(lambda x : x.dayofweek in (5,6)))][attributHeure]
-    ecartType=df.std()
-    moyenne=df.mean()
-    median=df.median()
-    plageMin=moyenne-2*ecartType
-    plageMax=moyenne+2*ecartType
-    return ecartType,moyenne,median,plageMin,plageMax
-
-def correctionHoraire(df_horaire):
-    """
-    corriger une df horaire en passant à -99 les valeurs qui semble non correlées avec le reste des valeusr
-    """
-    #corriger les valuers inférieures à moyenne-2*ecart_type
-    for attributHeure, typeVeh, typeJour in [e+s for e in [(h,t) for h in [f'h{i}_{i+1}' for i in range (24)] 
-                                                           for t in ('VL','PL')] for s in (('semaine',), ('we',))] :
-        plageMinSemaine=statsHoraires(df_horaire,attributHeure, typeVeh, typeJour)[3]
-        plageMinWe=statsHoraires(df_horaire,attributHeure, typeVeh, typeJour)[3]
-        if typeJour=='semaine' :
-            df_horaire.loc[(df_horaire['type_veh']==typeVeh)&
-                   (df_horaire['jour'].apply(lambda x : x.dayofweek in (0,1,2,3,4)))&
-                   (df_horaire[attributHeure]<plageMinSemaine),attributHeure]=-99
-        if typeJour=='we' :
-            df_horaire.loc[(df_horaire['type_veh']==typeVeh)&
-                   (df_horaire['jour'].apply(lambda x : x.dayofweek in (5,6)))&
-                   (df_horaire[attributHeure]<plageMinWe),attributHeure]=-99
 
 class FIM():
     """
@@ -3021,7 +2986,28 @@ class Comptage_Dira(Comptage):
         df_horaire.jour.fillna(method='pad', inplace=True)
         df_horaire['id_dira']=idDira
         df_horaire=df_horaire.merge(self.dfCorrespExistant, on='id_dira')
+        if (any([(df_horaire.loc[df_horaire['type_veh']==type_veh][[f'h{i}_{i+1}' for i in range (24)]].isna().sum()>
+                 len(df_horaire.loc[df_horaire['type_veh']==type_veh])/2).any() for type_veh in ('VL', 'PL')]) 
+                    or any([((df_horaire.loc[df_horaire['type_veh']==type_veh][[f'h{i}_{i+1}' 
+                 for i in range (24)]]==0).count()>len(df_horaire.loc[df_horaire['type_veh']==type_veh])/2).any() for type_veh in ('VL', 'PL')])) :
+            raise self.FeuilleInvalideError(feuille)
         return df_horaire
+    
+    def verifValiditeFichier(self,dfHoraireFichier):
+        """
+        supprimer d'une dfHoraire fciher l'ensemble des lignes pourlesquells il y a une valeur NaN, ou qui contiennent plus de 12h à 0
+        Pour filtrer à la fois les deux sens dans le cas où un seul est à NaN ou à 0 on fait une liste des jour et id_comptag concernes, puis on filtre tout ces jours / id_comptage sur le fichier final
+        """
+        #liste des jours et id_comptag où il y a au moins une valeur NaN 
+        dfNaN=dfHoraireFichier.loc[dfHoraireFichier.isna().any(axis=1)]
+        listJourIdcptNaN=[(j,i) for j,i in zip(dfNaN.jour.tolist(),dfNaN.id_comptag.tolist())]
+        #liste des jours et id_comptag où il y a plus de 12h à 0 veh
+        df0=dfHoraireFichier.loc[dfHoraireFichier.apply(lambda x : Counter([x[a]==0 for a in [f'h{i}_{i+1}' for i in range (24)]])[True]>=12, axis=1)]
+        listJourIdcpt0=[(j,i) for j,i in zip(df0.jour.tolist(),df0.id_comptag.tolist())]
+        #on ne cnserve aucun de ces jours dans la df finale
+        listJourIdcptARetirer=listJourIdcptNaN+listJourIdcpt0
+        dfHoraireFichierFiltre=dfHoraireFichier.loc[~dfHoraireFichier.apply(lambda x : (x['jour'],x['id_comptag']) in listJourIdcptARetirer, axis=1)].copy()
+        return dfHoraireFichierFiltre
     
     def miseEnFormeFichier(self,nomFichier):
         """
@@ -3034,24 +3020,24 @@ class Comptage_Dira(Comptage):
         for feuille in fichier.keys() : 
             try :
                 listFeuille.append(self.miseEnFormeFeuille(fichier,feuille))
-            except self.BoucleNonConnueError : 
+            except (self.BoucleNonConnueError,self.FeuilleInvalideError) : 
                 continue
         if listFeuille :
             dfHoraireFichier=pd.concat(listFeuille, axis=0, sort=False)
-            dfHoraireFichier.fillna(-99, inplace=True)
         else : 
-            raise self.AucuneBoucleConnueError(nomFichier)   
-        return dfHoraireFichier
+            raise self.AucuneBoucleConnueError(nomFichier) 
+        dfHoraireFichierFiltre=self.verifValiditeFichier(dfHoraireFichier)
+        return dfHoraireFichierFiltre
     
     def concatIndicateurFichierHoraire(self,dfHoraireFichier):
         """
         creer les données TV et PL à partir dela dfHOraire creee par miseEnFormeFichier()
         il y a un jeu entre les fillna() de la presente et de miseEnFormeFichier() pour garder les valeusr NaN malgé les sommes
         """
-        dfTv=dfHoraireFichier[['jour','id_comptag']+[f'h{i}_{i+1}' for i in range (24)]].groupby(['jour','id_comptag']).sum().assign(type_veh='TV').reset_index()
+        dfTv=dfHoraireFichier[['jour','id_comptag']+
+             [f'h{i}_{i+1}' for i in range (24)]].groupby(['jour','id_comptag']).sum().assign(type_veh='TV').reset_index()
         dfPl=dfHoraireFichier.loc[dfHoraireFichier['type_veh']=='PL'][['jour','id_comptag']+[f'h{i}_{i+1}' for i in range (24)]].groupby(['jour','id_comptag']).sum().assign(type_veh='PL').reset_index()
         dfHoraireFinale=pd.concat([dfTv,dfPl], axis=0, sort=False)
-        dfHoraireFinale.replace({a:np.NaN for a in [-198,-396]}, inplace=True)
         return dfHoraireFinale
     
     def concatTousFichierHoraire(self):
@@ -3095,6 +3081,13 @@ class Comptage_Dira(Comptage):
         """     
         def __init__(self, refBoucle):
             Exception.__init__(self,f'la boucle {refBoucle} n\'est pas dans le champs obs_supl d\'un des points de la bdd')
+            
+    class FeuilleInvalideError(Exception):
+        """
+        Exception levee si la feuille contient trop de valeur 0 ou NaN
+        """     
+        def __init__(self, feuille):
+            Exception.__init__(self,f'la feuille {feuille} contient trop de valuers NaN ou 0')
             
     class AucuneBoucleConnueError(Exception):
         """
