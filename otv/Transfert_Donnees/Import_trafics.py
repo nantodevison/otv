@@ -14,12 +14,11 @@ import os, re, csv,statistics,filecmp, unidecode
 from geoalchemy2 import Geometry,WKTElement
 from shapely.geometry import Point, LineString
 from shapely.ops import transform
-from itertools import combinations
 from collections import Counter
 
 import Connexion_Transfert as ct
+from Donnees_horaires import comparer2Sens,verifValiditeFichier,concatIndicateurFichierHoraire,SensAssymetriqueError,verifNbJoursValidDispo
 import Outils as O
-from Decorateurs import concat_df
 from Base_BdTopo import Import_outils as io
 from Base_BdTopo import Rond_points as rp
 from Base_BdTopo import Regroupement_correspondance as rc
@@ -2986,28 +2985,37 @@ class Comptage_Dira(Comptage):
         df_horaire.jour.fillna(method='pad', inplace=True)
         df_horaire['id_dira']=idDira
         df_horaire=df_horaire.merge(self.dfCorrespExistant, on='id_dira')
-        if (any([(df_horaire.loc[df_horaire['type_veh']==type_veh][[f'h{i}_{i+1}' for i in range (24)]].isna().sum()>
-                 len(df_horaire.loc[df_horaire['type_veh']==type_veh])/2).any() for type_veh in ('VL', 'PL')]) 
-                    or any([((df_horaire.loc[df_horaire['type_veh']==type_veh][[f'h{i}_{i+1}' 
-                 for i in range (24)]]==0).count()>len(df_horaire.loc[df_horaire['type_veh']==type_veh])/2).any() for type_veh in ('VL', 'PL')])) :
-            raise self.FeuilleInvalideError(feuille)
-        return df_horaire
+        if any([(len(df_horaire.loc[(df_horaire.isna().any(axis=1))&(df_horaire['type_veh']==t)])>len(
+            df_horaire.loc[df_horaire['type_veh']==t])/2) or len(df_horaire.loc[df_horaire['type_veh']==t].loc[
+                df_horaire.loc[df_horaire['type_veh']==t][df_horaire.loc[df_horaire['type_veh']==t]==0].count(axis=1)>8]
+            )>len(df_horaire.loc[df_horaire['type_veh']==t])/2 for t in ('PL','TV')]) :
+            raise self.FeuilleInvalideError(feuille, idDira)
+        return df_horaire, idDira
     
-    def verifValiditeFichier(self,dfHoraireFichier):
+    def verif2SensDispo(self,df):
         """
-        supprimer d'une dfHoraire fciher l'ensemble des lignes pourlesquells il y a une valeur NaN, ou qui contiennent plus de 12h à 0
-        Pour filtrer à la fois les deux sens dans le cas où un seul est à NaN ou à 0 on fait une liste des jour et id_comptag concernes, puis on filtre tout ces jours / id_comptage sur le fichier final
+        vérifier que pour les id_comptages relatifs au section courante, chauqe date à bien des valeusr VL et PL pour chauqe sens
         """
-        #liste des jours et id_comptag où il y a au moins une valeur NaN 
-        dfNaN=dfHoraireFichier.loc[dfHoraireFichier.isna().any(axis=1)]
-        listJourIdcptNaN=[(j,i) for j,i in zip(dfNaN.jour.tolist(),dfNaN.id_comptag.tolist())]
-        #liste des jours et id_comptag où il y a plus de 12h à 0 veh
-        df0=dfHoraireFichier.loc[dfHoraireFichier.apply(lambda x : Counter([x[a]==0 for a in [f'h{i}_{i+1}' for i in range (24)]])[True]>=12, axis=1)]
-        listJourIdcpt0=[(j,i) for j,i in zip(df0.jour.tolist(),df0.id_comptag.tolist())]
-        #on ne cnserve aucun de ces jours dans la df finale
-        listJourIdcptARetirer=listJourIdcptNaN+listJourIdcpt0
-        dfHoraireFichierFiltre=dfHoraireFichier.loc[~dfHoraireFichier.apply(lambda x : (x['jour'],x['id_comptag']) in listJourIdcptARetirer, axis=1)].copy()
-        return dfHoraireFichierFiltre
+        #on ne regarder que les id_comptag decrit par deux feuilles différentes
+        dfJourValeur=df.loc[df.voie.apply(lambda x : re.sub('ç','c',re.sub('(é|è|ê)','e',re.sub('( |_)','',x.lower()))))
+                           .isin(('sens1','sens2','sensexter','sensinter'))].groupby(['jour','id_comptag']).agg({'voie': lambda x : x.count(),
+                             'type_veh': lambda x : tuple(x)})
+        #liste des jours avec moins de 4 valeurs (i.e pas 2 sens en VL et PL) et un type veh en (VL,PL)
+        JoursPb=dfJourValeur.loc[(dfJourValeur['voie']==2)&(dfJourValeur.type_veh.isin([('VL','PL'),('PL','VL')]))].index.tolist()
+        dfFinale=df.loc[df.apply(lambda x : (x['jour'],x['id_comptag']) not in JoursPb, axis=1)].copy()
+        return dfFinale
+    
+    def getIdEquiv(self,idDira):
+        """
+        pour un idDira, savoir si il y a un autre id a asocier pour faire un id_comptag
+        """
+        try :
+            idDira2=self.dfCorrespExistant.loc[self.dfCorrespExistant['id_comptag'].isin(
+            self.dfCorrespExistant.loc[self.dfCorrespExistant['id_dira']==idDira].id_comptag.tolist()) &
+                                  (self.dfCorrespExistant['id_dira']!=idDira)].id_dira.values[0]
+        except IndexError : 
+            idDira2=None
+        return idDira2
     
     def miseEnFormeFichier(self,nomFichier):
         """
@@ -3016,29 +3024,50 @@ class Comptage_Dira(Comptage):
             nomFichier : nom du fichier, sans le chemin (deja stocke dan self.dossierAnneeComplete
         """
         fichier=pd.read_excel(os.path.join(self.dossierAnneeComplete,nomFichier),sheet_name=None)#A63_Ech24_Trimestre2_2019.xls
-        listFeuille=[]
+        dicoFeuille={}
+        listFail=[] #pour la gestion du cas où une des 2 feuilles de la section courantes est invalide, il faut pouvoir identifier l'autre et la virer
         for feuille in fichier.keys() : 
             try :
-                listFeuille.append(self.miseEnFormeFeuille(fichier,feuille))
-            except (self.BoucleNonConnueError,self.FeuilleInvalideError) : 
+                df_horaire, idDira=self.miseEnFormeFeuille(fichier,feuille)
+                if idDira in listFail : 
+                    #print(f'feuille a jeter : {nomFichier}.{idDira}')
+                    continue
+                #print(f'feuille en cours : {nomFichier}.{idDira}')
+                dicoFeuille[idDira]=df_horaire
+            except self.BoucleNonConnueError :
                 continue
-        if listFeuille :
-            dfHoraireFichier=pd.concat(listFeuille, axis=0, sort=False)
+            except self.FeuilleInvalideError as e : 
+                #print(f'feuille a jeter : {nomFichier}.{e.idDira}')
+                #trouver l'autre feuille si traitee avant
+                idDira2=self.getIdEquiv(e.idDira)
+                if idDira2 :
+                    if idDira2 in dicoFeuille.keys() : 
+                        dicoFeuille[idDira2]=pd.DataFrame([])
+                    else :
+                        listFail.append(idDira2)
+                continue
+        #print([f.empty for f in dicoFeuille.values()])
+        if not all([f.empty for f in dicoFeuille.values()]) :
+            dfHoraireFichier=pd.concat(dicoFeuille.values(), axis=0, sort=False)
         else : 
             raise self.AucuneBoucleConnueError(nomFichier) 
-        dfHoraireFichierFiltre=self.verifValiditeFichier(dfHoraireFichier)
+        dfHoraireFichierFiltre=verifValiditeFichier(dfHoraireFichier)[0]#tri des feuilles sur le nb de valeusr NaN ou 0
+        
+        #test si fichier comprenant des id_comptag à 2 sens 
+        dfFiltre=dfHoraireFichierFiltre.loc[dfHoraireFichierFiltre.id_comptag.isin(self.dfCorrespExistant.set_index('id_comptag').loc[
+            self.dfCorrespExistant.id_comptag.value_counts()==2].index.unique())]
+        if not dfFiltre.empty : 
+            dfHoraireFichierFiltre=self.verif2SensDispo(dfHoraireFichierFiltre)#tri des donnes pour que les sections courantes ai bien une valeur VL et PL dans les deux sesn
+            #verif que les deux sens sont concordant : 
+            try :
+                comparer2Sens(dfHoraireFichierFiltre)
+            except SensAssymetriqueError as e :
+                dfHoraireFichierFiltre=dfHoraireFichierFiltre.loc[dfHoraireFichierFiltre.apply(lambda x : (x['jour'],x['id_comptag']) not in 
+                        zip(e.dfCompInvalid.jour.tolist(),e.dfCompInvalid.id_comptag.tolist()),axis=1)].copy()
+            
+        dfHoraireFichierFiltre=verifNbJoursValidDispo(dfHoraireFichierFiltre,15)[0]#tri sur id_comptag avec moins de 15 jours de donnees
         return dfHoraireFichierFiltre
     
-    def concatIndicateurFichierHoraire(self,dfHoraireFichier):
-        """
-        creer les données TV et PL à partir dela dfHOraire creee par miseEnFormeFichier()
-        il y a un jeu entre les fillna() de la presente et de miseEnFormeFichier() pour garder les valeusr NaN malgé les sommes
-        """
-        dfTv=dfHoraireFichier[['jour','id_comptag']+
-             [f'h{i}_{i+1}' for i in range (24)]].groupby(['jour','id_comptag']).sum().assign(type_veh='TV').reset_index()
-        dfPl=dfHoraireFichier.loc[dfHoraireFichier['type_veh']=='PL'][['jour','id_comptag']+[f'h{i}_{i+1}' for i in range (24)]].groupby(['jour','id_comptag']).sum().assign(type_veh='PL').reset_index()
-        dfHoraireFinale=pd.concat([dfTv,dfPl], axis=0, sort=False)
-        return dfHoraireFinale
     
     def concatTousFichierHoraire(self):
         """
@@ -3047,11 +3076,10 @@ class Comptage_Dira(Comptage):
         listDf=[]
         for i,fichier in enumerate(os.listdir(self.dossierAnneeComplete)) : 
             if fichier.endswith('.xls') : 
-                print(i, fichier)
                 try :
-                    listDf.append(self.concatIndicateurFichierHoraire(self.miseEnFormeFichier(fichier)))
+                    listDf.append(concatIndicateurFichierHoraire(self.miseEnFormeFichier(fichier)))
                 except self.AucuneBoucleConnueError : 
-                    print('    aucune boucle dans ce fichier')
+                    print(i, fichier, '\n    aucune boucle dans ce fichier')
             continue
         dfTousFichier=pd.concat(listDf, axis=0, sort=False)
         dblATraiter=dfTousFichier.loc[dfTousFichier.duplicated(['id_comptag', 'jour','type_veh'], keep=False)]
@@ -3079,14 +3107,15 @@ class Comptage_Dira(Comptage):
         """
         Exception levee si la reference d'une boucle n'est pas dans le fichier des id_existant de la Bdd
         """     
-        def __init__(self, refBoucle):
-            Exception.__init__(self,f'la boucle {refBoucle} n\'est pas dans le champs obs_supl d\'un des points de la bdd')
+        def __init__(self, idDira):
+            Exception.__init__(self,f'la boucle {idDira} n\'est pas dans le champs obs_supl d\'un des points de la bdd')
             
     class FeuilleInvalideError(Exception):
         """
         Exception levee si la feuille contient trop de valeur 0 ou NaN
         """     
-        def __init__(self, feuille):
+        def __init__(self, feuille,idDira):
+            self.idDira=idDira
             Exception.__init__(self,f'la feuille {feuille} contient trop de valuers NaN ou 0')
             
     class AucuneBoucleConnueError(Exception):
@@ -3094,8 +3123,217 @@ class Comptage_Dira(Comptage):
         Exception levee si l'ensemble des boucles d'un fichier n'est pas dans le fichier des id_existant de la Bdd
         """     
         def __init__(self, nomFichier):
-            Exception.__init__(self,f'le fichier {nomFichier} ne comporte aucune boucle dans le champs obs_supl d\'un des points de la bdd') 
+            Exception.__init__(self,f'le fichier {nomFichier} ne comporte aucune boucle dans le champs obs_supl d\'un des points de la bdd, ou toute les feuilles sont corrompues') 
     
+class Comptage_Dirco(Comptage):
+    """
+    ne traite our le moemnt que de la partie MJM et horaire
+    besoin du TMJA pour faire un premiere jointure entre les points de comptaget lees refereces des fichiers excele horaire
+    suite a un bug pandas, il faut passer le tmja en .csv
+    """ 
+    def __init__(self,fichierTmja, fichierTmjm, dossierHoraire, annee):
+        self.fichierTmja=fichierTmja
+        self.fichierTmjm=fichierTmjm
+        self.dossierHoraire=dossierHoraire
+        self.annee=annee
+        self.dfSourceTmjm=pd.read_excel(self.fichierTmjm, skiprows=7, sheet_name=None)
+
+
+    def miseEnFormeMJM(self, feuille):
+        """
+        ouvrir et prepare le fichier des TMJM
+        in : 
+            feuille : df d'une feuille de self.dfSourceTmjm
+        """
+        dfTmjmDirco=feuille.iloc[1:].copy()
+        dfTmjmDirco['Route']=dfTmjmDirco.Route.apply(lambda x : x if not isinstance(x,int) else f"RN{str(x)}")
+        dfTmjmDirco['pr']=dfTmjmDirco.apply(lambda x : x['Route'].replace(' ','') if '+' in x['Route'] else np.NaN, axis=1).fillna(method='bfill')
+        dfTmjmDirco['voie']=dfTmjmDirco.apply(lambda x : x['Route'].replace('RN' ,'N') if not '+' in x['Route'] else np.NaN, axis=1).fillna(method='ffill')
+        dfTmjmDirco['dept']=dfTmjmDirco.apply(lambda x : x['Intitulé du PM'] if not '+' in x['Route'] 
+                                              else np.NaN, axis=1).fillna(method='ffill')
+        dfTmjmDirco['id_comptag']=dfTmjmDirco.apply(lambda x : f"{str(int(x['dept']))}-{x['voie']}-{str(x['pr'])}", axis=1)
+        dfTmjmDirco['donnees_type']=dfTmjmDirco['TMJA  '].apply(lambda x : 'pc_pl' if x<1 else 'tmja')
+        dfTmjmDirco.drop(['dept','Intitulé du PM','Route','Unnamed: 1','pr','voie','TMJA  '], axis=1, inplace=True)
+        dfTmjmDirco.rename(columns={c:k for k, v in dico_mois.items()  for c in dfTmjmDirco.columns 
+                                    if c not in ('id_comptag','donnees_type') if c in v}, inplace=True)
+        return dfTmjmDirco
+     
+    def indicateurGlobalFeuilleMJM(self,dfTmjmDirco):   
+        """
+        regourper les resultats de miseEnFormeMJM() et mettre ne forme les Pc_pl
+        """
+        dfTv=dfTmjmDirco.loc[dfTmjmDirco['donnees_type']=='tmja'].groupby(['id_comptag']).sum().assign(donnees_type='tmja')
+        dfPl=dfTmjmDirco.loc[dfTmjmDirco['donnees_type']=='pc_pl'].fillna(-99).groupby(['id_comptag']).mean().applymap(lambda x : x*100 if x>0 else np.NaN).assign(donnees_type='pc_pl')
+        return pd.concat([dfTv,dfPl],axis=0,sort=False).sort_values(['id_comptag','donnees_type'])
+    
+    def indicateurGlobalFichierMJM(self,bdd, cptARetirer):
+        """
+        concatener et mettre en forme les donnée de chaque feuille issues de indicateurGlobalFeuilleMJM
+        in : 
+            cptARetirer : string ou list de string : les id_comptag à ne pas prendre en compte
+        """
+        dfTouteFeuilles=pd.concat([self.indicateurGlobalFeuilleMJM(dfTmjmDirco=self.miseEnFormeMJM(self.dfSourceTmjm[k])) 
+                          for k in self.dfSourceTmjm.keys()], axis=0, sort=False).assign(annee=self.annee).reset_index()
+        self.corresp_nom_id_comptag(bdd,dfTouteFeuilles)
+        cptARetirer=cptARetirer if isinstance(cptARetirer,list) else [cptARetirer,]
+        dfTouteFeuilles=dfTouteFeuilles.loc[~dfTouteFeuilles.id_comptag.isin(cptARetirer)]
+        return dfTouteFeuilles
+    
+    def miseEnFormeFichierTmjaPourHoraire(self):
+        """
+        utiliser les données du fihier de TMJA pour faire un lien entre les données horaires et les points de
+        cpt de la Bdd
+        """
+        def nomIdFichier(route,debStation,finStation,nomStation) : 
+            if route=='A20' : 
+                return f"SRDT {route}_{debStation}_{finStation}"
+            elif route=='RN21' :
+                if nomStation in ('CROIX_BLANCHE','LA_COQUILLE'):
+                    return "SRDT N021_"+nomStation.replace('_',' ').upper()
+                elif nomStation in ('LAYRAC', 'TRELISSAC') : 
+                    return nomStation
+                elif nomStation in ('ASTAFFORT') : 
+                    return 'ASTAFFORD'
+                elif nomStation=='NOTRE DAME' : 
+                    return 'ND_SANILHAC'
+                else : 
+                    return "SRDT N021_"+re.sub('( |_|\')','',nomStation).upper()
+            elif route in ('RN1021','RN1113') : 
+                return nomStation.replace(' ','_').upper()
+            elif route=='RN141':
+                return 'SRDT N141_'+nomStation.upper()
+            elif route=='RN520' : 
+                return 'SRDT N520_PR'
+            elif route=='RN145':
+                if nomStation=='ST MAURICE' : 
+                    return 'SAINT_MAURICE'
+                elif nomStation=='LA_RIBIERE' :
+                    return 'SRDT N145_LA RIBIÈRE'
+                if nomStation == 'SAINT VAURY':
+                    return 'SRDT N145_SAINT-VAURY'
+                return 'SRDT N145'+'_'+nomStation.upper()
+            elif route in ('RN147','RN149','RN249') : 
+                dico_corresp={'AYRON':'Station MBV86.O','EPANOURS':'Station MBW87.J','FLEURE':'Station MBV86.J','GENIEC':'Station MBV86.H','LA CROIX CHAMB':'Station MBX79.B',
+                             'LE VINCOU':'Station MBW87.K','LOUBLANDE':'Station MBX79.A','MAISONNEUVE':'Station MBW87.A','MOULINET':'Station MBV86.A','MOULISMES':'Station MBW87.I'}
+                for k, v in dico_corresp.items():
+                    if nomStation==k :
+                        return v
+
+        dfFichierTmja=pd.read_csv(self.fichierTmja)
+        dfFichierTmja.columns=dfFichierTmja.iloc[2].values
+        dfFichierTmja=dfFichierTmja.loc[~dfFichierTmja['Nom de la station'].isna()].iloc[1:].copy()
+        dfFichierTmja.columns=['route', 'dept', 'pr', 'absc', 'nomStation', 'debStation','finStation',
+                               'xl93','yl93','voies','tmjaSens1','tmjaSens2','lcSens1','lcSens2','tmja','pc_pl']
+        dfFichierTmja['idFichier']=dfFichierTmja.apply(lambda x : nomIdFichier(x['route'],x['debStation'],x['finStation'],x['nomStation']), axis=1 )
+        dfFichierTmja['id_comptag']=dfFichierTmja.apply(lambda x : f"{x['dept']}-{x['route'].replace('RN','N')}-{x['pr']}+{x['absc']}",axis=1)
+        self.corresp_nom_id_comptag('gti_otv_pg11',dfFichierTmja)
+        self.comptag_existant_bdd('gti_otv_pg11','na_2010_2019_p',gest='DIRCO')
+        return dfFichierTmja
+    
+    def jointureHoraireIdcpt(self,fichier,dfFichierTmja):
+        """
+        joindre les données contenuesdans les fichiers horaires avec un id_comptag de notre bdd
+        """
+        dfFichier=pd.read_excel(fichier)
+        if 'A20' in fichier : 
+            dfFichier['Station']=dfFichier.Station.apply(lambda x : '_'.join(x.split('_')[:2])+'_'+re.split('(_| |-)',x.split('_')[2])[0])    
+        elif 'N21' in fichier :
+            dfFichier['Station']=dfFichier.Station.apply(lambda x : x.upper())
+        elif 'N141' in fichier :
+            dfFichier['Station']=dfFichier.Station.apply(lambda x : x.split('_')[0]+'_'+x.split('_')[1].split('(')[0].strip().upper())
+        elif 'N145' in fichier : 
+            dfFichier['Station']=dfFichier.Station.apply(lambda x : x.split('_')[0]+'_'+x.split('_')[1].split('(')[0].replace('È','E').strip().upper())
+            
+        dfFichier['fichier']=fichier
+        return dfFichier.merge(dfFichierTmja[['idFichier','id_comptag']], left_on='Station', right_on='idFichier', how='left')
+           
+    def miseEnFormeHoraire(self,dfHoraireAgregee):
+        """
+        a partir des donnees horaires de base agregee tousFichierHoraires(), nettoyer, filtrer les données hors section courante
+        """
+        def findTypeVeh(nature):
+            if nature=='Débit' : 
+                return 'TV'
+            else : 
+                return 'Autre' 
+        dfDonnees=dfHoraireAgregee.loc[(~dfHoraireAgregee.mesure.isna())].copy()
+        #convertir les temps au format bdd
+        dfDonnees['heure']=dfDonnees.apply(lambda x : f"h{str(x['sequence'].hour)}_{str(x['sequence'].hour+1)}", axis=1)
+        dfSc=dfDonnees.loc[dfDonnees['Code Canal'].isin((0,1))].copy()
+        dfSc['voie']=dfSc['Code Canal'].apply(lambda x : 'sens 1' if x==0 else 'sens 2') # a ameliorer si besoin prise en compte Bretelle et autre
+        #pour info : dfDonnees['Libellé groupage'].unique()#permetde voir que des libélés non désiré existent : 'Bretelle sortie',Bretelle Entrée'...
+        dfSc['type_veh']=dfSc['nature de mesure'].apply(lambda x : findTypeVeh(x))
+        return dfSc
+    
+    def correspondanceStationIdcpt(self,dfSc):
+        """
+        obtenir le nom de station équivalent pour chaque id_comptag
+        """
+        #pour verif que 1 seule station par id_comptag : (dfSc.groupby('id_comptag')['Code Station'].unique().apply(lambda x : len(x))>1).unique()
+        return dfSc.groupby('id_comptag')['Code Station'].unique().apply(lambda x : x[0]).reset_index().rename(columns={'Code Station':'codestation'})
+    
+    def horaireParSens(self,dfSc):
+        """
+        à partir des données de section courante, pivoter la table
+        puis test sur la concordance des deux sens et check de la validite pour cahque sens
+        """
+        dfScParSens=dfSc[['id_comptag','jour','heure','mesure','type_veh','voie']].pivot(index=['id_comptag','jour','type_veh','voie'], columns='heure',values='mesure').reset_index()
+        dicoCptError={}
+        dicoCptok={}
+        dfScParSensValide,dfJourIdcptARetirer=verifValiditeFichier(dfScParSens)
+        if not dfJourIdcptARetirer.empty : 
+            for idCpt in dfJourIdcptARetirer.id_comptag.unique():
+                print(f'certains jour supprimes pour {idCpt}')
+                dicoCptError[idCpt]={'typeError':'jours supprimes', 
+                                     'df':dfJourIdcptARetirer.loc[dfJourIdcptARetirer.id_comptag==idCpt].copy()}
+        for idCpt in dfScParSensValide.id_comptag.unique():
+            try : 
+                dfComp=comparer2Sens(dfScParSensValide.loc[dfScParSensValide['id_comptag']==idCpt])[1]
+                dicoCptok[idCpt]=dfComp
+            except SensAssymetriqueError as e : 
+                print(f'erreur sens assymetriques sur {idCpt}')
+                dicoCptError[idCpt]={'typeError':'sens assymetriques','df' : e.dfComp}
+        dfScParSensOk=dfScParSensValide.loc[~dfScParSensValide['id_comptag'].isin(dicoCptError.keys())]
+        return dfScParSensOk,dicoCptok,dicoCptError
+        
+    def horaire2SensFormatBdd(self,dfScParSensOk):
+        """
+        à partir des données de horaireParSens : somme des deux sens puis analyse de la validite des données
+        """
+        dfSc2Sens=concatIndicateurFichierHoraire(dfScParSensOk)
+        #dfHoraire=dfSc2Sens.pivot(index=['id_comptag','jour','type_veh'], columns='heure',values='mesure').reset_index()
+        dfHoraireValidNbJourOk,idCptInvalid,dfCptInvalid=verifNbJoursValidDispo(dfSc2Sens,10)
+        return dfHoraireValidNbJourOk,idCptInvalid,dfCptInvalid
+    
+    def tousFichierHoraires(self,dfFichierTmja):
+        """
+        assembler tous les fichiers horaires en une seule df
+        """
+        dicoCptOkTot, dicoCptErrorTot={},{}
+        listDfFinale=[]
+        for fichier in [os.path.join(dossier,f) for dossier in [x[0] for x in os.walk(self.dossierHoraire) 
+                    if x[0]!=self.dossierHoraire] for f in os.listdir(dossier)] :
+            print(fichier)
+            dfFichierHoraire=self.jointureHoraireIdcpt(fichier,dfFichierTmja)
+            dfFichierHoraire=self.miseEnFormeHoraire(dfFichierHoraire)
+            dfScParSensValide,dicoCptok,dicoCptError=self.horaireParSens(dfFichierHoraire)
+            for k, v in dicoCptError.items() : 
+                dicoCptErrorTot[k]=v
+            for k, v in dicoCptok.items() : 
+                dicoCptOkTot[k]=v
+            dfFinale, idCptInvalid,dfCptInvalid=self.horaire2SensFormatBdd(dfScParSensValide)
+            dfFinale['fichier']=fichier
+            if idCptInvalid : 
+                for e in idCptInvalid :
+                    print('fichier inavlid duree donees : {e}') 
+                    dicoCptError[e]=dfCptInvalid.loc[dfCptInvalid.id_comptag==e]
+            listDfFinale.append(dfFinale)
+            
+        self.df_attr_horaire=pd.concat(listDfFinale, axis=0)
+        
+        return dicoCptOkTot,dicoCptErrorTot
+        
+     
 class PasAssezMesureError(Exception):
     """
     Exception levee si le fichier comport emoins de 7 jours
