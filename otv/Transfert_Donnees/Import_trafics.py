@@ -1527,7 +1527,8 @@ class Comptage_cd87(Comptage):
         filtrer des periodesde vacances
         """
         #filtrer pt comptage pendant juillet aout
-        self.df_attr=self.df_attr.loc[self.df_attr.apply(lambda x : x['date_debut'].month not in [7,8] and x['date_fin'].month not in [7,8], 
+        self.df_attr=self.df_attr.loc[self.df_attr.apply(lambda x : x['date_debut'].month not in [7,8] and x['date_fin'].month not in [7,8]
+                                                         if not (pd.isnull(x['date_debut']) and pd.isnull(x['date_fin'])) else True, 
                                                          axis=1)].copy()
     
     def dataframe_dico_glob(self):
