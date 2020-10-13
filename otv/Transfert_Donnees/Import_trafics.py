@@ -27,6 +27,10 @@ dico_mois={'janv':[1,'Janv','Janvier'], 'fevr':[2,'Fév','Février','févr','Fev
            'juil':[7,'Juill','Juillet', 'juil'], 'aout':[8,'Août','Aout'], 'sept':[9,'Sept','Septembre'], 'octo':[10,'Oct','Octobre'], 'nove':[11,'Nov','Novembre'], 'dece':[12,'Déc','Décembre','Decembre']}
 
 
+class Donnees_Indiv_Mixtra():
+    """
+    les mixtras fournissent des donnees individuelles par sens
+    """
 
 class FIM():
     """

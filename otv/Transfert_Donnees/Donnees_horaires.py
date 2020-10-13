@@ -57,7 +57,7 @@ def verifValiditeFichier(dfHoraireFichier):
 
 def correctionHoraire(df_horaire):
     """
-    corriger une df horaire en passant � -99 les valeurs qui semble non correl�es avec le reste des valeusr
+    corriger une df horaire en passant à-99 les valeurs qui semble non correl�es avec le reste des valeusr
     """
     #corriger les valuers inf�rieures � moyenne-2*ecart_type
     for attributHeure, typeVeh, typeJour in [e+s for e in [(h,t) for h in [f'h{i}_{i+1}' for i in range (24)]
@@ -75,7 +75,7 @@ def correctionHoraire(df_horaire):
                    
 def verifNbJoursValidDispo(df,nbJours):
     """
-    verifier que pour chaque id_comptag on a bien au moins 15 jours de dispo
+    verifier que pour chaque id_comptag on a bien au moins XX jours de dispo
     in :
         nbJours : integer : nb de jours mini de mesures necessaires
     """
