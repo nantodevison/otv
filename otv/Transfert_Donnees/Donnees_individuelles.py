@@ -73,12 +73,12 @@ def NombreDeJours(dfHeureTypeSens):
     out : 
         un dico avec en key nbJours, nbJoursOuvres,samedi,dimanche
     """
-    return {'nbJours':dfHeureTypeSens.date_heure.dt.dayofyear.nunique(),
-            'nbJoursOuvres' : dfHeureTypeSens.loc[dfHeureTypeSens.date_heure.dt.dayofweek.isin(range(5))].date_heure.dt.dayofyear.nunique(),
-            'nbSamedi' : dfHeureTypeSens.loc[dfHeureTypeSens.date_heure.dt.dayofweek==5].date_heure.dt.dayofyear.nunique(),
-            'nbDimanche' : dfHeureTypeSens.loc[dfHeureTypeSens.date_heure.dt.dayofweek==6].date_heure.dt.dayofyear.nunique()}
+    dfNbJours=dfHeureTypeSens.set_index('date_heure').resample('1D').count().reset_index().date_heure.dt.dayofweek.value_counts().rename('nbOcc')
+    return {'dfNbJours':dfNbJours,
+            'nbJours':dfHeureTypeSens.date_heure.dt.dayofyear.nunique(),
+            'nbJoursOuvres' : dfHeureTypeSens.loc[dfHeureTypeSens.date_heure.dt.dayofweek.isin(range(5))].date_heure.dt.dayofyear.nunique()}
     
-def IndicsGraphsHoraires(dfHeureTypeSens, typesVeh, typesDonnees, sens):
+def IndicsGraphs(dfHeureTypeSens, typesVeh, typesDonnees, sens):
     """
     fonction de creation des donnes tabulees et graphs de rendu des donnes de trafic
     in :
@@ -93,7 +93,7 @@ def IndicsGraphsHoraires(dfHeureTypeSens, typesVeh, typesDonnees, sens):
     #paramètres selon ce que l'on demande
     dicoNbJours=NombreDeJours(dfHeureTypeSens)
     tupleParams=(('mja',dicoNbJours['nbJours'],range(7)),('mjo',dicoNbJours['nbJoursOuvres'],range(5)),
-                 ('samedi',dicoNbJours['nbSamedi'],[5]),('dimanche',dicoNbJours['nbDimanche'],[6]))
+                 ('samedi',dicoNbJours['dfNbJours'].loc[5],[5]),('dimanche',dicoNbJours['dfNbJours'].loc[6],[6]))
     dicoHoraire={e[0]:{'nbJour':e[1],'listJours':e[2] } for e in tupleParams}
     dicoJournalier={e[0]:{'nbJour':e[1],'listJours':e[2] } for e in tupleParams}
     
@@ -102,7 +102,12 @@ def IndicsGraphsHoraires(dfHeureTypeSens, typesVeh, typesDonnees, sens):
         for s in sens :
             dicoHoraire[t][s]={}
             dicoHoraire[t][s]['donnees']=round((dfHeureTypeSens.loc[(dfHeureTypeSens.jour.isin(dicoHoraire[t]['listJours'])) &
-                                        (dfHeureTypeSens.type_veh.isin(typesVeh))].groupby(['heure','type_veh','sens']).nbVeh.sum()/dicoHoraire[t]['nbJour']),0).reset_index()
+                                        (dfHeureTypeSens.type_veh.isin(typesVeh))].groupby(['heure','type_veh','sens']).
+                                         nbVeh.sum()/dicoHoraire[t]['nbJour']),0).reset_index() if s=='2sens' else round((
+                                        dfHeureTypeSens.loc[(dfHeureTypeSens.jour.isin(dicoHoraire[t]['listJours'])) &
+                                        (dfHeureTypeSens.type_veh.isin(typesVeh)) & (dfHeureTypeSens.sens==s)
+                                        ].groupby(['heure','type_veh','sens']).
+                                         nbVeh.sum()/dicoHoraire[t]['nbJour']),0).reset_index()
             dicoHoraire[t][s]['graph']=alt.Chart(dicoHoraire[t][s]['donnees'].loc[dicoHoraire[t][s]['donnees'].type_veh.isin(typesVeh)].groupby(
                                     ['heure','type_veh']).sum().reset_index()).mark_line().encode(
                                      x='heure:O', y='nbVeh:Q',color='type_veh') if s=='2sens' else alt.Chart(
@@ -110,31 +115,64 @@ def IndicsGraphsHoraires(dfHeureTypeSens, typesVeh, typesDonnees, sens):
                                        (dicoHoraire[t][s]['donnees'].sens==s)].groupby(['heure','type_veh']).sum().reset_index()).mark_line().encode(
                                            x='heure:O', y='nbVeh:Q',color='type_veh')
             
-        for s in ['type_veh','sens']:
             dicoJournalier[t][s]={}
-            dicoJournalier[t][s]['donnees']=round((dfHeureTypeSens.loc[dfHeureTypeSens.jour.isin(dicoHoraire[t]['listJours'])
-                                                                              ].groupby(['jour',s]).nbVeh.sum()),0).reset_index()
-            dicoJournalier[t][s]['donnees'].sort_values('jour', inplace=True)
+            data_temp=round(dfHeureTypeSens.loc[(dfHeureTypeSens.jour.isin(dicoHoraire[t]['listJours']))].groupby(['jour','type_veh','sens']).nbVeh.sum(),0
+                            ).reset_index().merge(dicoNbJours['dfNbJours'],left_on='jour', right_index=True) if s=='2sens' else round(
+                    dfHeureTypeSens.loc[(dfHeureTypeSens.jour.isin(dicoHoraire[t]['listJours'])) & (dfHeureTypeSens.sens==s)].
+                    groupby(['jour','type_veh','sens']).nbVeh.sum(),0).reset_index().merge(
+                        dicoNbJours['dfNbJours'],left_on='jour', right_index=True)
+            data_temp['nbVeh']=data_temp['nbVeh']/data_temp['nbOcc']
+            dicoJournalier[t][s]['donnees']=data_temp
+            dicoJournalier[t][s]['donnees'].sort_values(['jour'], inplace=True)
             dicoJournalier[t][s]['donnees']['jour']=dicoJournalier[t][s]['donnees']['jour'].replace(
-                {0:'lundi', 1:'mardi', 2:'mercredi', 3:'jeudi',4:'vendredi',5:'samedi',6:'dimanche'})     
+                {0:'lundi', 1:'mardi', 2:'mercredi', 3:'jeudi',4:'vendredi',5:'samedi',6:'dimanche'}) 
             dicoJournalier[t][s]['graph']=alt.Chart(dicoJournalier[t][s]['donnees'].loc[dicoJournalier[t][s]['donnees'].type_veh.
-                                                isin(typesVeh)]).mark_bar().encode(
-                                            alt.X(f'{s}:N', axis=alt.Axis(title=''), sort=['tv','vl','pl','2r']),
-                                            alt.Y('nbVeh:Q', axis=alt.Axis(title='Nombre de véhicules', grid=False)),
-                                            color=alt.Color(f'{s}:N'),
-                                            column=alt.Column('jour:O', sort=['lundi', 'mardi', 'mercredi', 'jeudi','vendredi','samedi','dimanche'])
-                                        ).configure_view(stroke='transparent') if s == 'type_veh' else  alt.Chart(
-                                            dicoJournalier[t][s]['donnees'], title='Trafic moyen journalier par sens').mark_bar().encode(
-                                            alt.X(f'{s}:N', axis=alt.Axis(title=''), sort=['tv','vl','pl','2r']),
-                                            alt.Y('nbVeh:Q', axis=alt.Axis(title='Nombre de véhicules', grid=False)),
-                                            color=alt.Color(f'{s}:N'),
-                                            column=alt.Column('jour:O', sort=['lundi', 'mardi', 'mercredi', 'jeudi','vendredi','samedi','dimanche'])
-                                        ).configure_view(stroke='transparent')                         
+                                    isin(typesVeh)]).mark_bar().encode(
+                                alt.X('type_veh:N', axis=alt.Axis(title=''), sort=['tv','vl','pl','2r']),
+                                alt.Y('nbVeh:Q', axis=alt.Axis(title='Nombre de véhicules', grid=False)),
+                                color=alt.Color('type_veh:N'),
+                                column=alt.Column('jour:O', sort=['lundi', 'mardi', 'mercredi', 'jeudi','vendredi','samedi','dimanche'])
+                            ).configure_view(stroke='transparent') if s=='2sens' else alt.Chart(
+                                dicoJournalier[t][s]['donnees'].loc[(dicoJournalier[t][s]['donnees'].type_veh.
+                                    isin(typesVeh)) & (dicoJournalier[t][s]['donnees'].sens==s)]).mark_bar().encode(
+                                alt.X('type_veh:N', axis=alt.Axis(title=''), sort=['tv','vl','pl','2r']),
+                                alt.Y('nbVeh:Q', axis=alt.Axis(title='Nombre de véhicules', grid=False)),
+                                color=alt.Color('type_veh:N'),
+                                column=alt.Column('jour:O', sort=['lundi', 'mardi', 'mercredi', 'jeudi','vendredi','samedi','dimanche'])
+                            ).configure_view(stroke='transparent')
+            if s=='2sens' : 
+                dicoJournalier[t]['compSens']={}
+                data_temp=round((dfHeureTypeSens.loc[dfHeureTypeSens.jour.isin(dicoHoraire[t]['listJours'])
+                    ].groupby(['jour','sens']).nbVeh.sum()),0).reset_index().merge(dicoNbJours['dfNbJours'],left_on='jour', right_index=True)
+                data_temp['nbVeh']=data_temp['nbVeh']/data_temp['nbOcc']
+                dicoJournalier[t]['compSens']['donnees']=data_temp
+                dicoJournalier[t]['compSens']['donnees'].sort_values('jour', inplace=True)
+                dicoJournalier[t]['compSens']['donnees']['jour']=dicoJournalier[t]['compSens']['donnees']['jour'].replace(
+                    {0:'lundi', 1:'mardi', 2:'mercredi', 3:'jeudi',4:'vendredi',5:'samedi',6:'dimanche'}) 
+                
+                dicoJournalier[t]['compSens']['graph']=alt.Chart(
+                        dicoJournalier[t]['compSens']['donnees'], title='Trafic moyen journalier par sens').mark_bar().encode(
+                        alt.X('sens:N', axis=alt.Axis(title=''), sort=['tv','vl','pl','2r']),
+                        alt.Y('nbVeh:Q', axis=alt.Axis(title='Nombre de véhicules', grid=False)),
+                        color=alt.Color('sens:N'),
+                        column=alt.Column('jour:O', sort=['lundi', 'mardi', 'mercredi', 'jeudi','vendredi','samedi','dimanche'])
+                    ).configure_view(stroke='transparent')                      
     return dicoHoraire, dicoJournalier
+
+def IndicsPeriodes(dfHeureTypeSens):
+    """
+    fournir les indicateurs suer periode hpm, hps, jour et nuit, sous frome de df par sens
+    """
+    dicoNbJours=NombreDeJours(dfHeureTypeSens)
+    hpm=round(dfHeureTypeSens.loc[dfHeureTypeSens.heure.isin(range(7,10))].groupby(['sens','type_veh']).nbVeh.sum()/dicoNbJours['nbJoursOuvres'],0).reset_index()
+    hps=round(dfHeureTypeSens.loc[dfHeureTypeSens.heure.isin(range(16,19))].groupby(['sens','type_veh']).nbVeh.sum()/dicoNbJours['nbJoursOuvres'],0).reset_index()
+    nuit=round(dfHeureTypeSens.loc[dfHeureTypeSens.heure.isin([a for a in range(6)]+[22,23])].groupby(['sens','type_veh']).nbVeh.sum()/dicoNbJours['nbJoursOuvres'],0).reset_index()
+    jour=round(dfHeureTypeSens.loc[dfHeureTypeSens.heure.isin(range(6,22))].groupby(['sens','type_veh']).nbVeh.sum()/dicoNbJours['nbJoursOuvres'],0).reset_index()
+    return hpm,hps,nuit,jour
 
 class Mixtra(object):
     '''
-    Donn�es issues de compteurs � tubes
+    Donn�es issues de compteurs a tubes
     pour chaque point de comptage on peut avoir 1 ou 2 sens. 
     pour chaque sens on peut avoir 1 ou plusieurs fichiers 
     '''
