@@ -162,13 +162,26 @@ def IndicsGraphs(dfHeureTypeSens, typesVeh, typesDonnees, sens):
 def IndicsPeriodes(dfHeureTypeSens):
     """
     fournir les indicateurs suer periode hpm, hps, jour et nuit, sous frome de df par sens
+    in :
+        dfHeureTypeSens :  df des données agregées par heure, type de veuhicules et sens, iisu de GroupeCompletude
     """
     dicoNbJours=NombreDeJours(dfHeureTypeSens)
-    hpm=round(dfHeureTypeSens.loc[dfHeureTypeSens.heure.isin(range(7,10))].groupby(['sens','type_veh']).nbVeh.sum()/dicoNbJours['nbJoursOuvres'],0).reset_index()
-    hps=round(dfHeureTypeSens.loc[dfHeureTypeSens.heure.isin(range(16,19))].groupby(['sens','type_veh']).nbVeh.sum()/dicoNbJours['nbJoursOuvres'],0).reset_index()
-    nuit=round(dfHeureTypeSens.loc[dfHeureTypeSens.heure.isin([a for a in range(6)]+[22,23])].groupby(['sens','type_veh']).nbVeh.sum()/dicoNbJours['nbJoursOuvres'],0).reset_index()
-    jour=round(dfHeureTypeSens.loc[dfHeureTypeSens.heure.isin(range(6,22))].groupby(['sens','type_veh']).nbVeh.sum()/dicoNbJours['nbJoursOuvres'],0).reset_index()
+    hpm=round(dfHeureTypeSens.loc[dfHeureTypeSens.heure.isin(range(7,10))].groupby(['sens','type_veh']).nbVeh.sum()/(dicoNbJours['nbJoursOuvres']*3),0).reset_index()
+    hps=round(dfHeureTypeSens.loc[dfHeureTypeSens.heure.isin(range(16,19))].groupby(['sens','type_veh']).nbVeh.sum()/(dicoNbJours['nbJoursOuvres']*3),0).reset_index()
+    nuit=round(dfHeureTypeSens.loc[dfHeureTypeSens.heure.isin([a for a in range(6)]+[22,23])].groupby(['sens','type_veh']).nbVeh.sum()/(dicoNbJours['nbJours']*8),0).reset_index()
+    jour=round(dfHeureTypeSens.loc[dfHeureTypeSens.heure.isin(range(6,22))].groupby(['sens','type_veh']).nbVeh.sum()/(dicoNbJours['nbJours']*16),0).reset_index()
     return hpm,hps,nuit,jour
+
+def JoursCharges(dfHeureTypeSens):
+    """
+    pourchaque type de vehicule connaite le jour le plus charge
+    in  :
+        dfHeureTypeSens :  df des données agregées par heure, type de veuhicules et sens, iisu de GroupeCompletude
+    out : 
+        df avec date, type de veh et nombre de veh
+    """
+    data_temp=dfHeureTypeSens.set_index('date_heure').groupby([pd.Grouper(freq='1D'),'type_veh']).nbVeh.sum().reset_index()
+    return data_temp.loc[data_temp.nbVeh==data_temp.groupby('type_veh').nbVeh.transform(max)]
 
 class Mixtra(object):
     '''
