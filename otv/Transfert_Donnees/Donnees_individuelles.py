@@ -116,9 +116,11 @@ def IndicsGraphs(dfHeureTypeSens, typesVeh, typesDonnees, sens):
                                            x='heure:O', y='nbVeh:Q',color='type_veh')
             
             dicoJournalier[t][s]={}
-            data_temp=round(dfHeureTypeSens.loc[(dfHeureTypeSens.jour.isin(dicoHoraire[t]['listJours']))].groupby(['jour','type_veh','sens']).nbVeh.sum(),0
+            data_temp=round(dfHeureTypeSens.loc[(dfHeureTypeSens.jour.isin(dicoHoraire[t]['listJours'])) & 
+                                            (dfHeureTypeSens.type_veh.isin(typesVeh))].groupby(['jour','type_veh','sens']).nbVeh.sum(),0
                             ).reset_index().merge(dicoNbJours['dfNbJours'],left_on='jour', right_index=True) if s=='2sens' else round(
-                    dfHeureTypeSens.loc[(dfHeureTypeSens.jour.isin(dicoHoraire[t]['listJours'])) & (dfHeureTypeSens.sens==s)].
+                    dfHeureTypeSens.loc[(dfHeureTypeSens.jour.isin(dicoHoraire[t]['listJours'])) & (dfHeureTypeSens.sens==s) & 
+                                        (dfHeureTypeSens.type_veh.isin(typesVeh))].
                     groupby(['jour','type_veh','sens']).nbVeh.sum(),0).reset_index().merge(
                         dicoNbJours['dfNbJours'],left_on='jour', right_index=True)
             data_temp['nbVeh']=data_temp['nbVeh']/data_temp['nbOcc']
