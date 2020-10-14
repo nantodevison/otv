@@ -172,7 +172,9 @@ def IndicsPeriodes(dfHeureTypeSens):
     hps=round(dfHeureTypeSens.loc[dfHeureTypeSens.heure.isin(range(16,19))].groupby(['sens','type_veh']).nbVeh.sum()/(dicoNbJours['nbJoursOuvres']*3),0).reset_index()
     nuit=round(dfHeureTypeSens.loc[dfHeureTypeSens.heure.isin([a for a in range(6)]+[22,23])].groupby(['sens','type_veh']).nbVeh.sum()/(dicoNbJours['nbJours']*8),0).reset_index()
     jour=round(dfHeureTypeSens.loc[dfHeureTypeSens.heure.isin(range(6,22))].groupby(['sens','type_veh']).nbVeh.sum()/(dicoNbJours['nbJours']*16),0).reset_index()
-    return hpm,hps,nuit,jour
+    dfMoyenneHorairesSpeciales=pd.concat([hpm.assign(typeHeure='HPM'),hps.assign(typeHeure='HPS'),jour.assign(typeHeure='Jour'),
+                                          nuit.assign(typeHeure='Nuit')])
+    return hpm,hps,nuit,jour,dfMoyenneHorairesSpeciales
 
 def JoursCharges(dfHeureTypeSens):
     """
