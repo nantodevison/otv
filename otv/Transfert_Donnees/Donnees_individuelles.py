@@ -9,6 +9,7 @@ Traitementsdes donnes individuelles fournies par a DREAM TEAM en mixtra ou vikin
 import pandas as pd
 import altair as alt
 from datetime import datetime
+import os
 
 
 def NettoyageTemps(dfVehiculesValides):
@@ -92,20 +93,24 @@ def IndicsGraphs(dfHeureTypeSens, typesVeh, typesDonnees, sens):
     """
     #paramètres selon ce que l'on demande
     dicoNbJours=NombreDeJours(dfHeureTypeSens)
-    tupleParams=(('mja',dicoNbJours['nbJours'],range(7)),('mjo',dicoNbJours['nbJoursOuvres'],range(5)),
-                 ('samedi',dicoNbJours['dfNbJours'].loc[5],[5]),('dimanche',dicoNbJours['dfNbJours'].loc[6],[6]))
+    tupleParams=(('mja',7,range(7)),('mjo',5,range(5)),
+                 ('samedi',1,[5]),('dimanche',1,[6]))
     dicoHoraire={e[0]:{'nbJour':e[1],'listJours':e[2] } for e in tupleParams}
     dicoJournalier={e[0]:{'nbJour':e[1],'listJours':e[2] } for e in tupleParams}
+    
+    #moyennage des données si plusiuers fois le lunid ou mardi ou autre
+    dfMoyenne=dfHeureTypeSens.groupby(['jour','heure','type_veh','sens']).nbVeh.sum().reset_index().merge(dicoNbJours['dfNbJours'],left_on='jour', right_index=True)
+    dfMoyenne['nbVeh']=dfMoyenne['nbVeh']/dfMoyenne['nbOcc']
     
     #calcul des donnees
     for t in  typesDonnees : 
         for s in sens :
             dicoHoraire[t][s]={}
-            dicoHoraire[t][s]['donnees']=round((dfHeureTypeSens.loc[(dfHeureTypeSens.jour.isin(dicoHoraire[t]['listJours'])) &
-                                        (dfHeureTypeSens.type_veh.isin(typesVeh))].groupby(['heure','type_veh','sens']).
+            dicoHoraire[t][s]['donnees']=round((dfMoyenne.loc[(dfMoyenne.jour.isin(dicoHoraire[t]['listJours'])) &
+                                        (dfMoyenne.type_veh.isin(typesVeh))].groupby(['heure','type_veh','sens']).
                                          nbVeh.sum()/dicoHoraire[t]['nbJour']),0).reset_index() if s=='2sens' else round((
-                                        dfHeureTypeSens.loc[(dfHeureTypeSens.jour.isin(dicoHoraire[t]['listJours'])) &
-                                        (dfHeureTypeSens.type_veh.isin(typesVeh)) & (dfHeureTypeSens.sens==s)
+                                        dfMoyenne.loc[(dfMoyenne.jour.isin(dicoHoraire[t]['listJours'])) &
+                                        (dfMoyenne.type_veh.isin(typesVeh)) & (dfMoyenne.sens==s)
                                         ].groupby(['heure','type_veh','sens']).
                                          nbVeh.sum()/dicoHoraire[t]['nbJour']),0).reset_index()
             dicoHoraire[t][s]['graph']=alt.Chart(dicoHoraire[t][s]['donnees'].loc[dicoHoraire[t][s]['donnees'].type_veh.isin(typesVeh)].groupby(
@@ -116,20 +121,18 @@ def IndicsGraphs(dfHeureTypeSens, typesVeh, typesDonnees, sens):
                                            x='heure:O', y='nbVeh:Q',color='type_veh')
             
             dicoJournalier[t][s]={}
-            data_temp=round(dfHeureTypeSens.loc[(dfHeureTypeSens.jour.isin(dicoHoraire[t]['listJours'])) & 
-                                            (dfHeureTypeSens.type_veh.isin(typesVeh))].groupby(['jour','type_veh','sens']).nbVeh.sum(),0
+            dicoJournalier[t][s]['donnees']=round(dfMoyenne.loc[(dfMoyenne.jour.isin(dicoHoraire[t]['listJours'])) & 
+                                            (dfMoyenne.type_veh.isin(typesVeh))].groupby(['jour','type_veh','sens']).nbVeh.sum(),0
                             ).reset_index().merge(dicoNbJours['dfNbJours'],left_on='jour', right_index=True) if s=='2sens' else round(
-                    dfHeureTypeSens.loc[(dfHeureTypeSens.jour.isin(dicoHoraire[t]['listJours'])) & (dfHeureTypeSens.sens==s) & 
-                                        (dfHeureTypeSens.type_veh.isin(typesVeh))].
+                    dfMoyenne.loc[(dfMoyenne.jour.isin(dicoHoraire[t]['listJours'])) & (dfMoyenne.sens==s) & 
+                                        (dfMoyenne.type_veh.isin(typesVeh))].
                     groupby(['jour','type_veh','sens']).nbVeh.sum(),0).reset_index().merge(
                         dicoNbJours['dfNbJours'],left_on='jour', right_index=True)
-            data_temp['nbVeh']=data_temp['nbVeh']/data_temp['nbOcc']
-            dicoJournalier[t][s]['donnees']=data_temp
             dicoJournalier[t][s]['donnees'].sort_values(['jour'], inplace=True)
             dicoJournalier[t][s]['donnees']['jour']=dicoJournalier[t][s]['donnees']['jour'].replace(
                 {0:'lundi', 1:'mardi', 2:'mercredi', 3:'jeudi',4:'vendredi',5:'samedi',6:'dimanche'}) 
             dicoJournalier[t][s]['graph']=alt.Chart(dicoJournalier[t][s]['donnees'].loc[dicoJournalier[t][s]['donnees'].type_veh.
-                                    isin(typesVeh)]).mark_bar().encode(
+                                    isin(typesVeh)].groupby(['jour','type_veh']).nbVeh.sum().reset_index()).mark_bar().encode(
                                 alt.X('type_veh:N', axis=alt.Axis(title=''), sort=['tv','vl','pl','2r']),
                                 alt.Y('nbVeh:Q', axis=alt.Axis(title='Nombre de véhicules', grid=False)),
                                 color=alt.Color('type_veh:N'),
@@ -144,10 +147,8 @@ def IndicsGraphs(dfHeureTypeSens, typesVeh, typesDonnees, sens):
                             ).configure_view(stroke='transparent')
             if s=='2sens' : 
                 dicoJournalier[t]['compSens']={}
-                data_temp=round((dfHeureTypeSens.loc[dfHeureTypeSens.jour.isin(dicoHoraire[t]['listJours'])
+                dicoJournalier[t]['compSens']['donnees']=round((dfMoyenne.loc[(dfMoyenne.jour.isin(dicoHoraire[t]['listJours'])) & (dfMoyenne.type_veh.isin(typesVeh))
                     ].groupby(['jour','sens']).nbVeh.sum()),0).reset_index().merge(dicoNbJours['dfNbJours'],left_on='jour', right_index=True)
-                data_temp['nbVeh']=data_temp['nbVeh']/data_temp['nbOcc']
-                dicoJournalier[t]['compSens']['donnees']=data_temp
                 dicoJournalier[t]['compSens']['donnees'].sort_values('jour', inplace=True)
                 dicoJournalier[t]['compSens']['donnees']['jour']=dicoJournalier[t]['compSens']['donnees']['jour'].replace(
                     {0:'lundi', 1:'mardi', 2:'mercredi', 3:'jeudi',4:'vendredi',5:'samedi',6:'dimanche'}) 
@@ -189,38 +190,33 @@ def JoursCharges(dfHeureTypeSens):
 
 class Mixtra(object):
     '''
-    Donn�es issues de compteurs a tubes
+    Donnees issues de compteurs a tubes
     pour chaque point de comptage on peut avoir 1 ou 2 sens. 
     pour chaque sens on peut avoir 1 ou plusieurs fichiers 
     '''
     
-    def __init__(self, listFichiersSens1,listFichiersSens2=None):
+    def __init__(self, fichier):
         '''
         Constructor
         in : 
             listFichiersSens1 : la liste des fcihiers utilisé pour le sens 1
             listFichiersSens 2 : la liste des fcihiers utilisés pour le sens 2
         '''
-        self.fichier2sens=self.RegrouperSens(listFichiersSens1,listFichiersSens2)
-    
-    def RegrouperSens(self,listFichiersSens1,listFichiersSens2 ):
+        self.fichier=fichier
+        self.dfFichier=self.NettoyageDonnees(self.ouvrirFichier())
+        
+    def ouvrirFichier(self):
         """
-        pour chaque sens, les regrouper et nettoyer
+        ouvrir le ou les fichiers
         """
-        fichierSens1=pd.concat([pd.read_csv(a, delimiter='\t', encoding='latin_1') 
-                               for a in listFichiersSens1]) if len(listFichiersSens1) > 1 else pd.read_csv(
-                                   listFichiersSens1[0], delimiter='\t', encoding='latin_1') 
-        fichierSens1['sens']='sens1'
-        if listFichiersSens2 :
-            fichierSens2=pd.concat([pd.read_csv(a, delimiter='\t', encoding='latin_1') 
-                                   for a in listFichiersSens2], axis=0) if len(listFichiersSens2) > 1 else pd.read_csv(
-                                       listFichiersSens2[0], delimiter='\t', encoding='latin_1')
-            fichierSens2['sens']='sens2'
-            return pd.concat([fichierSens1,fichierSens2], axis=0)
-        else : 
-            return fichierSens1
+        try : 
+            df=pd.read_csv( self.fichier, delimiter='\t', encoding='latin_1')
+        except pd._libs.parsers.ParserError :
+            df=pd.read_excel(self.fichier, dtype={'Horodate de passage':str})
+            df['Horodate de passage']=df['Horodate de passage'].str[:16]
+        return df
     
-    def NettoyageDonnees(self):
+    def NettoyageDonnees(self,dfFichier):
         """
         a partir du fichier2Sens, virer les veh non valide et ajouter un attribut  sur le type de veh et un horadatage complet
         """
@@ -235,9 +231,9 @@ class Mixtra(object):
             elif silhouette==13 : 
                 return '2r'
             else : return 'pl'
-        dfVehiculesValides=self.fichier2sens.loc[self.fichier2sens['Véhicule Valide']==1].copy()
+        dfVehiculesValides=dfFichier.loc[dfFichier['Véhicule Valide']==1].copy()
         dfVehiculesValides['date_heure']=pd.to_datetime(dfVehiculesValides['Horodate de passage']+':'+dfVehiculesValides['Seconde'].
-                                                        astype(int).astype(str)+'.'+dfVehiculesValides['Centième'].astype(int).astype(str))
+                                                        astype(int).astype(str)+'.'+dfVehiculesValides['Centième'].astype(int).astype(str), dayfirst=True)
         dfVehiculesValides['type_veh']=dfVehiculesValides.Silhouette.apply(lambda x : type_vehicule(x))
         dfVehiculesValides.rename(columns={'Véhicule Valide':'nbVeh'}, inplace=True)
         return dfVehiculesValides      
@@ -249,33 +245,27 @@ class Viking(object):
     pour chaque sens on peut avoir 1 ou plusieurs fichiers 
     '''
     
-    def __init__(self, fichiersSens1,fichiersSens2=None):
+    def __init__(self, fichier):
         '''
         Constructor
         in : 
-            FichiersSens1 : raw string du fcihiers utilisé pour le sens 1
-            FichiersSens2 : raw string du fcihiers utilisés pour le sens 2
+            fichier : raw string du fcihiers utilisé
         '''
-        self.fichier2sens, self.anneeDeb,self.moisDeb,self.jourDeb=self.RegrouperSens(fichiersSens1,fichiersSens2)
+        self.fichier=fichier
+        self.dfFichier, self.anneeDeb,self.moisDeb,self.jourDeb=self.ouvrirFichier()
         self.formaterDonnees()
         
-    def RegrouperSens(self,fichiersSens1,fichiersSens2 ):
+    def ouvrirFichier(self):
         """
         pour chaque sens, les regrouper et mettre ne form les attributs
         """
-        with open(fichiersSens1) as f :
+        with open(self.fichier) as f :
                 entete=[e.strip() for e in f.readlines()][0]
         anneeDeb,moisDeb,jourDeb=(entete.split('.')[i].strip() for i in range(5,8)) 
         
-        if fichiersSens2 :
-            dfFichier2Sens = pd.concat([pd.read_csv(f,delimiter=' ',skiprows=1,
-                            names=['sens', 'jour', 'heureMin','secCent', 'vts', 'ser', 'type_veh'],
-                            dtype={'heureMin':str,'secCent':str, 'sens':str})
-                            for f in (fichiersSens1,fichiersSens2)], axis=0) 
-        else : 
-            dfFichier2Sens=pd.read_csv(fichiersSens1,delimiter=' ',skiprows=1, 
+        dfFichier=pd.read_csv(self.fichier,delimiter=' ',skiprows=1, 
                                  names=['sens', 'jour', 'heureMin','secCent', 'vts', 'ser', 'type_veh'],dtype={'heureMin':str,'secCent':str})
-        return dfFichier2Sens,anneeDeb,moisDeb,jourDeb
+        return dfFichier,anneeDeb,moisDeb,jourDeb
     
     def formaterDonnees(self):
         """
@@ -288,14 +278,52 @@ class Viking(object):
             if jourMesure<int(jourDeb) : 
                 moisDeb=str(int(moisDeb)+1)
             return pd.to_datetime(f'20{anneeDeb}-{moisDeb}-{jourMesure} {str(heureMin)[:2]}:{str(heureMin)[2:]}:{str(secCent)[:2]}.{str(secCent)[2:]}')
-        
-        self.fichier2sens['date_heure']=self.fichier2sens.apply(lambda x : creer_date(self.jourDeb,self.moisDeb,self.anneeDeb, 
+        self.dfFichier['date_heure']=self.dfFichier.apply(lambda x : creer_date(self.jourDeb,self.moisDeb,self.anneeDeb, 
                             x['jour'],x['heureMin'],x['secCent']), axis=1)
-        self.fichier2sens['sens']='sens'+self.fichier2sens['sens']
-        self.fichier2sens['type_veh']=self.fichier2sens['type_veh'].str.lower()
-        self.fichier2sens['nbVeh']=1
+        self.dfFichier['type_veh']=self.dfFichier['type_veh'].str.lower()
+        self.dfFichier['nbVeh']=1
             
+class ComptageDonneesIndiv(object):
+    """
+    a partir de données individuelles de sens 1 et parfois sens 2, creer les donnees 2 sens
+    ces donnees indiv peuvent etre issue que de Mixtra ou que de Viking ou de melange
+    """
+    def __init__(self,dossier):
+        """
+        en entree on attend une ou deux dfavec le mm format, issus des classes Viking ou Mixtra
+        """
+        self.dossier=dossier
+        self.dfValide=self.df2Sens(*self.analyseSensFichiers()).sort_values('date_heure')
+    
+    def analyseSensFichiers(self):
+        """
+        connaitre qui est le sens1, qui est le sens2.
+        si personne erreur
+        """
+        with os.scandir(self.dossier) as it:
+            listFichiersSens1=list(set([os.path.join(self.dossier,f.name) for f in it for a in ['s1','sens1'] if f.is_file() and f.name.lower().endswith(('.vik','.xls'))  and a in f.name.lower()]))
+        with os.scandir(self.dossier) as it:
+            listFichiersSens2=list(set([os.path.join(self.dossier,f.name) for f in it for a in ['s2','sens2'] if f.is_file() and f.name.lower().endswith(('.vik','.xls'))  and a in f.name.lower()]))
+        return listFichiersSens1,listFichiersSens2
+            
+    def df2Sens(self,listFichiersSens1,listFichiersSens2):
+        """
+        pour chaque sens obtenir la liste des fichiers Mixtra ou Viking ou les deux
+        """
+        listDfSens1,listDfSens2=[],[]
+        for f in listFichiersSens1 : 
+            if f.lower().endswith('.xls') : 
+                listDfSens1.append(Mixtra(f).dfFichier[['date_heure','nbVeh','type_veh']])
+            elif f.lower().endswith('.vik') :
+                listDfSens1.append(Viking(f).dfFichier[['date_heure','nbVeh','type_veh']])
+        for f in listFichiersSens2 : 
+            if f.lower().endswith('.xls') : 
+                listDfSens2.append(Mixtra(f).dfFichier[['date_heure','nbVeh','type_veh']])
+            elif f.lower().endswith('.vik') :
+                listDfSens2.append(Viking(f).dfFichier[['date_heure','nbVeh','type_veh']])
+        return pd.concat([pd.concat(listDfSens1, axis=0).assign(sens='sens1'),pd.concat(listDfSens2, axis=0).assign(sens='sens2')], axis=0)
         
+       
 class PasAssezMesureError(Exception):
     """
     Exception levee si le fichier comport emoins de 7 jours
