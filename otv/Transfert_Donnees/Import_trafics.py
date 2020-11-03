@@ -18,6 +18,7 @@ from collections import Counter
 
 import Connexion_Transfert as ct
 from Donnees_horaires import comparer2Sens,verifValiditeFichier,concatIndicateurFichierHoraire,SensAssymetriqueError,verifNbJoursValidDispo
+from Donnees_sources import FIM
 import Outils as O
 from Base_BdTopo import Import_outils as io
 from Base_BdTopo import Rond_points as rp
@@ -32,223 +33,7 @@ class Donnees_Indiv_Mixtra():
     les mixtras fournissent des donnees individuelles par sens
     """
 
-class FIM():
-    """
-    classe dedié aux fichiers FIM de comptage brut
-    attributs : 
-        dico_corresp_type_veh : dico poutr determiner le type de vehicule selon en-tete
-        dico_corresp_type_fichier : dico poutr determiner le mode de comptag selon en-tete
-        pas_temporel : pas de concatenation des donnes, issu de en-tete (cf fonction params_fim())
-        date_debut : date de debut du comptage, (cf fonction params_fim())
-        mode : mod de cimptage (cf fonction params_fim())
-        taille_donnees : integer : taille des blocs de donnees
-        df_tot_heure : df avec dateIndex et valeur horaire VL ou TV et PL et tot si calculée
-        df_tot_jour : df avec dateIndex et valeur journaliere TV et PL
-        tmja
-        pl,
-        pc_pl
-        sens_uniq : booleen
-        sens_uniq_nb_blocs : si sens_uniq : nb de bloc de donnees
-        date_fin
-    """
-    def __init__(self, fichier, gest=None):
-        self.fichier_fim=fichier
-        self.dico_corresp_type_veh={'TV':('1.T','2.','1.'),'VL':('2.V','4.V'),'PL':('3.P','2.P','4.P')}
-        self.dico_corresp_type_fichier={'mode3' : ('1.T','3.P'), 'mode4' : ('2.V','2.P','4.V', '4.P'), 'mode2':('2.',), 'mode1' : ('1.',)}
-        self.gest=gest
 
-    def ouvrir_fim(self):
-        """
-        ouvrir le fichier txt et en sortir la liste des lignes
-        """
-        with open(self.fichier_fim) as f :
-            lignes=[e.strip() for e in f.readlines()]
-        return lignes
-    
-    def corriger_mode(self,lignes, mode):
-        """
-        correction du fichier fim si mode = 4. dans le fichiers, pour pouvoir diiférencier VL et PL
-        """
-        i=0
-        for e,l in enumerate(lignes) :
-            if mode=='4.' : #porte ouvert pour d'auter corrections si beoisn
-                if '   4.   ' in l : 
-                    if i% 2==0 :
-                        lignes[e]=l.replace('   4.   ','   4.V   ')
-                        i+=1
-                    else : 
-                        lignes[e]=l.replace('   4.   ','   4.P   ') 
-                        i+=1
-
-    def params_fim(self,lignes):
-        """
-        obtenir les infos générales du fichier : date_debut(anne, mois, jour, heure, minute), mode
-        """
-        annee,mois,jour,heure,minute,self.pas_temporel=(int(lignes[0].split('.')[i].strip()) for i in range(5,11))
-        #particularite CD16 : l'identifiant route et section est present dans le FIM
-        if self.gest=='CD16' : 
-            self.section_cp='_'.join([str(int(lignes[0].split('.')[a].strip())) for a in (2,3)])
-        self.date_debut=pd.to_datetime(f'{jour}-{mois}-{annee} {heure}:{minute}', dayfirst=True)
-        mode=lignes[0].split()[9]
-        if mode in ['4.',] : #correction si le mode est de type 4. sans distinction exlpicite de VL TV PL. porte ouvert à d'autre cas si besoin 
-            self.corriger_mode(lignes, mode)
-            mode=lignes[0].split()[9]
-        self.mode=[k for k,v in self.dico_corresp_type_fichier.items() if any([e == mode for e in v])][0]
-        if not self.mode : 
-            raise self.fim_TypeModeError
-
-    def fim_type_veh(self,ligne):
-        """
-        savoir si le fichier fim concerne les TV, VL ou PL
-        in : 
-            ligne : ligne du fichier
-        """
-
-        for k,v  in self.dico_corresp_type_veh.items() : 
-            if any([e+' ' in ligne for e in v]) :
-                return [cle for cle, value in self.dico_corresp_type_veh.items() for e in value  if e==ligne.split()[9]][0]
-    
-    def liste_carac_fichiers(self,lignes):
-        """
-        creer une liste des principales caracteristiques 
-        """
-        liste_lign_titre=[]
-        for i,ligne in enumerate(lignes) : 
-            type_veh=self.fim_type_veh(ligne)
-            if type_veh : 
-                sens=ligne.split('.')[4].strip()
-                liste_lign_titre.append([i, type_veh,sens])
-        self.sens_uniq=True if len(set([e[2] for e in liste_lign_titre]))==1 else False
-        self.sens_uniq_nb_blocs=len(liste_lign_titre) if self.sens_uniq else np.NaN 
-        return liste_lign_titre
-
-    def taille_bloc_donnees(self,lignes_fichiers,liste_lign_titre) : 
-        """
-        verifier que les blocs de donnees ont tous la mm taille
-        in : 
-            lignes_fichiers : toute les lignes du fichiers, issu de f.readlines()
-        """
-        taille_donnees=tuple(set([liste_lign_titre[i+1][0]-(liste_lign_titre[i][0]+1) for i in range(len(liste_lign_titre)-1)]+
-                           [len(lignes_fichiers)-1-liste_lign_titre[len(liste_lign_titre)-1][0]]))
-        if len(taille_donnees)>1 : 
-            raise self.fim_TailleBlocDonneesError(taille_donnees)
-        else : self.taille_donnees=taille_donnees[0]
-
-    def isoler_bloc(self,lignes, liste_lign_titre) : 
-        """
-        isoler les blocs de données des lignes de titre,en fonction du mode de comptage
-        """
-        for i,e in enumerate(liste_lign_titre) :
-            if self.mode in ('mode3','mode1') :
-                e.append([int(b) for c in [a.split('.') for a in [a.strip() for a in lignes[e[0]+1:e[0]+1+self.taille_donnees]]] for b in c if b])
-            elif self.mode in ('mode4', 'mode2') :
-                e.append([sum([int(e) for e in b if e]) for b in [a.split('.') for a in [a.strip() for a in lignes[e[0]+2:e[0]+1+self.taille_donnees]]]])
-        return
-        
-    def df_trafic_brut_horaire(self,liste_lign_titre):
-        """
-        creer une df des donnes avec un index datetimeindex de freq basee sur le pas temporel et rnvoi la date de fin
-        """
-        freq=str(int(self.pas_temporel))+'T'
-        for i,e in enumerate(liste_lign_titre) :
-            df=pd.DataFrame(liste_lign_titre[i][3], columns=[liste_lign_titre[i][1]+'_sens'+liste_lign_titre[i][2]])
-            df.index=pd.date_range(self.date_debut, periods=len(df), freq=freq)
-            if i==0 : 
-                self.df_tot_heure=df
-            else : 
-                self.df_tot_heure=self.df_tot_heure.merge(df, left_index=True, right_index=True)
-        self.date_fin=self.df_tot_heure.index.max()
-
-    def calcul_indicateurs_horaire(self):
-        """
-        ajouter le tmja et le nb PL au xdonnes de df_trafic_brut_horaire
-        """
-        self.df_tot_heure=self.df_tot_heure.reset_index().rename(columns={'index':'date'})
-
-        def sommer_trafic_h(dateindex):
-            if not self.sens_uniq : 
-                if self.mode=='mode3' : 
-                    return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens2.values[0],
-                            self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens2.values[0])
-                elif self.mode=='mode4' :
-                    colVL1,colVL2=[e for e in self.df_tot_heure.columns if 'VL' in e][0], [e for e in self.df_tot_heure.columns if 'VL' in e][1]
-                    colPL1,colPL2=[e for e in self.df_tot_heure.columns if 'PL' in e][0], [e for e in self.df_tot_heure.columns if 'PL' in e][1]
-                    return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex][colVL1].values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex][colVL2].values[0]+
-                            self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex][colPL1].values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex][colPL2].values[0],
-                            self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex][colPL1].values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex][colPL2].values[0])
-                elif self.mode=='mode2':
-                    return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens2.values[0],np.NaN)
-                elif self.mode=='mode1':
-                    return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens2.values[0],np.NaN)
-            else : 
-                if self.sens_uniq_nb_blocs==4:
-                    if self.mode=='mode3' : 
-                        return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1_x.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1_y.values[0],
-                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1_x.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1_y.values[0])
-                    elif self.mode=='mode4' :
-                        return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].VL_sens1_x.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].VL_sens1_y.values[0]+
-                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1_x.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1_y.values[0],
-                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1_x.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1_y.values[0])
-                    elif self.mode=='mode2':
-                        return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1_x.values[0]+
-                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1_y.values[0],np.NaN)
-                elif self.sens_uniq_nb_blocs==2:
-                    if self.mode=='mode3' : 
-                        return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1.values[0],
-                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1.values[0])
-                    elif self.mode=='mode4' :
-                        return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].VL_sens1.values[0]+
-                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1.values[0],
-                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1.values[0])
-                    elif self.mode=='mode2':
-                        return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1.values[0]+
-                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1.values[0],np.NaN)
-                else : 
-                    raise self.fimNbBlocDonneesError(self.mode)
-                    
-                
-        self.df_tot_heure['tv_tot']=self.df_tot_heure.apply(lambda x : sommer_trafic_h(x.date)[0],axis=1)
-        self.df_tot_heure['pl_tot']=self.df_tot_heure.apply(lambda x : sommer_trafic_h(x.date)[1] if self.mode not in ('mode2','mode1') else
-                                                            np.NaN ,axis=1)
-        self.df_tot_heure['pc_pl_tot']=self.df_tot_heure.apply(lambda x : x['pl_tot']*100/x['tv_tot'] if x['tv_tot']!=0 else 0 if self.mode not in ('mode2','mode1') else
-                                                            np.NaN,axis=1)
-        self.df_tot_heure.set_index('date', inplace=True)
-
-    def calcul_indicateurs_agreges(self):
-        """
-        calculer le tmjs, pl et pc_pl pour un fichier
-        """
-        #regrouper par jour et calcul des indicateurs finaux
-        self.df_tot_jour=self.df_tot_heure[['tv_tot','pl_tot']].resample('1D').sum() if self.mode not in ('mode2','mode1') else self.df_tot_heure[['tv_tot']].resample('1D').sum()
-        #selon le nombre de jour comptés on prend soit tous les jours sauf les 1ers et derniers, soit on somme les 1ers et derniers
-        #si le nb de jours est inéfrieur à 7 on leve une erreur
-        if len(self.df_tot_jour)<7 : 
-            raise PasAssezMesureError(len(self.df_tot_jour))
-        elif len(self.df_tot_jour) in (7,8) : 
-            traf_list=self.df_tot_jour.tv_tot.tolist()
-            self.tmja=int(statistics.mean([traf_list[0]+traf_list[-1]]+traf_list[1:-1]))
-            pl_list=self.df_tot_jour.pl_tot.tolist() if self.mode not in ('mode2','mode1') else np.NaN
-            self.pl=int(statistics.mean([pl_list[0]+pl_list[-1]]+pl_list[1:-1])) if self.mode not in ('mode2','mode1') else np.NaN
-        else : 
-            self.tmja=int(self.df_tot_jour.iloc[1:-1].tv_tot.mean())
-            self.pl=int(self.df_tot_jour.iloc[1:-1].pl_tot.mean()) if self.mode not in ('mode2','mode1') else np.NaN
-        if self.tmja==0 : 
-            self.pc_pl=0
-        else :
-            self.pc_pl=round(self.pl*100/self.tmja,1) if self.mode not in ('mode2','mode1') else np.NaN
-    
-    def resume_indicateurs(self):
-        """
-        procedure complete de calcul des indicateurs agreges
-        """
-        lignes=self.ouvrir_fim()
-        self.params_fim(lignes)
-        liste_lign_titre=self.liste_carac_fichiers(lignes)
-        self.taille_bloc_donnees(lignes,liste_lign_titre)
-        self.isoler_bloc(lignes, liste_lign_titre)
-        self.df_trafic_brut_horaire(liste_lign_titre)
-        self.calcul_indicateurs_horaire()
-        self.calcul_indicateurs_agreges()
         
         
     class fim_TailleBlocDonneesError(Exception):
@@ -924,8 +709,8 @@ class Comptage_cd19(Comptage):
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         #recherche de correspondance
-        corresp_cd19,points_a_inserer_geom=self.corresp_old_new_comptag(bdd, schema_temp,nom_table_temp,table_linearisation_existante,
-                                       schema_graph, table_graph,table_vertex,id_name,table_pr)
+        corresp_cd19=self.corresp_old_new_comptag(bdd, schema_temp,nom_table_temp,table_linearisation_existante,
+                                       schema_graph, table_graph,table_vertex,id_name,table_pr)[0]
         #insertion des correspondance dans la table dediee
         self.insert_bdd(bdd,schema_cpt,'corresp_id_comptag',corresp_cd19[['id_comptag','id_comptag_lin']].rename(columns={'id_comptag':'id_gest','id_comptag_lin':'id_gti'}))
         #ajout de correspondance manuelle (3, à cause de nom de voie notamment) et creation d'un unique opint a insert
@@ -1393,7 +1178,7 @@ class Comptage_cd87(Comptage):
         """
         supprimer dans les listes de fichiers presentes dans le dico, les fihciers qui sont les mm
         """
-        for k,v in self.dico_voie.items() :
+        for v in self.dico_voie.values() :
             for e in v :
                 liste_fichiers=e['fichiers']
                 liste_fichier_dbl=[]
@@ -1468,8 +1253,8 @@ class Comptage_cd87(Comptage):
         """
         ajouter eu dico issu de dico_pt_cptg les données de tmja, pc_pl, date_debut, date_fin
         """
-        for k, v in self.dico_voie.items() : 
-            for i,e in enumerate(v) : 
+        for v in self.dico_voie.values() : 
+            for e in v : 
                 if 'tmja' in e.keys() : #pour pouvoir relancer le traitement sans refaire ce qui estdeja traite
                     print(f"fichier {e['fichiers']} deja traites")
                     continue
@@ -1506,7 +1291,7 @@ class Comptage_cd87(Comptage):
         """
         ajouter eu dico issu de remplir_indicateurs_dico le type de poste selon le nb de fichiers ayant servi à calculer le tmja
         """        
-        for k, v in self.dico_voie.items() : 
+        for v in self.dico_voie.values() : 
             for e in v : 
                 if len(e['fichiers']) > 4 :
                     e['type_poste']='permanent'
@@ -1569,8 +1354,8 @@ class Comptage_cd87(Comptage):
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         #obtenir une cle de correspondace pour les comptages tournants et permanents
-        df_correspondance,points_a_inserer_geom=self.corresp_old_new_comptag(bdd, schema_temp,nom_table_temp,table_linearisation_existante,
-                                        schema_graph, table_graph,table_vertex,id_name,table_pr,table_cpt)
+        df_correspondance=self.corresp_old_new_comptag(bdd, schema_temp,nom_table_temp,table_linearisation_existante,
+                                        schema_graph, table_graph,table_vertex,id_name,table_pr,table_cpt)[0]
         #passer la df de correspondance dans le table corresp_id_comptage
         #verifier si cette clé n'existent pas deja dans la table de correspondance et passer les nouvelles dedans
         rqt_corresp_comptg='select * from comptage.corresp_id_comptag'
@@ -2434,7 +2219,7 @@ class Comptage_GrandDax(Comptage):
         #dates et duree
         def dates_cpt(ligne, donnees_gal_sansNa):
             txt=donnees_gal_sansNa.loc[ligne,'Unnamed: 7'].split()
-            for k, v in dico_mois.items():
+            for v in dico_mois.values():
                 if txt[2] in [a.lower() for a in v if isinstance(a, str)] : 
                     mois=str(v[0])
             return pd.to_datetime('-'.join([txt[1],mois,txt[3]]), dayfirst=True)
@@ -2485,7 +2270,7 @@ class Comptage_GrandDax(Comptage):
     
             # recup des infos de dates
             donnees_gal_sansNa=self.ouvrir_feuille_infos(dossier, fichiers[0])[1]
-            duree_cpt, annee=self.recup_infos(donnees_gal_sansNa, 10, 11)[2:]
+            annee=self.recup_infos(donnees_gal_sansNa, 10, 11)[3]
     
     
             donnees_agregees=[self.recup_donnees_agregees(self.ouvrir_feuille_infos(dossier, f)[1])[6:] for f in fichiers]
@@ -2605,7 +2390,7 @@ class Comptage_Limoges_Metropole(Comptage):
         format_cpt['obs_supl']=f'numero de zone dans fichier geoloc : {num_zone}'
         format_cpt['id_comptag']=f'LimMet-{nom_voie.lower()}-{wgs84_geom_x};{wgs84_geom_y}' if nom_voie else f'LimMet-??-{wgs84_geom_x};{wgs84_geom_y}'
     
-    def simplifier1PtComptage(self,zone_cbl,geom, wgs84_geom_x, wgs84_geom_y, num_zone, type):
+    def simplifier1PtComptage(self,zone_cbl,geom, wgs84_geom_x, wgs84_geom_y, num_zone, typeCpt):
         """
         convertir les données issue de isoler_zone() vers le format des données de la Bdd OTR
         in : 
@@ -2613,7 +2398,7 @@ class Comptage_Limoges_Metropole(Comptage):
            geom : geometry shapely du point
            wgs84_geom_x, wgs84_geom_y : coordonnes en wgs84 arrondi à 10-3,
            num_zone : integer : numero de la zone issu du fichier self.fichier_zone
-           type : string : 'Simple',  'Double', 'DETECTEUR_PC' : issu du type de comptage dans le fichier de Limoge Metropole
+           typeCpt : string : 'Simple',  'Double', 'DETECTEUR_PC' : issu du type de comptage dans le fichier de Limoge Metropole
         """
         def conversion_date(date_deb, date_fin):
             if date_deb and date_fin : 
@@ -2625,7 +2410,7 @@ class Comptage_Limoges_Metropole(Comptage):
             else : 
                 return "pas de date de mesure connues"
             
-        dbl=zone_cbl.loc[zone_cbl['type']==type]
+        dbl=zone_cbl.loc[zone_cbl['type']==typeCpt]
         #gestion duc cas où plusieurs comptages dans l'année
         dbl_max=dbl.loc[dbl['tv_moyjour']==dbl.groupby('annee').tv_moyjour.transform(max)].copy()
         dbl_max['obs']=dbl_max.apply(lambda x : conversion_date(x['date_deb'], x['date_fin']), axis=1)
@@ -2639,7 +2424,7 @@ class Comptage_Limoges_Metropole(Comptage):
         for a in annees:
             format_cpt[f'src_{a}']='Webservice Limoges Metropole'
         #nom de voies
-        nom_voie=zone_cbl.loc[zone_cbl['type']==type].apply(lambda x : x.nom_voie if not pd.isnull(x.nom_voie) else x.position, axis=1).unique()[0]
+        nom_voie=zone_cbl.loc[zone_cbl['type']==typeCpt].apply(lambda x : x.nom_voie if not pd.isnull(x.nom_voie) else x.position, axis=1).unique()[0]
         self.calcul_attributs_commun(format_cpt,geom,nom_voie, wgs84_geom_x, wgs84_geom_y,num_zone )
         #regrouper les années antérieure à 2010 dans une colonne 'autre'
         dico_toutes_annee_autre={a:{'tmja':format_cpt[f'tmja_{a}'].values[0],'pc_pl':format_cpt[f'pc_pl_{a}'].values[0],
