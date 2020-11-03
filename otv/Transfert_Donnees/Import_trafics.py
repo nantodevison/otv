@@ -1496,6 +1496,7 @@ class Comptage_cd16(Comptage):
     
     def donnees_horaires(self, donnees_tmp_filtrees, dossier):
         """
+        A REPRENDRE SUITE A MODIF DE donnees_sources.FIM(object)
         à partir des FIM et du fichier geolocalise des comptages, creer le fichier horaire par pt de comptag
         in : 
             dossier : dosssier contenant les fichers FIM de donnees hoarires

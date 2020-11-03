@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 from datetime import datetime
-import os, statistics
+import os
 
 #tuple avec le type de jours, le nombre de jours associes et les jours (de 0à6)
 tupleParams=(('mja',7,range(7)),('mjo',5,range(5)),('samedi',1,[5]),('dimanche',1,[6]))
@@ -83,11 +83,12 @@ def NombreDeJours(dfHeureTypeSens):
             'nbJours':dfHeureTypeSens.date_heure.dt.dayofyear.nunique(),
             'nbJoursOuvres' : dfHeureTypeSens.loc[dfHeureTypeSens.date_heure.dt.dayofweek.isin(range(5))].date_heure.dt.dayofyear.nunique()}
 
-def semaineMoyenne(dfHeureTypeSens,dicoNbJours):
+def semaineMoyenne(dfHeureTypeSens):
     """
     a partir des donnees pour chaque heure, type de veh et sens, et en fonction du nombre de jours de mesure,
     obtenir un semaine moyenne
     """
+    dicoNbJours=NombreDeJours(dfHeureTypeSens)
     dfMoyenne=dfHeureTypeSens.groupby(['jour','heure','type_veh','sens']).nbVeh.sum().reset_index().merge(dicoNbJours['dfNbJours'],left_on='jour', right_index=True)
     dfMoyenne['nbVeh']=dfMoyenne['nbVeh']/dfMoyenne['nbOcc']
     return dfMoyenne
@@ -335,7 +336,7 @@ class ComptageDonneesIndiv(object):
         dfValide=NettoyageTemps(self.df2SensBase)
         dfHeureTypeSens=GroupeCompletude(dfValide)
         dicoNbJours=NombreDeJours(dfHeureTypeSens)
-        dfMoyenne=semaineMoyenne(dfHeureTypeSens, dicoNbJours)
+        dfMoyenne=semaineMoyenne(dfHeureTypeSens)
         return dfHeureTypeSens,dicoNbJours,dfMoyenne
     
     def graphs(self,typesVeh, typesDonnees, sens):
@@ -362,12 +363,22 @@ class FIM():
         sens_uniq : booleen
         sens_uniq_nb_blocs : si sens_uniq : nb de bloc de donnees
         date_fin
+        dfHeureTypeSens
+        dfHoraire2Sens
+        dfSemaineMoyenne
     """
     def __init__(self, fichier, gest=None):
         self.fichier_fim=fichier
         self.dico_corresp_type_veh={'TV':('1.T','2.','1.'),'VL':('2.V','4.V'),'PL':('3.P','2.P','4.P')}
         self.dico_corresp_type_fichier={'mode3' : ('1.T','3.P'), 'mode4' : ('2.V','2.P','4.V', '4.P'), 'mode2':('2.',), 'mode1' : ('1.',)}
         self.gest=gest
+        lignes=self.ouvrir_fim()
+        self.pas_temporel,self.date_debut,self.mode=self.params_fim(lignes)
+        liste_lign_titre,self.sens_uniq,self.sens_uniq_nb_blocs=self.liste_carac_fichiers(lignes)
+        self.taille_donnees=self.taille_bloc_donnees(lignes,liste_lign_titre)
+        self.isoler_bloc(lignes, liste_lign_titre)
+        self.dfHeureTypeSens,self.dfHoraire2Sens=self.traficsHoraires(liste_lign_titre)
+        self.dfSemaineMoyenne,self.tmja,self.pc_pl, self.pl=self.calcul_indicateurs_agreges()
 
     def ouvrir_fim(self):
         """
@@ -396,18 +407,20 @@ class FIM():
         """
         obtenir les infos générales du fichier : date_debut(anne, mois, jour, heure, minute), mode
         """
-        annee,mois,jour,heure,minute,self.pas_temporel=(int(lignes[0].split('.')[i].strip()) for i in range(5,11))
+        annee,mois,jour,heure,minute,pas_temporel=(int(lignes[0].split('.')[i].strip()) for i in range(5,11))
         #particularite CD16 : l'identifiant route et section est present dans le FIM
         if self.gest=='CD16' : 
             self.section_cp='_'.join([str(int(lignes[0].split('.')[a].strip())) for a in (2,3)])
-        self.date_debut=pd.to_datetime(f'{jour}-{mois}-{annee} {heure}:{minute}', dayfirst=True)
+        date_debut=pd.to_datetime(f'{jour}-{mois}-{annee} {heure}:{minute}', dayfirst=True)
         mode=lignes[0].split()[9]
         if mode in ['4.',] : #correction si le mode est de type 4. sans distinction exlpicite de VL TV PL. porte ouvert à d'autre cas si besoin 
             self.corriger_mode(lignes, mode)
             mode=lignes[0].split()[9]
-        self.mode=[k for k,v in self.dico_corresp_type_fichier.items() if any([e == mode for e in v])][0]
-        if not self.mode : 
+        mode=[k for k,v in self.dico_corresp_type_fichier.items() if any([e == mode for e in v])][0]
+        if not mode : 
             raise self.fim_TypeModeError
+        return pas_temporel,date_debut,mode
+        
 
     def fim_type_veh(self,ligne):
         """
@@ -430,9 +443,9 @@ class FIM():
             if type_veh : 
                 sens=ligne.split('.')[4].strip()
                 liste_lign_titre.append([i, type_veh,sens])
-        self.sens_uniq=True if len(set([e[2] for e in liste_lign_titre]))==1 else False
-        self.sens_uniq_nb_blocs=len(liste_lign_titre) if self.sens_uniq else np.NaN 
-        return liste_lign_titre
+        sens_uniq=True if len(set([e[2] for e in liste_lign_titre]))==1 else False
+        sens_uniq_nb_blocs=len(liste_lign_titre) if sens_uniq else np.NaN 
+        return liste_lign_titre,sens_uniq,sens_uniq_nb_blocs
 
     def taille_bloc_donnees(self,lignes_fichiers,liste_lign_titre) : 
         """
@@ -444,7 +457,8 @@ class FIM():
                            [len(lignes_fichiers)-1-liste_lign_titre[len(liste_lign_titre)-1][0]]))
         if len(taille_donnees)>1 : 
             raise self.fim_TailleBlocDonneesError(taille_donnees)
-        else : self.taille_donnees=taille_donnees[0]
+        else : 
+            return taille_donnees[0]
 
     def isoler_bloc(self,lignes, liste_lign_titre) : 
         """
@@ -457,7 +471,7 @@ class FIM():
                 e.append([sum([int(e) for e in b if e]) for b in [a.split('.') for a in [a.strip() for a in lignes[e[0]+2:e[0]+1+self.taille_donnees]]]])
         return
         
-    def df_trafic_brut_horaire(self,liste_lign_titre):
+    def traficsHoraires(self,liste_lign_titre):
         """
         creer une df des donnes avec un index datetimeindex de freq basee sur le pas temporel et rnvoi la date de fin
         """
@@ -472,104 +486,35 @@ class FIM():
                 self.df_heure_brut=self.df_heure_brut.merge(df, left_index=True, right_index=True)
         self.date_fin=self.df_heure_brut.index.max()
         """
-        self.dfHeureTypeSens=pd.concat([pd.DataFrame({'date_heure':pd.date_range(self.date_debut, periods=len(liste_lign_titre[i][3]), freq=freq),'nbVeh':liste_lign_titre[i][3]})
+        dfHeureTypeSens=pd.concat([pd.DataFrame({'date_heure':pd.date_range(self.date_debut, periods=len(liste_lign_titre[i][3]), freq=freq),'nbVeh':liste_lign_titre[i][3]})
                    .assign(type_veh=liste_lign_titre[i][1].lower(),sens='sens'+liste_lign_titre[i][2].lower()) for i in range(len(liste_lign_titre))],
                   axis=0)
-        self.dfHeureTypeSens['jour']=self.dfHeureTypeSens.date_heure.dt.dayofweek
-        self.fHeureTypeSens['jourAnnee']=self.dfHeureTypeSens.date_heure.dt.dayofyear
-        self.dfHeureTypeSens['heure']=self.dfHeureTypeSens.date_heure.dt.hour
-        self.dfHeureTypeSens['date']=pd.to_datetime(self.dfHeureTypeSens.date_heure.dt.date)
-
-    def calcul_indicateurs_horaire(self):
-        """
-        ajouter le tmja et le nb PL au xdonnes de df_trafic_brut_horaire
-        """
-        self.df_tot_heure=self.df_tot_heure.reset_index().rename(columns={'index':'date'})
-
-        def sommer_trafic_h(dateindex):
-            if not self.sens_uniq : 
-                if self.mode=='mode3' : 
-                    return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens2.values[0],
-                            self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens2.values[0])
-                elif self.mode=='mode4' :
-                    colVL1,colVL2=[e for e in self.df_tot_heure.columns if 'VL' in e][0], [e for e in self.df_tot_heure.columns if 'VL' in e][1]
-                    colPL1,colPL2=[e for e in self.df_tot_heure.columns if 'PL' in e][0], [e for e in self.df_tot_heure.columns if 'PL' in e][1]
-                    return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex][colVL1].values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex][colVL2].values[0]+
-                            self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex][colPL1].values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex][colPL2].values[0],
-                            self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex][colPL1].values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex][colPL2].values[0])
-                elif self.mode=='mode2':
-                    return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens2.values[0],np.NaN)
-                elif self.mode=='mode1':
-                    return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens2.values[0],np.NaN)
-            else : 
-                if self.sens_uniq_nb_blocs==4:
-                    if self.mode=='mode3' : 
-                        return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1_x.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1_y.values[0],
-                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1_x.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1_y.values[0])
-                    elif self.mode=='mode4' :
-                        return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].VL_sens1_x.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].VL_sens1_y.values[0]+
-                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1_x.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1_y.values[0],
-                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1_x.values[0]+self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1_y.values[0])
-                    elif self.mode=='mode2':
-                        return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1_x.values[0]+
-                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1_y.values[0],np.NaN)
-                elif self.sens_uniq_nb_blocs==2:
-                    if self.mode=='mode3' : 
-                        return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1.values[0],
-                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1.values[0])
-                    elif self.mode=='mode4' :
-                        return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].VL_sens1.values[0]+
-                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1.values[0],
-                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].PL_sens1.values[0])
-                    elif self.mode=='mode2':
-                        return (self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1.values[0]+
-                                self.df_tot_heure.loc[self.df_tot_heure['date']==dateindex].TV_sens1.values[0],np.NaN)
-                else : 
-                    raise self.fimNbBlocDonneesError(self.mode)
-                    
-                
-        self.df_tot_heure['tv_tot']=self.df_tot_heure.apply(lambda x : sommer_trafic_h(x.date)[0],axis=1)
-        self.df_tot_heure['pl_tot']=self.df_tot_heure.apply(lambda x : sommer_trafic_h(x.date)[1] if self.mode not in ('mode2','mode1') else
-                                                            np.NaN ,axis=1)
-        self.df_tot_heure['pc_pl_tot']=self.df_tot_heure.apply(lambda x : x['pl_tot']*100/x['tv_tot'] if x['tv_tot']!=0 else 0 if self.mode not in ('mode2','mode1') else
-                                                            np.NaN,axis=1)
-        self.df_tot_heure.set_index('date', inplace=True)
+        dfHeureTypeSens['jour']=dfHeureTypeSens.date_heure.dt.dayofweek
+        dfHeureTypeSens['jourAnnee']=dfHeureTypeSens.date_heure.dt.dayofyear
+        dfHeureTypeSens['heure']=dfHeureTypeSens.date_heure.dt.hour
+        dfHeureTypeSens['date']=pd.to_datetime(dfHeureTypeSens.date_heure.dt.date)
+        dfHoraire2Sens=dfHeureTypeSens.groupby(['date_heure','type_veh','jour','jourAnnee','heure','date']).nbVeh.sum().reset_index()
+        return dfHeureTypeSens,dfHoraire2Sens
 
     def calcul_indicateurs_agreges(self):
         """
         calculer le tmjs, pl et pc_pl pour un fichier
         """
-        #regrouper par jour et calcul des indicateurs finaux
-        self.df_tot_jour=self.df_tot_heure[['tv_tot','pl_tot']].resample('1D').sum() if self.mode not in ('mode2','mode1') else self.df_tot_heure[['tv_tot']].resample('1D').sum()
-        #selon le nombre de jour comptés on prend soit tous les jours sauf les 1ers et derniers, soit on somme les 1ers et derniers
-        #si le nb de jours est inéfrieur à 7 on leve une erreur
-        if len(self.df_tot_jour)<7 : 
-            raise PasAssezMesureError(len(self.df_tot_jour))
-        elif len(self.df_tot_jour) in (7,8) : 
-            traf_list=self.df_tot_jour.tv_tot.tolist()
-            self.tmja=int(statistics.mean([traf_list[0]+traf_list[-1]]+traf_list[1:-1]))
-            pl_list=self.df_tot_jour.pl_tot.tolist() if self.mode not in ('mode2','mode1') else np.NaN
-            self.pl=int(statistics.mean([pl_list[0]+pl_list[-1]]+pl_list[1:-1])) if self.mode not in ('mode2','mode1') else np.NaN
-        else : 
-            self.tmja=int(self.df_tot_jour.iloc[1:-1].tv_tot.mean())
-            self.pl=int(self.df_tot_jour.iloc[1:-1].pl_tot.mean()) if self.mode not in ('mode2','mode1') else np.NaN
-        if self.tmja==0 : 
-            self.pc_pl=0
+        #calcul d'une semaine moyenne
+        dfSemaineMoyenne=semaineMoyenne(NettoyageTemps(self.dfHeureTypeSens))
+        #TMJA
+        if 'tv' in dfSemaineMoyenne.type_veh.unique() : 
+            tmja=round(dfSemaineMoyenne.loc[dfSemaineMoyenne['type_veh']=='tv'].nbVeh.sum()/7,0)
         else :
-            self.pc_pl=round(self.pl*100/self.tmja,1) if self.mode not in ('mode2','mode1') else np.NaN
-    
-    def resume_indicateurs(self):
-        """
-        procedure complete de calcul des indicateurs agreges
-        """
-        lignes=self.ouvrir_fim()
-        self.params_fim(lignes)
-        liste_lign_titre=self.liste_carac_fichiers(lignes)
-        self.taille_bloc_donnees(lignes,liste_lign_titre)
-        self.isoler_bloc(lignes, liste_lign_titre)
-        self.df_trafic_brut_horaire(liste_lign_titre)
-        self.calcul_indicateurs_horaire()
-        self.calcul_indicateurs_agreges()
+            tmja=round(dfSemaineMoyenne.nbVeh.sum()/7,0)
+        #PL & PC_PL
+        if self.mode not in ('mode2','mode1') : 
+            pl=round(dfSemaineMoyenne.loc[dfSemaineMoyenne['type_veh']=='pl'].nbVeh.sum()/7,0)
+            pc_pl=pl/tmja*100
+        else : 
+            pl,pc_pl=np.NaN, np.NaN
+        return dfSemaineMoyenne,tmja,pc_pl, pl
+        
 
       
 class PasAssezMesureError(Exception):
