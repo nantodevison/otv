@@ -9,11 +9,13 @@ Traitementsdes donnes individuelles fournies par a DREAM TEAM en mixtra ou vikin
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from datetime import datetime
 import os
 
 #tuple avec le type de jours, le nombre de jours associes et les jours (de 0à6)
-tupleParams=(('mja',7,range(7)),('mjo',5,range(5)),('samedi',1,[5]),('dimanche',1,[6]))
+tupleParams=(('mja',7,range(7)),('mjo',5,range(5)),('lundi',1,[0]), ('mardi',1,[1]), ('mercredi',1,[2]),('jeudi',1,[3]),('vendredi',1,[4]),('samedi',1,[5]),('dimanche',1,[6]))
 
 def NettoyageTemps(dfVehiculesValides):
     """
@@ -43,12 +45,15 @@ def NettoyageTemps(dfVehiculesValides):
         raise PasAssezMesureError(nbJours)
     return dfValide
 
-def GroupeCompletude(dfValide):
+def GroupeCompletude(dfValide, vitesse=False):
     """
     Pour les donnees individuelles uniquement
     a partir des donnees nettoyees sur le temps, regouper les donnees par tranche horaire, type et sens 
     in : 
         dfValide : df nettoyees avec les attributs date_heure, nbVeh et sens, cf fonction NettoyageTemps()
+        vitese : booelean : traduit si les donnees de vitesse doivent etre associees ou non
+    out : 
+        dfHeureTypeSens : df avec attribut date_heure, type_veh, sens, nbVeh et si vitesse : V10, V50, V85
     """
     dfGroupTypeHeure=dfValide.set_index('date_heure').groupby([pd.Grouper(freq='1H'),'type_veh','sens'])['nbVeh'].count().reset_index().sort_values('date_heure')
     #completude des données
@@ -68,6 +73,13 @@ def GroupeCompletude(dfValide):
     dfHeureTypeSens=pd.concat([dfHeureTypeSens.groupby(['date_heure','sens']).agg({'nbVeh':'sum','heure':lambda x : x.unique()[0], 
                         'jour':lambda x : x.unique()[0],'jourAnnee':lambda x : x.unique()[0],'date':lambda x : x.unique()[0]}
                         ).assign(type_veh='tv').reset_index(),dfHeureTypeSens], axis=0, sort=False).sort_values(['date_heure', 'type_veh'])
+    if vitesse : 
+        dfGroupVtsHeure=dfValide.set_index('date_heure').groupby([pd.Grouper(freq='1H'),'sens']).agg(
+            **{'v10': pd.NamedAgg(column='vitesse',aggfunc=lambda x : np.percentile(x,10)),
+               'v50': pd.NamedAgg(column='vitesse',aggfunc=lambda x : np.percentile(x,50)),
+               'v85': pd.NamedAgg(column='vitesse',aggfunc=lambda x : np.percentile(x,85))}).reset_index().sort_values('date_heure')
+        dfHeureTypeSens=dfHeureTypeSens.merge(dfGroupVtsHeure, on=['date_heure','sens'],how='left')
+        
     return dfHeureTypeSens
 
 def NombreDeJours(dfHeureTypeSens):
@@ -83,17 +95,21 @@ def NombreDeJours(dfHeureTypeSens):
             'nbJours':dfHeureTypeSens.date_heure.dt.dayofyear.nunique(),
             'nbJoursOuvres' : dfHeureTypeSens.loc[dfHeureTypeSens.date_heure.dt.dayofweek.isin(range(5))].date_heure.dt.dayofyear.nunique()}
 
-def semaineMoyenne(dfHeureTypeSens):
+def semaineMoyenne(dfHeureTypeSens, vitesse=False):
     """
     a partir des donnees pour chaque heure, type de veh et sens, et en fonction du nombre de jours de mesure,
     obtenir un semaine moyenne
     """
     dicoNbJours=NombreDeJours(dfHeureTypeSens)
-    dfMoyenne=dfHeureTypeSens.groupby(['jour','heure','type_veh','sens']).nbVeh.sum().reset_index().merge(dicoNbJours['dfNbJours'],left_on='jour', right_index=True)
+    dfMoyenne=dfHeureTypeSens.groupby(['jour','heure','type_veh','sens']).nbVeh.sum().reset_index().merge(dicoNbJours['dfNbJours'],left_on='jour', right_index=True)#bon là je pense qu'on peut remplacer ça et la ligne en dessous par nbVeh.mean(). a verifier
     dfMoyenne['nbVeh']=dfMoyenne['nbVeh']/dfMoyenne['nbOcc']
+    if vitesse : 
+        dfVitesseMoyenne=dfHeureTypeSens.groupby(['jour','heure','sens']).agg({'v10':lambda x : x.quantile(0.5),'v50':lambda x : x.quantile(0.5) ,
+                                                                       'v85':lambda x : x.quantile(0.5) }).reset_index()
+        dfMoyenne=dfMoyenne.merge(dfVitesseMoyenne, on=['jour','heure','sens'], how='left')
     return dfMoyenne
     
-def IndicsGraphs(dfMoyenne, typesVeh, typesDonnees, sens):
+def IndicsGraphs(dfMoyenne, typesVeh, typesDonnees='all', sens='all', typeSource='indiv', vitesse=False):
     """
     fonction de creation des donnes tabulees et graphs de rendu des donnes de trafic
     in :
@@ -106,52 +122,42 @@ def IndicsGraphs(dfMoyenne, typesVeh, typesDonnees, sens):
                      (exemple : pour avoir les données en mja, pour les 2sens : dico['mja']['2sens']['donnees']
     """
     dicoHoraire={e[0]:{'nbJour':e[1],'listJours':e[2] } for e in tupleParams}
-    dicoJournalier={e[0]:{'nbJour':e[1],'listJours':e[2] } for e in tupleParams}
+    dicoJournalier={e[0]:{'nbJour':e[1],'listJours':e[2] } for e in tupleParams if e[0] in ('mja','mjo')}
+    #generralisation si all : 
+    sens=dfMoyenne.sens.unique() if sens=='all' else sens
+    typesDonnees=dicoHoraire.keys() if typesDonnees=='all' else typesDonnees
+    
     
     #calcul des donnees
     for t in  typesDonnees : 
         for s in sens :
             dicoHoraire[t][s]={}
-            dicoHoraire[t][s]['donnees']=round((dfMoyenne.loc[(dfMoyenne.jour.isin(dicoHoraire[t]['listJours'])) &
-                                        (dfMoyenne.type_veh.isin(typesVeh))].groupby(['heure','type_veh','sens']).
-                                         nbVeh.sum()/dicoHoraire[t]['nbJour']),0).reset_index() if s=='2sens' else round((
-                                        dfMoyenne.loc[(dfMoyenne.jour.isin(dicoHoraire[t]['listJours'])) &
-                                        (dfMoyenne.type_veh.isin(typesVeh)) & (dfMoyenne.sens==s)
-                                        ].groupby(['heure','type_veh','sens']).
-                                         nbVeh.sum()/dicoHoraire[t]['nbJour']),0).reset_index()
-            dicoHoraire[t][s]['graph']=px.line(dicoHoraire[t][s]['donnees'].loc[dicoHoraire[t][s]['donnees'].type_veh.isin(typesVeh)].groupby(
-                                       ['heure','type_veh']).sum().reset_index(),x='heure', y='nbVeh', color='type_veh',
-                                       title=f'Evolution horaire moyenne {t} {s}') if s=='2sens' else px.line(
-                         dicoHoraire[t][s]['donnees'].loc[(dicoHoraire[t][s]['donnees'].type_veh.isin(typesVeh)) & 
-                         (dicoHoraire[t][s]['donnees'].sens==s)].groupby(['heure','type_veh']).sum().reset_index(),
-                         x='heure', y='nbVeh', color='type_veh')
-            
-            dicoJournalier[t][s]={}
-            dicoJournalier[t][s]['donnees']=round(dfMoyenne.loc[(dfMoyenne.jour.isin(dicoHoraire[t]['listJours'])) & 
-                                            (dfMoyenne.type_veh.isin(typesVeh))].groupby(['jour','type_veh','sens']).nbVeh.sum(),0
-                            ).reset_index() if s=='2sens' else round(dfMoyenne.loc[(dfMoyenne.jour.isin(dicoHoraire[t]['listJours'])) 
-                                             & (dfMoyenne.sens==s) & (dfMoyenne.type_veh.isin(typesVeh))].groupby(
-                                                 ['jour','type_veh','sens']).nbVeh.sum(),0).reset_index()
-            dicoJournalier[t][s]['donnees'].sort_values(['jour'], inplace=True)
-            dicoJournalier[t][s]['donnees']['jour']=dicoJournalier[t][s]['donnees']['jour'].replace(
-                {0:'lundi', 1:'mardi', 2:'mercredi', 3:'jeudi',4:'vendredi',5:'samedi',6:'dimanche'}) 
-            dicoJournalier[t][s]['graph']=px.bar(dicoJournalier[t][s]['donnees'].loc[dicoJournalier[t][s]['donnees'].type_veh.
-                                          isin(typesVeh)].groupby(['jour','type_veh']).nbVeh.sum().reset_index(),x="jour", 
-                                          y="nbVeh", color="type_veh", barmode="group") if s=='2sens' else px.bar(
-                                          dicoJournalier[t][s]['donnees'].loc[(dicoJournalier[t][s]['donnees'].type_veh.
-                                           isin(typesVeh)) & (dicoJournalier[t][s]['donnees'].sens==s)],x="jour", 
-                                          y="nbVeh", color="type_veh", barmode="group")
-            
-            if s=='2sens' : 
-                dicoJournalier[t]['compSens']={}
-                dicoJournalier[t]['compSens']['donnees']=round((dfMoyenne.loc[(dfMoyenne.jour.isin(dicoHoraire[t]['listJours'])) & (dfMoyenne.type_veh.isin(typesVeh))
-                    ].groupby(['jour','sens']).nbVeh.sum()),0).reset_index()
-                dicoJournalier[t]['compSens']['donnees'].sort_values('jour', inplace=True)
-                dicoJournalier[t]['compSens']['donnees']['jour']=dicoJournalier[t]['compSens']['donnees']['jour'].replace(
+            dicoHoraire[t][s]=round((dfMoyenne.loc[(dfMoyenne.jour.isin(dicoHoraire[t]['listJours'])) &
+                                            (dfMoyenne.type_veh.isin(typesVeh))].groupby(['heure','type_veh','sens']).
+                                             nbVeh.sum()/dicoHoraire[t]['nbJour']),0).reset_index() if s=='2sens' else round((
+                                            dfMoyenne.loc[(dfMoyenne.jour.isin(dicoHoraire[t]['listJours'])) &
+                                            (dfMoyenne.type_veh.isin(typesVeh)) & (dfMoyenne.sens==s)
+                                            ].groupby(['heure','type_veh','sens']).
+                                             nbVeh.sum()/dicoHoraire[t]['nbJour']),0).reset_index()            
+                
+            if t == 'mja' :
+                dicoJournalier[t][s]={}
+                dicoJournalier[t][s]=round(dfMoyenne.loc[(dfMoyenne.jour.isin(dicoHoraire[t]['listJours'])) & 
+                                                (dfMoyenne.type_veh.isin(typesVeh))].groupby(['jour','type_veh','sens']).nbVeh.sum(),0
+                                ).reset_index() if s=='2sens' else round(dfMoyenne.loc[(dfMoyenne.jour.isin(dicoHoraire[t]['listJours'])) 
+                                                 & (dfMoyenne.sens==s) & (dfMoyenne.type_veh.isin(typesVeh))].groupby(
+                                                     ['jour','type_veh','sens']).nbVeh.sum(),0).reset_index()
+                dicoJournalier[t][s].sort_values(['jour'], inplace=True)
+                dicoJournalier[t][s]['jour']=dicoJournalier[t][s]['jour'].replace(
                     {0:'lundi', 1:'mardi', 2:'mercredi', 3:'jeudi',4:'vendredi',5:'samedi',6:'dimanche'}) 
-                dicoJournalier[t]['compSens']['graph']=px.bar(dicoJournalier[t]['compSens']['donnees'],
-                                                              x="jour", y="nbVeh", color="sens", barmode="group",
-                                                              title=f' Comparaison des sens ; {t}')              
+                
+                if s=='2sens' : 
+                    dicoJournalier[t]['compSens']={}
+                    dicoJournalier[t]['compSens']=round((dfMoyenne.loc[(dfMoyenne.jour.isin(dicoHoraire[t]['listJours'])) & (dfMoyenne.type_veh.isin(typesVeh))
+                        ].groupby(['jour','sens']).nbVeh.sum()),0).reset_index()
+                    dicoJournalier[t]['compSens'].sort_values('jour', inplace=True)
+                    dicoJournalier[t]['compSens']['jour']=dicoJournalier[t]['compSens']['jour'].replace(
+                        {0:'lundi', 1:'mardi', 2:'mercredi', 3:'jeudi',4:'vendredi',5:'samedi',6:'dimanche'})             
     return dicoHoraire, dicoJournalier
 
 def IndicsPeriodes(dfMoyenne):
@@ -192,6 +198,8 @@ class Mixtra(object):
         in : 
             listFichiersSens1 : la liste des fcihiers utilisé pour le sens 1
             listFichiersSens 2 : la liste des fcihiers utilisés pour le sens 2
+        attributs : 
+            dfFichier : dataframe de sortie, une ligne par veh
         '''
         self.fichier=fichier
         self.dfFichier=self.NettoyageDonnees(self.ouvrirFichier())
@@ -226,7 +234,7 @@ class Mixtra(object):
         dfVehiculesValides['date_heure']=pd.to_datetime(dfVehiculesValides['Horodate de passage']+':'+dfVehiculesValides['Seconde'].
                                                         astype(int).astype(str)+'.'+dfVehiculesValides['Centième'].astype(int).astype(str), dayfirst=True)
         dfVehiculesValides['type_veh']=dfVehiculesValides.Silhouette.apply(lambda x : type_vehicule(x))
-        dfVehiculesValides.rename(columns={'Véhicule Valide':'nbVeh'}, inplace=True)
+        dfVehiculesValides.rename(columns={'Véhicule Valide':'nbVeh','Vitesse (km/h)':'vitesse'}, inplace=True)
         return dfVehiculesValides      
         
 class Viking(object):
@@ -241,6 +249,12 @@ class Viking(object):
         Constructor
         in : 
             fichier : raw string du fcihiers utilisé
+        attributs : 
+            fichier
+            dfFichier : dataframe de sortie, une ligne par veh
+            anneeDeb
+            moisDeb
+            jourDeb
         '''
         self.fichier=fichier
         self.dfFichier, self.anneeDeb,self.moisDeb,self.jourDeb=self.ouvrirFichier()
@@ -273,22 +287,28 @@ class Viking(object):
                             x['jour'],x['heureMin'],x['secCent']), axis=1)
         self.dfFichier['type_veh']=self.dfFichier['type_veh'].str.lower()
         self.dfFichier['nbVeh']=1
+        self.dfFichier['vitesse']=self.dfFichier.vts.str[2:].astype(int)
             
 class ComptageDonneesIndiv(object):
     """
     a partir de données individuelles de sens 1 et parfois sens 2, creer les donnees 2 sens
     ces donnees indiv peuvent etre issue que de Mixtra ou que de Viking ou de melange
     """
-    def __init__(self,dossier):
+    def __init__(self,dossier, vitesse=False):
         """
-        en entree on attend une ou deux dfavec le mm format, issus des classes Viking ou Mixtr
+        in : 
+           dossier : raw string du dossier qui conteint les données individuelles 
+           vitesse : boolean : traiter ou non les vitesse
         atributs : 
             dossier : raw string de l'emplacement du dossier
+            vitesse : boolean : traiter ou non les vitesse
             df2SensBase : df des passages d echaque vehicule poyr les 2 sens avec horodatage et type_veh
             dfHeureTypeSens : regrouepement des passages par heure, type de vehicule et sens cf GroupeCompletude()
             dicoNbJours : dictionnaire caracterisant les nombr de jours par type sur la periode de dcomptage, cf NombreDeJours()a
+            dfMoyenne : dataframe horaire moyenne par jour (contient les 7 jours de la semaine avec 24 h par jour)
         """
         self.dossier=dossier
+        self.vitesse=vitesse
         self.df2SensBase= self.dfSens(*self.analyseSensFichiers())
         self.dfHeureTypeSens,self.dicoNbJours,self.dfMoyenne=self.MettreEnFormeDonnees()
     
@@ -315,16 +335,17 @@ class ComptageDonneesIndiv(object):
             listFichiersSens2 : list de chemin en raw string
         """
         listDfSens1,listDfSens2=[],[]
+        listAttributs=['date_heure','nbVeh','type_veh'] if not self.vitesse else ['date_heure','nbVeh','type_veh','vitesse'] 
         for f in listFichiersSens1 : 
             if f.lower().endswith('.xls') : 
-                listDfSens1.append(Mixtra(f).dfFichier[['date_heure','nbVeh','type_veh']])
+                listDfSens1.append(Mixtra(f).dfFichier[listAttributs])
             elif f.lower().endswith('.vik') :
-                listDfSens1.append(Viking(f).dfFichier[['date_heure','nbVeh','type_veh']])
+                listDfSens1.append(Viking(f).dfFichier[listAttributs])
         for f in listFichiersSens2 : 
             if f.lower().endswith('.xls') : 
-                listDfSens2.append(Mixtra(f).dfFichier[['date_heure','nbVeh','type_veh']])
+                listDfSens2.append(Mixtra(f).dfFichier[listAttributs])
             elif f.lower().endswith('.vik') :
-                listDfSens2.append(Viking(f).dfFichier[['date_heure','nbVeh','type_veh']])
+                listDfSens2.append(Viking(f).dfFichier[listAttributs])
         return pd.concat([pd.concat(listDfSens1, axis=0).assign(sens='sens1'),pd.concat(listDfSens2, axis=0).assign(sens='sens2')], axis=0)
         
     def MettreEnFormeDonnees(self):
@@ -334,16 +355,67 @@ class ComptageDonneesIndiv(object):
         """
         
         dfValide=NettoyageTemps(self.df2SensBase)
-        dfHeureTypeSens=GroupeCompletude(dfValide)
+        dfHeureTypeSens=GroupeCompletude(dfValide,self.vitesse)
         dicoNbJours=NombreDeJours(dfHeureTypeSens)
-        dfMoyenne=semaineMoyenne(dfHeureTypeSens)
+        dfMoyenne=semaineMoyenne(dfHeureTypeSens,self.vitesse)
         return dfHeureTypeSens,dicoNbJours,dfMoyenne
     
-    def graphs(self,typesVeh, typesDonnees, sens):
+    def graphsSynthese(self,typesVeh, typesDonnees='all', sens='all'):
         """
         creer les graphs pour visu
         """
         self.dicoHoraire,self.dicoJournalier=IndicsGraphs(self.dfMoyenne,typesVeh,typesDonnees,sens)
+        figSyntheses = make_subplots(rows=5, cols=1,subplot_titles=('évolutions horaires moyenne Jours Ouvrable','évolution moyenne des vitesses sens 1',
+                                                   'évolution moyenne des vitesses sens 2','évolution journaliere moyenne', 'comparaison des sens de circulation'))
+        for t in typesVeh :
+            donnees=self.dicoHoraire['mjo']['2sens'].loc[self.dicoHoraire['mjo']['2sens'].type_veh==t].groupby( ['heure','type_veh']).sum().reset_index()
+            figSyntheses.add_trace(go.Bar(x=donnees.heure,y=donnees.nbVeh, name=t), row=1, col=1)
+        for v in ('v10','v50','v85') : 
+            vts=self.dfMoyenne.loc[(self.dfMoyenne.jour.isin(self.dicoHoraire['mja']['listJours'])) & (self.dfMoyenne.sens=='sens1')
+               ].groupby(['heure','sens'])[v].mean().reset_index()
+            figSyntheses.add_trace(go.Scatter(x=vts['heure'], y=vts[v], name=v),row=2, col=1)
+        for v in ('v10','v50','v85') : 
+            vts=self.dfMoyenne.loc[(self.dfMoyenne.jour.isin(self.dicoHoraire['mja']['listJours'])) & (self.dfMoyenne.sens=='sens2')
+               ].groupby(['heure','sens'])[v].mean().reset_index()
+            figSyntheses.add_trace(go.Scatter(x=vts['heure'], y=vts[v], name=v),row=3, col=1)
+        for t in typesVeh :
+            donnees=self.dicoJournalier['mja']['2sens'].loc[self.dicoJournalier['mja']['2sens'].type_veh==t].groupby(['jour','type_veh']).nbVeh.sum().reset_index()
+            figSyntheses.add_trace(go.Bar(x=donnees.jour,y=donnees.nbVeh, name=t), row=4, col=1)
+        for s in ['sens1','sens2'] :
+            donnees=self.dicoJournalier['mja']['compSens'].loc[self.dicoJournalier['mja']['compSens'].sens==s]
+            figSyntheses.add_trace(go.Bar(x=donnees.jour,y=donnees.nbVeh, name=s), row=5, col=1)
+        figSyntheses.update_layout(height=2000, width=1500,title_text="Données synthétiques")
+        
+        FigJournaliere = make_subplots(rows=7, cols=2, specs=[[{"secondary_y": True},{"secondary_y": True}],[{"secondary_y": True},{"secondary_y": True}],[{"secondary_y": True},{"secondary_y": True}],[{"secondary_y": True},{"secondary_y": True}],
+                   [{"secondary_y": True},{"secondary_y": True}],[{"secondary_y": True},{"secondary_y": True}],[{"secondary_y": True},{"secondary_y": True}]],
+                   subplot_titles=[j+' '+s for j in ('lundi', 'mardi', 'mercredi', 'jeudi','vendredi','samedi','dimanche') for s in ('sens 1','sens 2')],
+                   horizontal_spacing=0.05,
+                   vertical_spacing =0.05)
+        #donnees
+        data=self.dfMoyenne[['jour','heure','sens','v85']].drop_duplicates()
+        #ajout des differents cas : pour chaque jour et cahque sens
+        for i in range(7) :
+            for j in range(1,3) : 
+                traf=self.dfMoyenne.loc[(self.dfMoyenne.jour==i) & (self.dfMoyenne.sens==f'sens{j}') & (self.dfMoyenne.type_veh.isin(('vl','pl','2r')))][['jour','heure','sens','type_veh','nbVeh']]
+                data_j=data.loc[(data.jour==i) & (data.sens==f'sens{j}')]
+                fig1 = px.line(data_j,x='heure', y='v85')
+                fig2 = px.bar(traf,x='heure', y='nbVeh', color='type_veh',barmode='group' )
+                f1,f2, f3, f4=fig1['data'][0],fig2['data'][0],fig2['data'][1],fig2['data'][2]
+                if i!=0 or j!=1 : 
+                    f2.showlegend=False  
+                    f3.showlegend=False 
+                    f4.showlegend=False 
+                FigJournaliere.add_trace(f1, row=i+1, col=j,secondary_y=True)
+                FigJournaliere.add_trace(f2, row=i+1, col=j)
+                FigJournaliere.add_trace(f3, row=i+1, col=j)
+                FigJournaliere.add_trace(f4, row=i+1, col=j)
+                FigJournaliere.update_xaxes(title_text="heure", row=i, col=j)
+        FigJournaliere.update_layout(height=3000, width=1500,title_text="Données journalieres")
+        FigJournaliere.add_annotation(xref="x domain",yref="y domain",x=0.0, y=1, text="Nombre de Veh",arrowhead=2)
+        FigJournaliere.add_annotation(xref="x domain",yref="y domain",x=1, y=1, text="vitesse", arrowhead=2)
+        
+        return figSyntheses, FigJournaliere
+        
 
 class FIM():
     """
