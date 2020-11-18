@@ -102,7 +102,7 @@ class Comptage():
             list_type_poste='\',\''.join(type_poste)
             rqt=f"""select * from {schema}.{table} where dep='{dep}' and type_poste in ('{list_type_poste}') and gestionnai='{gest}'"""
         with ct.ConnexionBdd(bdd) as c:
-            self.existant=gp.GeoDataFrame.from_postgis(rqt, c.sqlAlchemyConn, geom_col='geom',crs={'init': 'epsg:2154'})
+            self.existant=gp.GeoDataFrame.from_postgis(rqt, c.sqlAlchemyConn, geom_col='geom',crs='epsg:2154')
     
     def corresp_nom_id_comptag(self,bdd,df):
         """
@@ -1738,17 +1738,33 @@ class Comptage_cd24(Comptage):
         donnees_traitees.rename(columns={'Data':'route', 'PRC':'pr', 'ABC':'abs'}, inplace=True)
         gdf_finale = gp.GeoDataFrame(donnees_traitees, geometry=gp.points_from_xy(donnees_traitees.Longitude, donnees_traitees.Latitude), crs='epsg:4326')
         gdf_finale=gdf_finale.to_crs('epsg:2154')
-        gdf_finale['type_poste']='permanent'
+        gdf_finale['type_poste']=gdf_finale.apply(lambda x : 'permanent' if x['Type'].lower()=='per' else 'tournant', axis=1)
         gdf_finale['geometry']=gdf_finale.apply(lambda x : 0 if x['Latitude']==0 else x['geometry'], axis=1)
-        gdf_finale['src']=f'tableau cpt permanent {str(self.annee)}'
+        gdf_finale['src']=f'tableau export SIG {str(self.annee)}'
         gdf_finale['fichier']=self.fichier
+        gdf_finale.loc[gdf_finale.type_poste=='tournant','obs']=gdf_finale.apply(lambda x : f'{x.DDPeriode1}-{x.DFPeriode1} ; {x.DDPeriode2}-{x.DFPeriode2} ; {x.DDPeriode3}-{x.DFPeriode3} ; {x.DDPeriode4}-{x.DFPeriode4}', axis=1)
         return gdf_finale
     
     def comptage_forme(self):
         donnees_finales=self.cpt_perm_csv()
-        donnees_mens=donnees_finales[[a for a in donnees_finales.columns if a in [m for e in dico_mois.values() for m in e]]+['id_comptag']].copy()
-        donnees_mens.rename(columns={c:k for c in donnees_mens.columns if c!='id_comptag' for k, v in dico_mois.items() if c in v}, inplace=True)
-        donnees_mens['donnees_type']='tmja'
+        #mensuel permanent
+        donnees_mens_perm=donnees_finales.loc[donnees_finales.type_poste=='permanent'][[a for a in donnees_finales.columns if a in [m for e in dico_mois.values() for m in e]]+['id_comptag']].copy()
+        donnees_mens_perm.rename(columns={c:k for c in donnees_mens_perm.columns if c!='id_comptag' for k, v in dico_mois.items() if c in v}, inplace=True)
+        donnees_mens_perm['donnees_type']='tmja'
+        #mensuel tournant
+        donnees_mens_tour=pd.DataFrame({'id_comptag':[],'donnees_type':[]})
+        for j,e in enumerate(donnees_finales.loc[donnees_finales.type_poste=='tournant'].itertuples()) : 
+            for  i in range(1,5):
+                mois=[k for k, v in dico_mois.items() if v[0]==Counter(pd.date_range(pd.to_datetime(getattr(e,f'DDPeriode{i}'), dayfirst=True)
+                                                        ,pd.to_datetime(getattr(e,f'DDPeriode{i}'), dayfirst=True)).month).most_common()[0][0]][0]
+                donnees_mens_tour.loc[j,mois]=getattr(e,f'MJP{i}')
+                donnees_mens_tour.loc[j,'donnees_type']='tmja'
+                donnees_mens_tour.loc[j+1000,mois]=getattr(e,f'MJPPL{i}')
+                donnees_mens_tour.loc[j,'id_comptag']=getattr(e,f'id_comptag')
+                donnees_mens_tour.loc[j+1000,'id_comptag']=getattr(e,f'id_comptag')
+                donnees_mens_tour.loc[j+1000,'donnees_type']='pc_pl'
+        #global        
+        donnees_mens=pd.concat([donnees_mens_tour,donnees_mens_perm],axis=0).reset_index(drop=True)
         donnees_mens['annee']=str(self.annee)
         donnees_finales=donnees_finales[['id_comptag', 'tmja', 'pc_pl','route', 'pr', 'abs','src', 'geometry', 'type_poste', 'fichier']].copy()
         self.df_attr=donnees_finales
