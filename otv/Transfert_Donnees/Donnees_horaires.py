@@ -22,7 +22,7 @@ dicoFerieVacance={'2019':pd.to_datetime(vacances_2019+[pd.to_datetime(a) for a i
 
 def statsHoraires(df_horaire,attributHeure, typeVeh,typeJour='semaine'):
     """
-    Calculer qq stats � partir d'une df des donn�es horaires formatt�e comme dans la Bdd  
+    Calculer qq stats a  partir d'une df des donnees horaires formattee  comme dans la Bdd  
     in : 
         attributHeure : nom de l'heuer a verifier, a coorlere avec les noms de colonne dans la bdd horaires
         typeVeh : type de vehiicules, 'PL', 'TV', 'VL'
@@ -57,9 +57,9 @@ def verifValiditeFichier(dfHoraireFichier):
 
 def correctionHoraire(df_horaire):
     """
-    corriger une df horaire en passant à-99 les valeurs qui semble non correl�es avec le reste des valeusr
+    corriger une df horaire en passant à-99 les valeurs qui semble non correlees avec le reste des valeusr
     """
-    #corriger les valuers inf�rieures � moyenne-2*ecart_type
+    #corriger les valuers inferieures  a moyenne-2*ecart_type
     for attributHeure, typeVeh, typeJour in [e+s for e in [(h,t) for h in [f'h{i}_{i+1}' for i in range (24)]
                                                            for t in ('VL','PL')] for s in (('semaine',), ('we',))] :
         plageMinSemaine=statsHoraires(df_horaire,attributHeure, typeVeh, typeJour)[3]
