@@ -28,36 +28,7 @@ dico_mois={'janv':[1,'Janv','Janvier'], 'fevr':[2,'Fév','Février','févr','Fev
            'juil':[7,'Juill','Juillet', 'juil'], 'aout':[8,'Août','Aout'], 'sept':[9,'Sept','Septembre'], 'octo':[10,'Oct','Octobre'], 'nove':[11,'Nov','Novembre'], 'dece':[12,'Déc','Décembre','Decembre']}
 
 
-class Donnees_Indiv_Mixtra():
-    """
-    les mixtras fournissent des donnees individuelles par sens
-    """
-
-
-        
-        
-    class fim_TailleBlocDonneesError(Exception):
-        """
-        Exception levee si la taile des blocs de donnees entre fichiers fim, varie
-        """     
-        def __init__(self, taille_donnees):
-            Exception.__init__(self,f'taille multiple de blocs de donnees dans le fichier : {taille_donnees} ')
-
-    class fim_TypeModeError(Exception):
-        """
-        Exception levee si le mode n'a pas pu etre detreminé
-        """     
-        def __init__(self):
-            Exception.__init__(self,f'le mode n\'est pas reconnu, cf focntion params_fim()')
-
     
-    class fimNbBlocDonneesError(Exception):
-        """
-        Exception levee si le  nb de blocs du fihchier est égal à 1
-        """     
-        def __init__(self, mode):
-            Exception.__init__(self,f'le fichier ne comporte qu\'un seul bloc en mode {mode} ')
-            
                   
 class Comptage():
     """
@@ -77,13 +48,14 @@ class Comptage():
             df.replace('', np.NaN, inplace=True)
         return  df
    
-    def comptag_existant_bdd(self,bdd, table, schema='comptage',dep=False, type_poste=False, gest=False):
+    def comptag_existant_bdd(self,bdd, table, schema='comptage',localisation='boulot',dep=False, type_poste=False, gest=False):
         """
         recupérer les comptages existants dans une df
         en entree : 
             bdd : string selon le fichier 'Id_connexions' du Projet Outils
             table : string : nom de la table
             schema : string : nom du schema
+            localisation : raccourci pour modif des chemins relatifs aux Id de connexions
             dep : string, code du deprtament sur 2 lettres
             type_poste : string ou list de string: type de poste dans 'permanent', 'tournant', 'ponctuel'
         en sortie : 
@@ -101,19 +73,20 @@ class Comptage():
         elif dep and isinstance(type_poste, list) and gest : 
             list_type_poste='\',\''.join(type_poste)
             rqt=f"""select * from {schema}.{table} where dep='{dep}' and type_poste in ('{list_type_poste}') and gestionnai='{gest}'"""
-        with ct.ConnexionBdd(bdd) as c:
+        with ct.ConnexionBdd(bdd,localisation) as c:
             self.existant=gp.GeoDataFrame.from_postgis(rqt, c.sqlAlchemyConn, geom_col='geom',crs='epsg:2154')
     
-    def corresp_nom_id_comptag(self,bdd,df):
+    def corresp_nom_id_comptag(self,bdd,df,localisation='boulot'):
         """
         pour les id_comptag dont on sait que les noms gti et gestionnaire diffèrent mais que ce sont les memes (cf table comptage.corresp_id_comptag), 
         on remplace le nom gest par le nom_gti, pour pouvoir faire des jointure ensuite
         in : 
             bdd :  string : l'identifiant de la Bdd pour recuperer la table de correspondance
             df : dataframe des comptage du gest. attention doit contenir l'attribut 'id_comptag', ene général prendre df_attr
+            localisation : raccourci pour modif des chemins relatifs aux Id de connexions
         """
         rqt_corresp_comptg='select * from comptage.corresp_id_comptag'
-        with ct.ConnexionBdd(bdd) as c:
+        with ct.ConnexionBdd(bdd,localisation) as c:
             corresp_comptg=pd.read_sql(rqt_corresp_comptg, c.sqlAlchemyConn)
         df['id_comptag']=df.apply(lambda x : corresp_comptg.loc[corresp_comptg['id_gest']==x['id_comptag']].id_gti.values[0] 
                                                     if x['id_comptag'] in corresp_comptg.id_gest.tolist() else x['id_comptag'], axis=1)
@@ -308,7 +281,7 @@ class Comptage():
                                for elem in zip(*[df[a].tolist() for a in liste_attr])]))[1:-1]
         return valeurs_txt
     
-    def update_bdd(self,bdd, schema, table, valeurs_txt,dico_attr_modif,filtre=None):
+    def update_bdd(self,bdd, schema, table, valeurs_txt,dico_attr_modif,filtre=None, localisation=('boulot')):
         """
         mise à jour des id_comptag deja presents dans la base
         en entree : 
@@ -325,7 +298,7 @@ class Comptage():
         rqt_base=f'update {schema}.{table}  as c set {rqt_attr} from (values {valeurs_txt}) as v(id_comptag,{attr_fichier}) where v.id_comptag=c.id_comptag'
         if filtre : 
             rqt_base=rqt_base+f' and {filtre}'
-        with ct.ConnexionBdd(bdd) as c:
+        with ct.ConnexionBdd(bdd, localisation) as c:
                 c.sqlAlchemyConn.execute(rqt_base)
 
     def insert_bdd(self,bdd, schema, table, df):
@@ -428,6 +401,7 @@ class Comptage_cd17(Comptage) :
     def __init__(self,fichier, type_fichier, annee):
         Comptage.__init__(self, fichier)
         self.annee=annee
+        self.fichier=fichier
         self.liste_type_fichier=['brochure_pdf', 'permanent_csv','tournant_xls_bochure','ponctuel_xls_bochure']
         if type_fichier in self.liste_type_fichier :
             self.type_fichier=type_fichier#pour plus tard pouvoir différencier les fichiers de comptage tournant / permanents des brochures pdf
@@ -547,6 +521,7 @@ class Comptage_cd17(Comptage) :
         fichier_filtre['tmja_'+str(self.annee)]=fichier_filtre['tmja_'+str(self.annee)].apply(lambda x : int(x))
         fichier_filtre['pc_pl_'+str(self.annee)]=fichier_filtre['pc_pl_'+str(self.annee)].apply(lambda x : float(x.strip().replace(',','.')))
         fichier_filtre['route']=fichier_filtre.route.apply(lambda x : x.split(' ')[1]) 
+        fichier_filtre['src']=self.type_fichier
         return fichier_filtre
 
     def ouvrir_xls_tournant_brochure (self):
@@ -611,9 +586,11 @@ class Comptage_cd17(Comptage) :
         #identification des points à mettre a jour
         self.df_attr_update=self.df_attr.loc[self.df_attr['id_comptag'].isin(self.existant.id_comptag.tolist())]
   
-    def mises_forme_bdd_brochure_pdf(self, bdd, schema, table, dep, type_poste):
+    def mises_forme_bdd_brochure_pdf(self, bdd, schema, table, dep, type_poste,localisation='boulot'):
         """
         mise en forme et decompoistion selon comptage existant ou non dans Bdd
+        in : 
+            localisation : facilité pour dire si je suis en tain d'utiliser uen bdd ici ou au boulot
         en sortie : 
             df_attr_insert : df des pt de comptage a insrere
             df_attr_update : df des points de comtage a mettre a jour
@@ -635,11 +612,20 @@ class Comptage_cd17(Comptage) :
         df_attr['reseau']='RD'
         df_attr['gestionnai']='CD17'
         df_attr['concession']='N'
+        df_attr['fichier']=self.fichier
             #verif que pas de doublons et seprartion si c'est le cas
-        existant=self.comptag_existant_bdd(bdd, table, schema, dep, type_poste)
-        df_attr_insert=df_attr.loc[~df_attr['id_comptag'].isin(existant.id_comptag.to_list())]
-        df_attr_update=df_attr.loc[df_attr['id_comptag'].isin(existant.id_comptag.to_list())]
+        self.comptag_existant_bdd(bdd, table, schema,localisation, dep, type_poste)
+        self.corresp_nom_id_comptag(bdd,df_attr,localisation)
+        df_attr_insert=df_attr.loc[~df_attr['id_comptag'].isin(self.existant.id_comptag.to_list())]
+        df_attr_update=df_attr.loc[df_attr['id_comptag'].isin(self.existant.id_comptag.to_list())]
         self.df_attr, self.df_attr_insert, self.df_attr_update=df_attr, df_attr_insert,df_attr_update
+        
+    def update_bdd_17(self,bdd, schema, table, localisation='boulot'):
+        valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag',f'tmja_{self.annee}',f'pc_pl_{self.annee}', 'src',
+                                                                      f'obs_{self.annee}','fichier'])
+        dico_attr_modif={f'tmja_{self.annee}':f'tmja_{self.annee}', f'pc_pl_{self.annee}':f'pc_pl_{self.annee}', f'src_{self.annee}':'src',
+                         f'obs_{self.annee}':f'obs_{self.annee}','fichier':'fichier'}
+        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)
        
     def insert_bdd_mens(self,bdd, schema, table) :
         """

@@ -28,12 +28,11 @@ def df_rond_point(df, taille_buffer=0):
         gdf_rd_point : geodataframe des rond points avec id_rdpt(integer), rapport_aire(float), geometry(polygon, 2154)
     """
     #créer une liste de rd points selon le rapport longueur eu carré sur aire et créer la geodtaframe qui va bien
-    dico_rd_pt=[[i, ((t.length**2)/t.area),t.buffer(taille_buffer), t.area] for i,t in enumerate(polygonize(df.geometry)) 
-            if 12<=((t.length**2)/t.area)<=14 or (14<=((t.length**2)/t.area)<20 and 700<t.area<1000) ] # car un cercle à un rappor de ce type entre 12 et 13
+    dfRondsPoints=df.loc[df.nature=='Rond-point'].copy()
+    dico_rd_pt=[[i, ((t.length**2)/t.area),t.buffer(taille_buffer), t.area] for i,t in enumerate(polygonize(dfRondsPoints.geometry))]
     if not dico_rd_pt : 
         raise PasDeRondPointError(df)
-    gdf_rd_point=gp.GeoDataFrame([(a[0],a[1], a[3]) for a in dico_rd_pt], geometry=[a[2] for a in dico_rd_pt], columns=['id_rdpt', 'rapport_aire', 'aire'])
-    gdf_rd_point.crs={'init':'epsg:2154'} #mise à jour du systeme de projection
+    gdf_rd_point=gp.GeoDataFrame([(a[0],a[1], a[3]) for a in dico_rd_pt], geometry=[a[2] for a in dico_rd_pt],crs="EPSG:2154", columns=['id_rdpt', 'rapport_aire', 'aire'])
     return gdf_rd_point
 
 def lignes_rd_pts(df) :
@@ -154,12 +153,6 @@ def identifier_rd_pt(df):
         df_avec_rd_pt : dataframe initiale + attributs rd pt
         carac_rd_pt : df des rd points avec nb voies entrantes, nom voies entrantes et num voie du rdpt
     """
-    def verif_rdpt(id_ign_rdpt,df_lignes ) : 
-        list_angles=[]
-        for ligne_test in id_ign_rdpt : 
-            lignes_tch=io.tronc_tch((ligne_test,), df_lignes)
-            list_angles+=lignes_tch.loc[lignes_tch['id_ign'].isin(id_ign_rdpt)].angle.tolist()
-        return all([a<90 for a in set(list_angles)])    
     #recuperer les lignes qui constituent les rd points
     try :
         lgn_rd_pt=lignes_rd_pts(df)
@@ -179,16 +172,9 @@ def identifier_rd_pt(df):
                                                             'codevoie_d': lambda x: tuple((set(x)))}).reset_index()
     ligne_et_num_rdpt.columns=['id_rdpt','numero_rdpt','id_ign_rdpt', 'codevoie_rdpt']                                                        
     carac_rd_pt=carac_rd_pt.reset_index().merge(ligne_et_num_rdpt, on='id_rdpt' ).set_index('id_rdpt')
-    
-    #verif que l'on ne prend pas des triangles en rdpt
-    df_lignes=df_avec_rd_pt.set_index('id_ign')
-    #print(f"len carac_rd_pt : {len(carac_rd_pt)}")
-    carac_rd_pt['verif']=carac_rd_pt.apply(lambda x : verif_rdpt(x['id_ign_rdpt'],df_lignes),axis=1)
-    for attr in ['nb_rte_rdpt', 'nom_rte_rdpt_entrant', 'codevoie_rdpt_entrant',
-       'nb_obj_sig_entrant', 'valeur_sens', 'id_ign_entrant','id_rdpt'] : 
-        df_avec_rd_pt.loc[df_avec_rd_pt['id_rdpt'].isin(carac_rd_pt.loc[carac_rd_pt['verif']].index.tolist()), attr]=np.NaN
-    
     return df_avec_rd_pt, carac_rd_pt, ligne_entrant_rdpt
+
+
 def verif_touche_rdpt(lignes_adj):
     """
     vérifier si une ligne touche un rd point

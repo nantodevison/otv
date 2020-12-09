@@ -41,7 +41,7 @@ def recup_route_split(ligne_depart,list_troncon,voie,codevoie, lignes_adj,noeud,
     tronc_tch_lign=tronc_tch_lign.loc[tronc_tch_lign['id_noeud_lgn']==noeud].copy()
     
     #si on est sur une 2*2 voies avec ue ligne au milieu provenant d'une autre voie qui intersecte, on s'arrete (cf filaire voie BdxM)
-    if nature in ['Route à 2 chaussées', 'Quasi-autoroute'] and (((
+    if nature in ['Route à 2 chaussées', 'Type autoroutier'] and (((
         tronc_tch_lign.angle>65) & (tronc_tch_lign.angle<125)).any() and ((tronc_tch_lign.angle>150) & (tronc_tch_lign.angle<200)).any() 
         and (tronc_tch_lign.longueur<20).any()) : 
         return []
@@ -49,10 +49,15 @@ def recup_route_split(ligne_depart,list_troncon,voie,codevoie, lignes_adj,noeud,
     
     #CAS GENERAL  
     if voie!='NC' : 
-        if nature=='Bretelle' and (lignes_adj.nature.isin(['Autoroute','Quasi-autoroute'])).any()==1 : 
+        if nature=='Bretelle' and (lignes_adj.nature.isin(['Type autoroutier'])).any()==1 : 
             return []
-        if (voie==lignes_adj.numero).all() : 
-            return lignes_adj.index.tolist()  
+        if (voie==lignes_adj.numero).all() : #les voies qui se séparent ont le mm numero
+            return lignes_adj.index.tolist() 
+        #une des voies qui se séparent a le mm numero, les angles 
+        elif (voie==lignes_adj.numero).any() and ((tronc_tch_lign.angle>120).all() 
+            & (tronc_tch_lign.longueur<50).all() 
+            & (abs(tronc_tch_lign.iloc[0].angle-tronc_tch_lign.iloc[1].angle)<90)) :
+            return lignes_adj.index.tolist()
     elif voie=='NC' and codevoie!='NR' :
         if (codevoie==lignes_adj.codevoie_d).all(): 
             return lignes_adj.index.tolist()
@@ -62,7 +67,7 @@ def recup_route_split(ligne_depart,list_troncon,voie,codevoie, lignes_adj,noeud,
             return lignes_adj.index.tolist()
         if (lignes_adj.id_rdpt>0).any()==1  :#si une des lignes qui se separent fait partie d'un rd point on passe 
             return []
-        if lignes_adj.nature.isin(['Autoroute', 'Quasi-autoroute', 'Route à 2 chaussées']).any() : #pour ne pas propager une bertelle a uune autoroute
+        if lignes_adj.nature.isin(['Type autoroutier', 'Route à 2 chaussées']).any() : #pour ne pas propager une bertelle a uune autoroute
             return []
         tronc_tch_lign['tronc_supp']=tronc_tch_lign.apply(lambda x : liste_complete_tronc_base(x['id_ign'],df_lignes,[ligne_depart]), axis=1)
         tronc_tch_lign['long']=tronc_tch_lign.apply(lambda x : fusion_ligne_calc_lg(df_lignes.loc[x['tronc_supp']])[1],axis=1)

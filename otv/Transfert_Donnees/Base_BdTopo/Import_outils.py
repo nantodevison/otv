@@ -17,7 +17,7 @@ import Outils
 #liste des colonnes necessaires pour aire le traotement
 list_colonnes_necessaires=['codevoie_d','id_ign','source','target','numero','id','sens','geom','nature']
 
-def import_donnes_base(bdd, schema, table_graph,table_vertex ):
+def import_donnes_base(bdd, schema, table_graph,table_vertex, localisation='boulot' ):
     """
     OUvrir une connexion vers le servuer de reference et recuperer les donn�es
     en entree : 
@@ -25,6 +25,7 @@ def import_donnes_base(bdd, schema, table_graph,table_vertex ):
        schema : schema contenant les tables de graph et de vertex
        table_graph : table contennat le referentiel (cf pgr_createtopology)
        table_vertex : table contenant la ecsription des vertex (cf pgr_analyzegraph)
+       localisation : juste un moyen d'appeler le bon fichier d'identifiants de connexions en fonction de l'ordi sur lequel je bosse
     en sortie : 
         df : dataframe telle que telcharg�es depuis la bdd
     """
@@ -34,7 +35,7 @@ def import_donnes_base(bdd, schema, table_graph,table_vertex ):
         raise ManqueColonneError(col_manquante)
         
     
-    with ct.ConnexionBdd(bdd) as c : 
+    with ct.ConnexionBdd(bdd,localisation) as c : 
         requete1=f"""with jointure as (
             select t.*, v1.cnt nb_intrsct_src, st_astext(v1.the_geom) as src_geom, v2.cnt as nb_intrsct_tgt, st_astext(v2.the_geom) as tgt_geom 
              from {schema}.{table_graph} t 
@@ -125,12 +126,12 @@ def tronc_tch(ids, df_lignes) :
                                        for a,b in list_carac_tch])]
         df_tronc_tch=pd.DataFrame.from_records(list_carac_fin, columns=['id_ign', 'type_noeud_lgn', 'id_noeud_lgn', 'type_noeud_src'])
         #calcul des coordonnées des points 
-        df_tronc_tch['coord_lgn_base']=df_tronc_tch.apply(lambda x : [coord for coord in df_lignes.loc[ids].geom[0].coords][1] if 
-            x['type_noeud_src']=='source' else [coord for coord in df_lignes.loc[ids].geom[0].coords][-2],axis=1)
-        df_tronc_tch['coord_lgn_comp']=df_tronc_tch.apply(lambda x : [coord for coord in df_lignes.loc[x['id_ign']].geom[0].coords][1] if 
-            x['type_noeud_lgn']=='source' else [coord for coord in df_lignes.loc[x['id_ign']].geom[0].coords][-2],axis=1)
-        df_tronc_tch['coord_noued_centr']=df_tronc_tch.apply(lambda x : [coord for coord in df_lignes.loc[x['id_ign']].geom[0].coords][0] if x['type_noeud_lgn']=='source' 
-            else [coord for coord in df_lignes.loc[x['id_ign']].geom[0].coords][-1],axis=1)
+        df_tronc_tch['coord_lgn_base']=df_tronc_tch.apply(lambda x : [df_ids.geom[0].coords[i] for i in range(len(df_ids.geom[0].coords))][1] if 
+            x['type_noeud_src']=='source' else [df_ids.geom[0].coords[i] for i in range(len(df_ids.geom[0].coords))][-2],axis=1)
+        df_tronc_tch['coord_lgn_comp']=df_tronc_tch.apply(lambda x : [df_lignes.loc[x['id_ign']].geom[0].coords[i] for i in range(len(df_lignes.loc[x['id_ign']].geom[0].coords))][1] if 
+            x['type_noeud_lgn']=='source' else [df_lignes.loc[x['id_ign']].geom[0].coords[i] for i in range(len(df_lignes.loc[x['id_ign']].geom[0].coords))][-2],axis=1)
+        df_tronc_tch['coord_noued_centr']=df_tronc_tch.apply(lambda x : [df_lignes.loc[x['id_ign']].geom[0].coords[i] for i in range(len(df_lignes.loc[x['id_ign']].geom[0].coords))][0] if x['type_noeud_lgn']=='source' 
+            else [df_lignes.loc[x['id_ign']].geom[0].coords[i] for i in range(len(df_lignes.loc[x['id_ign']].geom[0].coords))][-1],axis=1)
         #angle
         df_tronc_tch['angle']=df_tronc_tch.apply(lambda x : Outils.angle_entre_2_ligne(x['coord_noued_centr'],x['coord_lgn_comp'], x['coord_lgn_base']),axis=1)
         df_tronc_tch=df_tronc_tch.merge(df_lignes[['numero','codevoie_d',df_lignes.geometry.name]], left_on='id_ign', right_index=True)
@@ -153,12 +154,12 @@ def tronc_tch(ids, df_lignes) :
                                        for a,b in list_carac_tch])]
         df_tronc_tch=pd.DataFrame.from_records(list_carac_fin, columns=['id_ign', 'type_noeud_lgn', 'id_noeud_lgn', 'type_noeud_src'])
         #calcul des coordonnées des points 
-        df_tronc_tch['coord_lgn_base']=df_tronc_tch.apply(lambda x : [coord for coord in geom_ligne.coords][1] if 
+        df_tronc_tch['coord_lgn_base']=df_tronc_tch.apply(lambda x : [geom_ligne.coords[i] for i in len(range(geom_ligne.coords))][1] if 
                     x['type_noeud_src']=='source' else [coord for coord in geom_ligne.coords][-2],axis=1)
-        df_tronc_tch['coord_lgn_comp']=df_tronc_tch.apply(lambda x : [coord for coord in df_lignes.loc[x['id_ign']].geom[0].coords][1] if 
-                    x['type_noeud_lgn']=='source' else [coord for coord in df_lignes.loc[x['id_ign']].geom[0].coords][-2],axis=1)
-        df_tronc_tch['coord_noued_centr']=df_tronc_tch.apply(lambda x : [coord for coord in df_lignes.loc[x['id_ign']].geom[0].coords][0] if x['type_noeud_lgn']=='source' 
-            else [coord for coord in df_lignes.loc[x['id_ign']].geom[0].coords][-1],axis=1)
+        df_tronc_tch['coord_lgn_comp']=df_tronc_tch.apply(lambda x : [df_lignes.loc[x['id_ign']].geom[0].coords[i] for i in range(len(df_lignes.loc[x['id_ign']].geom[0].coords))][1] if 
+                    x['type_noeud_lgn']=='source' else [df_lignes.loc[x['id_ign']].geom[0].coords[i] for i in range(len(df_lignes.loc[x['id_ign']].geom[0].coords))][-2],axis=1)
+        df_tronc_tch['coord_noued_centr']=df_tronc_tch.apply(lambda x : [df_lignes.loc[x['id_ign']].geom[0].coords[i] for i in range(len(df_lignes.loc[x['id_ign']].geom[0].coords))][0] if x['type_noeud_lgn']=='source' 
+            else [df_lignes.loc[x['id_ign']].geom[0].coords[i] for i in range(len(df_lignes.loc[x['id_ign']].geom[0].coords))][-1],axis=1)
         #angle
         df_tronc_tch['angle']=df_tronc_tch.apply(lambda x : Outils.angle_entre_2_ligne(x['coord_noued_centr'],x['coord_lgn_comp'], x['coord_lgn_base']),axis=1)
         #df_tronc_tch=df_tronc_tch.merge(df_lignes[['numero','codevoie_d']], left_on='id_ign', right_index=True)
