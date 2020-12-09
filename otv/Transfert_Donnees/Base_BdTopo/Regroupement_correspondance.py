@@ -15,8 +15,10 @@ from datetime import datetime
 from Base_BdTopo.Import_outils import tronc_tch
 from Base_BdTopo.Troncon_elementaire import lignes_troncon_elem
 from Base_BdTopo.Gestion_2_chaussee import gestion_voie_2_chaussee, ParralleleError
+from Import_trafics import Comptage
 from geoalchemy2 import Geometry
 from sqlalchemy import Table, Column, Integer, MetaData
+
 
 def regrouper_troncon(list_troncon, df_avec_rd_pt, carac_rd_pt,df2_chaussees,lignes_exclues):
     """
@@ -151,7 +153,7 @@ def creer_MaJ_te(df_affectation):
     df_affectation_upd['typ_cor_te']=np.NaN
     return df_affectation_upd
 
-def corresp_te_bretelle(df_lignes, tronc_elem_synth, dist_agreg=50) : 
+def corresp_te_bretelle(bdd,df_lignes, tronc_elem_synth, dist_agreg=50, localisation='boulot') : 
     """
     regrouper les troncon elementaires des bretelles
     en entree : 
@@ -162,7 +164,7 @@ def corresp_te_bretelle(df_lignes, tronc_elem_synth, dist_agreg=50) :
         corresp_bret : dfde correspondance entre l'ancen tronc elem et le nouveau, uniquement pour les lignes concernees
     """
     #select tronc_elem bretelles
-    list_id_bretelle=df_lignes.loc[(df_lignes['nature']=='Bretelle') & (df_lignes['numero']=='NC')].index.tolist()
+    list_id_bretelle=df_lignes.loc[df_lignes['nature']=='Bretelle'].index.tolist()
     tronc_bretelle=tronc_elem_synth.loc[tronc_elem_synth.apply(lambda x : any([a for a in x['id'] if a in list_id_bretelle]), axis=1)].copy()
     #geom en wkt pour tranfert dans bdd
     tronc_bretelle_wkt=tronc_bretelle.reset_index()[['idtronc','geom']].copy()
@@ -177,7 +179,7 @@ def corresp_te_bretelle(df_lignes, tronc_elem_synth, dist_agreg=50) :
     requete = f"SELECT idtronc, ST_ClusterDBSCAN(geom, eps := {dist_agreg}, minpoints := 2) over () AS cid FROM public.bretelle"
 
     #creation dans Bdd puis utilisation sql puis retour
-    with ct.ConnexionBdd('local_otv') as c :
+    with ct.ConnexionBdd(bdd, localisation) as c :
         try :
             bretel_table.drop(c.engine)
         except  : pass

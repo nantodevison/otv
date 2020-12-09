@@ -48,7 +48,7 @@ def import_donnes_base(bdd, schema, table_graph,table_vertex, localisation='boul
              from {schema}.{table_graph} t 
             left join {schema}.{table_vertex} v1 on t.source=v1.id 
             left join {schema}.{table_vertex} v2  on t.target=v2.id"""
-        df = gp.read_postgis(requete2, c.connexionPsy)
+        df = gp.read_postgis(requete2, c.sqlAlchemyConn)
         return df
 
 def fusion_ligne_calc_lg(gdf): 
@@ -154,8 +154,8 @@ def tronc_tch(ids, df_lignes) :
                                        for a,b in list_carac_tch])]
         df_tronc_tch=pd.DataFrame.from_records(list_carac_fin, columns=['id_ign', 'type_noeud_lgn', 'id_noeud_lgn', 'type_noeud_src'])
         #calcul des coordonnées des points 
-        df_tronc_tch['coord_lgn_base']=df_tronc_tch.apply(lambda x : [geom_ligne.coords[i] for i in len(range(geom_ligne.coords))][1] if 
-                    x['type_noeud_src']=='source' else [coord for coord in geom_ligne.coords][-2],axis=1)
+        df_tronc_tch['coord_lgn_base']=df_tronc_tch.apply(lambda x : geom_ligne.coords[1][1] if 
+                    x['type_noeud_src']=='source' else geom_ligne.coords[1][-2],axis=1)
         df_tronc_tch['coord_lgn_comp']=df_tronc_tch.apply(lambda x : [df_lignes.loc[x['id_ign']].geom[0].coords[i] for i in range(len(df_lignes.loc[x['id_ign']].geom[0].coords))][1] if 
                     x['type_noeud_lgn']=='source' else [df_lignes.loc[x['id_ign']].geom[0].coords[i] for i in range(len(df_lignes.loc[x['id_ign']].geom[0].coords))][-2],axis=1)
         df_tronc_tch['coord_noued_centr']=df_tronc_tch.apply(lambda x : [df_lignes.loc[x['id_ign']].geom[0].coords[i] for i in range(len(df_lignes.loc[x['id_ign']].geom[0].coords))][0] if x['type_noeud_lgn']=='source' 

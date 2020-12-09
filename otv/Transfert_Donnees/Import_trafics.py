@@ -301,7 +301,7 @@ class Comptage():
         with ct.ConnexionBdd(bdd, localisation) as c:
                 c.sqlAlchemyConn.execute(rqt_base)
 
-    def insert_bdd(self,bdd, schema, table, df):
+    def insert_bdd(self,bdd, schema, table, df, if_exists='append',geomType='POINT',localisation='boulot'):
         """
         insérer les données dans la bdd et mettre à jour la geometrie
         en entree : 
@@ -313,12 +313,12 @@ class Comptage():
             if df.geometry.name!='geom':
                 df=O.gp_changer_nom_geom(df, 'geom')
                 df.geom=df.apply(lambda x : WKTElement(x['geom'].wkt, srid=2154), axis=1)
-            with ct.ConnexionBdd(bdd) as c:
-                df.to_sql(table,c.sqlAlchemyConn,schema=schema,if_exists='append', index=False,
-                          dtype={'geom': Geometry('POINT', srid=2154)} )
+            with ct.ConnexionBdd(bdd,localisation) as c:
+                df.to_sql(table,c.sqlAlchemyConn,schema=schema,if_exists=if_exists, index=False,
+                          dtype={'geom': Geometry()} )
         elif isinstance(df, pd.DataFrame) : 
-            with ct.ConnexionBdd(bdd) as c:
-                df.to_sql(table,c.sqlAlchemyConn,schema=schema,if_exists='append', index=False )
+            with ct.ConnexionBdd(bdd,localisation) as c:
+                df.to_sql(table,c.sqlAlchemyConn,schema=schema,if_exists=if_exists, index=False )
 
 class Comptage_cd23(Comptage):
     """

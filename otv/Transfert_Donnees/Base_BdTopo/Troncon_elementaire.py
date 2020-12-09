@@ -8,6 +8,7 @@ prise en compte des troncon de base et extrapolation sur cas particluiers
 '''
 
 import numpy as np
+import pandas as pd
 from collections import Counter
 from Base_BdTopo.Import_outils import tronc_tch, fusion_ligne_calc_lg,angle_3_lignes
 from Base_BdTopo.Troncon_base import liste_complete_tronc_base,deb_fin_liste_tronc_base
@@ -48,7 +49,7 @@ def recup_route_split(ligne_depart,list_troncon,voie,codevoie, lignes_adj,noeud,
     
     
     #CAS GENERAL  
-    if voie!='NC' : 
+    if not pd.isnull(voie) : #attention, avec la BdtOpoV3, les valeusr de numero NC sont devenue nulles
         if nature=='Bretelle' and (lignes_adj.nature.isin(['Type autoroutier'])).any()==1 : 
             return []
         if (voie==lignes_adj.numero).all() : #les voies qui se séparent ont le mm numero
@@ -58,7 +59,7 @@ def recup_route_split(ligne_depart,list_troncon,voie,codevoie, lignes_adj,noeud,
             & (tronc_tch_lign.longueur<50).all() 
             & (abs(tronc_tch_lign.iloc[0].angle-tronc_tch_lign.iloc[1].angle)<90)) :
             return lignes_adj.index.tolist()
-    elif voie=='NC' and codevoie!='NR' :
+    elif pd.isnull(voie) and not pd.isnull(codevoie) :
         if (codevoie==lignes_adj.codevoie_d).all(): 
             return lignes_adj.index.tolist()
         else : return []
