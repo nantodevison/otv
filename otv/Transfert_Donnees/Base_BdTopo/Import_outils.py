@@ -30,12 +30,12 @@ def import_donnes_base(bdd, schema, table_graph,table_vertex, localisation='boul
         df : dataframe telle que telcharg�es depuis la bdd
     """
     #avant tout verf que toute les colonnes necessaires au traitements sont presents
-    flag_col, col_manquante=Outils.check_colonne_in_table_bdd(bdd, schema, table_graph,*list_colonnes_necessaires)
+    flag_col, col_manquante=Outils.check_colonne_in_table_bdd(bdd,localisation, schema, table_graph,*list_colonnes_necessaires)
     if not flag_col : 
         raise ManqueColonneError(col_manquante)
         
     
-    with ct.ConnexionBdd(bdd,localisation) as c : 
+    with ct.ConnexionBdd(bdd,localisation=localisation) as c : 
         requete1=f"""with jointure as (
             select t.*, v1.cnt nb_intrsct_src, st_astext(v1.the_geom) as src_geom, v2.cnt as nb_intrsct_tgt, st_astext(v2.the_geom) as tgt_geom 
              from {schema}.{table_graph} t 
