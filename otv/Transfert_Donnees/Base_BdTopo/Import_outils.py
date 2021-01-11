@@ -16,7 +16,7 @@ import Outils
 
 #liste des colonnes necessaires pour aire le traotement
 list_colonnes_necessaires=['codevoie_d','id_ign','source','target','numero','id','sens','geom','nature']
-
+ 
 def import_donnes_base(bdd, schema, table_graph,table_vertex, localisation='boulot' ):
     """
     OUvrir une connexion vers le servuer de reference et recuperer les donn�es
