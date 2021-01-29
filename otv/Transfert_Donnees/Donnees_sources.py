@@ -383,11 +383,17 @@ class ComptageDonneesIndiv(object):
             dfHeureTypeSens : regrouepement des passages par heure, type de vehicule et sens cf GroupeCompletude()
             dicoNbJours : dictionnaire caracterisant les nombr de jours par type sur la periode de dcomptage, cf NombreDeJours()a
             dfSemaineMoyenne : dataframe horaire moyenne par jour (contient les 7 jours de la semaine avec 24 h par jour)
+            listAttributs : list des attributs de la df de base avant mise en forme
         """
         self.dossier=dossier
         self.vitesse=vitesse
+        self.listAttributs=self.calculListAttributs()
         self.df2SensBase= self.dfSens(*self.analyseSensFichiers())
         self.dfHeureTypeSens,self.dicoNbJours,self.dfSemaineMoyenne=self.MettreEnFormeDonnees()
+        
+    
+    def calculListAttributs(self):
+        return ['date_heure','nbVeh','type_veh'] if not self.vitesse else ['date_heure','nbVeh','type_veh','vitesse']
     
     def analyseSensFichiers(self):
         """
@@ -412,17 +418,16 @@ class ComptageDonneesIndiv(object):
             listFichiersSens2 : list de chemin en raw string
         """
         listDfSens1,listDfSens2=[],[]
-        listAttributs=['date_heure','nbVeh','type_veh'] if not self.vitesse else ['date_heure','nbVeh','type_veh','vitesse'] 
         for f in listFichiersSens1 : 
             if f.lower().endswith('.xls') : 
-                listDfSens1.append(Mixtra(f).dfFichier[listAttributs])
+                listDfSens1.append(Mixtra(f).dfFichier[self.listAttributs])
             elif f.lower().endswith('.vik') :
-                listDfSens1.append(Viking(f).dfFichier[listAttributs])
+                listDfSens1.append(Viking(f).dfFichier[self.listAttributs])
         for f in listFichiersSens2 : 
             if f.lower().endswith('.xls') : 
-                listDfSens2.append(Mixtra(f).dfFichier[listAttributs])
+                listDfSens2.append(Mixtra(f).dfFichier[self.listAttributs])
             elif f.lower().endswith('.vik') :
-                listDfSens2.append(Viking(f).dfFichier[listAttributs])
+                listDfSens2.append(Viking(f).dfFichier[self.listAttributs])
         return pd.concat([pd.concat(listDfSens1, axis=0).assign(sens='sens1'),pd.concat(listDfSens2, axis=0).assign(sens='sens2')], axis=0)
         
     def MettreEnFormeDonnees(self):
@@ -444,7 +449,43 @@ class ComptageDonneesIndiv(object):
         self.dicoHoraire,self.dicoJournalier=IndicsGraphs(self.dfSemaineMoyenne,typesVeh,typesDonnees,sens)
         figSyntheses, figJournaliere=graphsGeneraux(self.dfSemaineMoyenne,self.dicoHoraire, self.dicoJournalier,typesVeh, vitesse)          
         return figSyntheses, figJournaliere
+
+class FichierComptageIndiv(ComptageDonneesIndiv):
+    """
+    a partir de données individuelles d'1fichier, creer une structure de table pour graph comme pour la classe ComptageDonneesIndiv
+    """
+    def __init__(self,fichier, vitesse=False):
+        """
+        attributs : 
+            fichier : string chemin du nom de fichier
+            vitesse : boolean : traiter ou non les vitesse
+        """
+        self.fichier=fichier
+        self.vitesse=vitesse
+        self.listAttributs=super().calculListAttributs()
+        self.df2SensBase=self.fichierType()
         
+        
+    def fichierType(self):
+        """
+        connaitre le type de fcihier selon l'exten
+        """
+        if self.fichier.lower().endswith('.vik') :
+            df=Viking(self.fichier).dfFichier
+        elif self.fichier.lower().endswith('.xls') : 
+            df=Mixtra(self.fichier).dfFichier
+        else : 
+            raise NotImplementedError('fichier autre que vik et mixtra pas encore implemente')
+        if 'sens' in df.columns : 
+            df['sens']=df.sens.apply(lambda x : 'sens'+str(x) if 'sens' not in str(x) else str(x))
+            return df[self.listAttributs+['sens',]]
+        else : 
+            return df[self.listAttributs].assign(sens='sens1')
+        
+    
+        
+    
+             
 
 class FIM():
     """
