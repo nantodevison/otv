@@ -60,7 +60,7 @@ def recup_route_split(ligne_depart,list_troncon,voie,codevoie, lignes_adj,noeud,
             & (abs(tronc_tch_lign.iloc[0].angle-tronc_tch_lign.iloc[1].angle)<90)) :
             return lignes_adj.index.tolist()
     elif pd.isnull(voie) and not pd.isnull(codevoie) :
-        if (codevoie==lignes_adj.codevoie_d).all(): 
+        if (codevoie==lignes_adj.nom_1_d).all(): 
             return lignes_adj.index.tolist()
         else : return []
     else : # cas des nc / nr qui se s�pare : ont r�flechi en angle et longueurs e�quivalente, avec si besoin comparaiosn des lignes qui touvhent
@@ -147,7 +147,7 @@ def recup_triangle(ligne_depart,voie,codevoie, lignes_adj, noeud,geom_noeud,type
             else :
                 return []
     elif voie=='NC' and codevoie!='NR' :
-        lgn_cote_1=lignes_adj.loc[(lignes_adj['codevoie_d']!=codevoie)]
+        lgn_cote_1=lignes_adj.loc[(lignes_adj['nom_1_d']!=codevoie)]
         if lgn_cote_1.empty : 
             return []
         noeud_centre = lgn_cote_1['source'].values[0] if lgn_cote_1['source'].values[0] != noeud else lgn_cote_1['target'].values[0]
@@ -160,7 +160,7 @@ def recup_triangle(ligne_depart,voie,codevoie, lignes_adj, noeud,geom_noeud,type
             return id_rattache
         else : # on cherche si une ligne touche ces 2 noeuds, a le mme nom de voie que la ligne de cote  et un sens direct ou inverse
             ligne_a_rattacher=df_lignes.loc[((df_lignes['source']==noeud_centre) | (df_lignes['target']==noeud_centre)) & 
-                      (df_lignes['codevoie_d']==lgn_cote_1['codevoie_d'].values[0]) & (~df_lignes.index.isin(lgn_cote_1.index.tolist())) & 
+                      (df_lignes['nom_1_d']==lgn_cote_1['nom_1_d'].values[0]) & (~df_lignes.index.isin(lgn_cote_1.index.tolist())) & 
                       ((df_lignes['source']==noeud_suiv) | (df_lignes['target']==noeud_suiv))]
             if not ligne_a_rattacher.empty : 
                 return id_rattache

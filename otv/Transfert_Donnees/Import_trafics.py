@@ -28,8 +28,7 @@ dico_mois={'janv':[1,'Janv','Janvier'], 'fevr':[2,'Fév','Février','févr','Fev
            'juil':[7,'Juill','Juillet', 'juil'], 'aout':[8,'Août','Aout'], 'sept':[9,'Sept','Septembre'], 'octo':[10,'Oct','Octobre'], 'nove':[11,'Nov','Novembre'], 'dece':[12,'Déc','Décembre','Decembre']}
 
 
-    
-                  
+              
 class Comptage():
     """
     classe comprenant les attributs et méthode commune à tous les comptages de tous les departements
@@ -1794,6 +1793,146 @@ class Comptage_cd24(Comptage):
         self.df_attr_insert['y_l93']=self.df_attr_insert.apply(lambda x : round(x['geometry'].y,3), axis=1)
         self.df_attr_insert['convention']=False
         self.insert_bdd(bdd, schema, table,self.df_attr_insert)
+ 
+class Comptage_cd33(Comptage):
+    """
+    Cette classe se base sur la fourniture par le CD33  de tableau des compteurs permanents et tournants, associé au sectionnement.
+    A noter que Vincent récupérait aussi des données sur le site internet du CD33 https://www.gironde.fr/deplacements/les-routes-et-ponts#comptage-routier
+    """ 
+    def __init__(self, fichier, annee, sectionnement):
+        """
+        attributs : 
+            fichier : string : chemin du tableur des comptages permanents et tournants
+            annee : int : annee dur 4 characters
+            sectionnement : chemin du fichier de sectionnement
+        """
+        self.fichier=fichier
+        self.annee=annee
+        self.sectionnement=sectionnement
+        
+    def analysePerm(self, sheet_name='Permanents'):
+        perm=pd.read_excel(self.fichier, sheet_name=sheet_name)
+        gdfPerm = gp.GeoDataFrame(perm, geometry=gp.points_from_xy(perm.Longitude, perm.Latitude), crs='EPSG:4326')
+        gdfPerm=gdfPerm.to_crs('EPSG:2154')
+        gdfPerm.rename(columns={'Tronçon':'troncon','Data':'route'},inplace=True )
+        gdfPerm.rename(columns={c:c.replace('MJA TV TCJ ','tmja_') if 'TV' in c else c.replace('MJA %PL TCJ ','pc_pl_')  for c in gdfPerm.columns if any([a in c for a in ('MJA TV TCJ','MJA %PL TCJ')])},inplace=True)
+        gdfPerm.rename(columns={c:[k for k, v in dico_mois.items() if int(c.split()[3][:2]) in v][0] for c in gdfPerm.columns if 'MJM TV TCJ' in c}, inplace=True)
+        gdfPerm=gdfPerm.loc[~gdfPerm.tmja_2019.isna()].copy()
+        gdfPerm['fichier']=self.fichier
+        gdfPerm[f'src_{self.annee}']='tableur cpt permanent / tournant'
+        return gdfPerm
+    
+    def trierPermConnus(self, bdd, table, localisation):
+        """
+        trouver les comptages permanents connus a partir de l'annee precedente
+        """
+        gdfPerm=self.analysePerm()
+        #on va récupérer les données existantes : 
+        self.comptag_existant_bdd(bdd, table, schema='comptage',localisation=localisation,dep='33', gest='CD33')
+        #et tenter une jointure sur les donnees 2018 :  tous y sont, donc c'est bon
+        GdfPermIdcomptag=gdfPerm[['troncon','route', f'tmja_{self.annee}', f'tmja_{self.annee-1}', f'pc_pl_{self.annee}', 'geometry',
+                                  'fichier',f'src_{self.annee}']+[k for k in dico_mois.keys()]].merge(
+            self.existant.loc[~self.existant[f'tmja_{self.annee-1}'].isna()][['id_comptag', f'tmja_{self.annee-1}']], how='left')
+        gdfPermConnus=GdfPermIdcomptag.loc[~GdfPermIdcomptag.id_comptag.isna()]
+        gdfPermInconnus=GdfPermIdcomptag.loc[GdfPermIdcomptag.id_comptag.isna()]
+        return gdfPermConnus, gdfPermInconnus
+    
+    def assignerCptInconnus(self, dicoAssigne, gdfInconnus):
+        """
+        assigner manuellement les comptages inconnus, en place dans la df
+        in  : 
+            dicoAssigne : dico avec en cle l'identificant de troncon de la df des cpt perm inconnu en vlaue la valeur d'id_comptag
+            gdfInconnus : df des permanents inconnus isue de trierPermConnus
+        """
+        for k, v in dicoAssigne.items() : 
+            gdfInconnus.loc[gdfInconnus.troncon==k,'id_comptag']=v
+            
+    def analyseTourn(self, sheet_name='Tournants'):
+        perm=pd.read_excel(self.fichier, sheet_name=sheet_name)
+        gdfTourn = gp.GeoDataFrame(perm, geometry=gp.points_from_xy(perm.Longitude, perm.Latitude), crs='EPSG:4326')
+        gdfTourn=gdfTourn.to_crs('EPSG:2154')
+        gdfTourn.rename(columns={'Tronçon':'troncon','Data':'route'},inplace=True )
+        gdfTourn.rename(columns={c:c.replace('MJA TV TCJ ','tmja_') if 'TV' in c else c.replace('MJA %PL TCJ ','pc_pl_')  for c in gdfTourn.columns if any([a in c for a in ('MJA TV TCJ','MJA %PL TCJ')])},inplace=True)
+        #gdfTourn.rename(columns={c:[k for k, v in dico_mois.items() if int(c.split()[3][:2]) in v][0] for c in gdfTourn.columns if 'MJM TV TCJ' in c}, inplace=True)
+        gdfTourn=gdfTourn.loc[~gdfTourn.tmja_2019.isna()].copy()
+        gdfTourn[f'obs_{self.annee}']=gdfTourn.apply(lambda x : ' ; '.join([f"{x[f'DDPériode{i}'].date()}-{x[f'DFPériode{i}'].date()}" for i in range(1,5) if not (pd.isnull(x[f'DDPériode{i}']) and pd.isnull(x[f'DFPériode{i}']))]), axis=1)
+        gdfTourn['fichier']=self.fichier
+        gdfTourn[f'src_{self.annee}']='tableur cpt permanent / tournant'
+        return gdfTourn
+    
+    def donneesMensTournant(self,gdfTourn):
+        """
+        ajouter les donnees mensuelles aux donnees de comptage tournant et renvoyer une nouvelle df
+        """
+        donnees_mens_tour=pd.DataFrame({'troncon':[],'donnees_type':[]})
+        for j,e in enumerate(gdfTourn.itertuples()) : 
+            for  i in range(1,5):
+                try :
+                    mois=[k for k, v in dico_mois.items() if v[0]==Counter(pd.date_range(pd.to_datetime(getattr(e,f'DDPériode{i}'), dayfirst=True)
+                                                        ,pd.to_datetime(getattr(e,f'DDPériode{i}'), dayfirst=True)).month).most_common()[0][0]][0]
+                except ValueError : 
+                    continue
+                donnees_mens_tour.loc[j,mois]=getattr(e,f'MJPTV{i}')
+                donnees_mens_tour.loc[j,'donnees_type']='tmja'
+                donnees_mens_tour.loc[j+1000,mois]=getattr(e,f'MJPPL{i}')
+                donnees_mens_tour.loc[j,'troncon']=getattr(e,f'troncon')
+                donnees_mens_tour.loc[j+1000,'troncon']=getattr(e,f'troncon')
+                donnees_mens_tour.loc[j+1000,'donnees_type']='pc_pl'
+        return donnees_mens_tour
+            
+    def correspondanceTournant(self, bdd, localisation, rqtPpvCptTournant, rqtCptExistant, rqtGeomReferentielEpure, rqtPpvCptBdd,
+                               schema, table_graph, table_vertex, dfTournant ):
+        """"
+        Comme on a aucun PR + abs, on fait une correspondanec en cherchant les id_ign commun avec une determination de troncon elementaire,
+        un peu commme pour le 87 mais en ayant simplifie la table de recherche au prealable
+        """
+        #fonction d'association en fonction du dico de correspondance
+        def pt_corresp(id_ign_lin,id_ign_cpt_new,dico_corresp) : 
+            if id_ign_lin in dico_corresp[id_ign_cpt_new] : 
+                return True
+            else : return False
+            
+        with ct.ConnexionBdd(bdd, localisation) as c : 
+            list_lgn=pd.read_sql(rqtPpvCptTournant, c.sqlAlchemyConn).id_ign.tolist()
+            cpt_existant=pd.read_sql(rqtCptExistant, c.sqlAlchemyConn)
+            dfDepartementale=gp.read_postgis(rqtGeomReferentielEpure, c.sqlAlchemyConn)
+            ppvIdComptag=pd.read_sql(rqtPpvCptBdd, c.sqlAlchemyConn)
+        
+        #dico des troncons elementaire
+        simplification=self.troncon_elemntaires(bdd, schema, table_graph, table_vertex,liste_lignes=list_lgn,id_name='id')
+        #plus proche voisin des comptages tournants
+        ppvTournIgn=O.plus_proche_voisin(dfTournant[['troncon','geometry']],dfDepartementale,20,'troncon','id_ign' )
+        #synthese des plus proche voisin
+        ppv_final=ppvTournIgn.merge(cpt_existant, on='id_ign', how='left').merge(ppvIdComptag, on='id_comptag', how='left').rename(columns={'id_ign_x':'id_ign_cpt_new', 'id_ign_y':'id_ign_lin'})
+        #ajout d'un attribut d'identification des correpsondance
+        ppv_final['correspondance']=ppv_final.apply(lambda x : pt_corresp(x['id_ign_lin'],x['id_ign_cpt_new'],simplification),axis=1)
+        ppv_final.drop_duplicates(['troncon','id_comptag'], inplace=True)
+        #identification
+        correspTournant=ppv_final.loc[ppv_final['correspondance']]
+        inconnuTournant=ppv_final.loc[~ppv_final['correspondance']]
+        return correspTournant,inconnuTournant
+    
+    def donneesMensuellesTournant(self, dfTournants):
+        """
+        creer les donnees mensuelles pour les cpt Tournants
+        in : 
+            dfTournants : issue de analyseTourn()
+        """
+        tournant2=dfTournants.merge(corresp, on='troncon')
+        donnees_mens_tour=pd.DataFrame({'id_comptag':[],'donnees_type':[]})
+        for j,e in enumerate(tournant2.itertuples()) : 
+            for  i in range(1,5):
+                try :
+                    mois=[k for k, v in dico_mois.items() if v[0]==Counter(pd.date_range(pd.to_datetime(getattr(e,f'DDPériode{i}'), dayfirst=True)
+                                                        ,pd.to_datetime(getattr(e,f'DDPériode{i}'), dayfirst=True)).month).most_common()[0][0]][0]
+                except ValueError : 
+                    continue
+                donnees_mens_tour.loc[j,mois]=getattr(e,f'MJPTV{i}')
+                donnees_mens_tour.loc[j,'donnees_type']='tmja'
+                donnees_mens_tour.loc[j+1000,mois]=getattr(e,f'MJPPL{i}')
+                donnees_mens_tour.loc[j,'id_comptag']=getattr(e,f'id_comptag')
+                donnees_mens_tour.loc[j+1000,'id_comptag']=getattr(e,f'id_comptag')
+                donnees_mens_tour.loc[j+1000,'donnees_type']='pc_pl'
     
 class Comptage_vinci(Comptage):
     """
