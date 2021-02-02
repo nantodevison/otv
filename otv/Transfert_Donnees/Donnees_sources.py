@@ -136,6 +136,7 @@ def IndicsGraphs(dfMoyenne, typesVeh, typesDonnees='all', sens='all', typeSource
     #calcul des donnees
     for t in  typesDonnees : 
         for s in sens :     
+            print(t,s)
             dicoHoraire[t][s]={}
             dicoHoraire[t][s]['donnees']=round((dfMoyenne.loc[(dfMoyenne.jour.isin(dicoHoraire[t]['listJours'])) &
                                             (dfMoyenne.type_veh.isin(typesVeh))].groupby(['heure','type_veh','sens']).
