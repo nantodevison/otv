@@ -79,7 +79,12 @@ def GroupeCompletude(dfValide, vitesse=False):
                'v50': pd.NamedAgg(column='vitesse',aggfunc=lambda x : np.percentile(x,50)),
                'v85': pd.NamedAgg(column='vitesse',aggfunc=lambda x : np.percentile(x,85))}).reset_index().sort_values('date_heure')
         dfHeureTypeSens=dfHeureTypeSens.merge(dfGroupVtsHeure, on=['date_heure','sens'],how='left')
-        
+    
+    #si un sens est completement à O on le vire
+    dfTestSens=dfHeureTypeSens.groupby('sens').nbVeh.sum().reset_index()
+    if (dfTestSens.nbVeh==0).any() :
+        dfHeureTypeSens=dfHeureTypeSens.loc[dfHeureTypeSens.sens==dfTestSens.loc[dfTestSens.nbVeh!=0].sens.values[0]]
+       
     return dfHeureTypeSens
 
 def NombreDeJours(dfHeureTypeSens):
@@ -124,7 +129,7 @@ def IndicsGraphs(dfMoyenne, typesVeh, typesDonnees='all', sens='all', typeSource
     dicoHoraire={e[0]:{'nbJour':e[1],'listJours':e[2] } for e in tupleParams}
     dicoJournalier={e[0]:{'nbJour':e[1],'listJours':e[2] } for e in tupleParams if e[0] in ('mja','mjo')}
     #generralisation si all : 
-    sens=np.append(dfMoyenne.sens.unique(),'2sens') if sens=='all' else sens
+    sens=np.append(dfMoyenne.sens.unique(),'2sens') if sens=='all' else [sens,]
     typesDonnees=dicoHoraire.keys() if typesDonnees=='all' else typesDonnees
     
     
@@ -178,12 +183,25 @@ def IndicsGraphs(dfMoyenne, typesVeh, typesDonnees='all', sens='all', typeSource
     return dicoHoraire, dicoJournalier
 
 def graphsGeneraux(dfMoyenne,dicoHoraire, dicoJournalier,typesVeh, vitesse=False):
-    figSyntheses = make_subplots(rows=5, cols=1,subplot_titles=('évolutions horaires moyenne Jours Ouvrable','évolution moyenne des vitesses Jours Ouvrable sens 1',
-                                                       'évolution moyenne des vitesses Jours Ouvrable sens 2','évolution journaliere moyenne', 'comparaison des sens de circulation'),
+    nbSens=dfMoyenne.sens.nunique()
+    if nbSens==2 :
+        sens='2sens'
+        nbRows=5 
+        subplot_titles=('évolutions horaires moyenne Jours Ouvrable','évolution moyenne des vitesses Jours Ouvrable sens 1',
+                        'évolution moyenne des vitesses Jours Ouvrable sens 2','évolution journaliere moyenne', 'comparaison des sens de circulation')
+    else : 
+        sens=dfMoyenne.sens.values[0]
+        nbRows=3
+        subplot_titles=('évolutions horaires moyenne Jours Ouvrable','évolution moyenne des vitesses',
+                        'évolution journaliere moyenne')
+        
+    figSyntheses = make_subplots(rows=nbRows, cols=1,subplot_titles=subplot_titles,
                                                         horizontal_spacing=0.05,vertical_spacing =0.05)
+
     for i in range(len(typesVeh)) :
-        figSyntheses.add_trace(dicoHoraire['mjo']['2sens']['graph']['data'][i], row=1, col=1)
-        figSyntheses.add_trace(dicoJournalier['mja']['2sens']['graph']['data'][i], row=4, col=1)
+        figSyntheses.add_trace(dicoHoraire['mjo'][sens]['graph']['data'][i], row=1, col=1)
+        figSyntheses.add_trace(dicoJournalier['mja'][sens]['graph']['data'][i], row=4, col=1)
+    
     if vitesse :
         for v in ('v10','v50','v85') : 
             vts=dfMoyenne.loc[(dfMoyenne.jour.isin(dicoHoraire['mjo']['listJours'])) & (dfMoyenne.sens=='sens1')
@@ -196,6 +214,7 @@ def graphsGeneraux(dfMoyenne,dicoHoraire, dicoJournalier,typesVeh, vitesse=False
     else : 
         figSyntheses.add_trace(go.Scatter(x=[1,],y=[1],mode="markers+text",name="Markers and Text",text=["PAS DE DONNEES VITESSES"],textfont_size=40),row=2, col=1)
         figSyntheses.add_trace(go.Scatter(x=[1,],y=[1],mode="markers+text",name="Markers and Text",text=["PAS DE DONNEES VITESSES"],textfont_size=40),row=3, col=1)                
+    
     for i in [0,1] :
         figSyntheses.add_trace(dicoJournalier['mja']['compSens']['graph']['data'][i], row=5, col=1)
     figSyntheses.update_layout(height=2000, width=1500,title_text="Données synthétiques")
@@ -464,8 +483,12 @@ class FichierComptageIndiv(ComptageDonneesIndiv):
         self.vitesse=vitesse
         self.listAttributs=super().calculListAttributs()
         self.df2SensBase=self.fichierType()
+        self.nbsens=self.df2SensBase.sens.nunique()
+        self.sens=self.df2SensBase.sens.unique()[0] if self.nbsens==1 else self.df2SensBase.sens.unique()
         
+        self.dfHeureTypeSens,self.dicoNbJours,self.dfSemaineMoyenne=self.MettreEnFormeDonnees()
         
+           
     def fichierType(self):
         """
         connaitre le type de fcihier selon l'exten
@@ -479,8 +502,16 @@ class FichierComptageIndiv(ComptageDonneesIndiv):
         if 'sens' in df.columns : 
             df['sens']=df.sens.apply(lambda x : 'sens'+str(x) if 'sens' not in str(x) else str(x))
             return df[self.listAttributs+['sens',]]
-        else : 
+        else : #ATTENTION, SI MIXTRA ON PEUT AVOIR 1 FICHIER ET 2 SENS ?
             return df[self.listAttributs].assign(sens='sens1')
+        
+    def graphsSynthese(self,typesVeh, typesDonnees='all', sens='sens2', vitesse=False, synthese=False):
+        """
+        creer les graphs pour visu
+        """
+        self.dicoHoraire,self.dicoJournalier=IndicsGraphs(self.dfSemaineMoyenne,typesVeh,typesDonnees,sens)
+        figSyntheses, figJournaliere=graphsGeneraux(self.dfSemaineMoyenne,self.dicoHoraire, self.dicoJournalier,typesVeh, vitesse)          
+        return figSyntheses, figJournaliere
         
     
         
