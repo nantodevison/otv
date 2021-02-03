@@ -134,7 +134,7 @@ def carac_rond_point(df_lign_entrant_rdpt) :
     #rgrouper par id
     carac_rd_pt=(pd.concat([df_lign_entrant_rdpt.groupby('id_rdpt').numero.nunique(),#compter les nom de voi uniques
                 df_lign_entrant_rdpt.groupby('id_rdpt').agg({'numero': lambda x: tuple((set(x))), #agereges les noms de voie et codevoie_d dans des tuples
-                                                            'codevoie_d' : lambda x: tuple((set(x))),
+                                                            'nom_1_d' : lambda x: tuple((set(x))),
                                                             'id':'count',
                                                             'sens': lambda x: tuple((set(x))),
                                                             'id_ign':lambda x: tuple((set(x)))})], axis=1))
@@ -169,7 +169,7 @@ def identifier_rd_pt(df):
     #grouper les données bdtopo par dr point por recup la liste des lignes et des noms de voies par rd_pt
     ligne_et_num_rdpt=df_avec_rd_pt.groupby('id_rdpt').agg({'numero': lambda x: tuple((set(x))),
                                                             'id_ign': lambda x: tuple((set(x))),
-                                                            'codevoie_d': lambda x: tuple((set(x)))}).reset_index()
+                                                            'nom_1_d': lambda x: tuple((set(x)))}).reset_index()
     ligne_et_num_rdpt.columns=['id_rdpt','numero_rdpt','id_ign_rdpt', 'codevoie_rdpt']                                                        
     carac_rd_pt=carac_rd_pt.reset_index().merge(ligne_et_num_rdpt, on='id_rdpt' ).set_index('id_rdpt')
     return df_avec_rd_pt, carac_rd_pt, ligne_entrant_rdpt

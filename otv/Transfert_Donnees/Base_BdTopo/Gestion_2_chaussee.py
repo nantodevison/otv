@@ -34,14 +34,14 @@ def trouver_chaussees_separee(list_troncon, df_avec_rd_pt):
     
     # GESTION DES VOIES COMMUNALESS AVEC NUMERO = 'NC' et CODEVOIE DIFFRENT DE NR
     voie=max(set(lgn_tron_e.numero.tolist()), key=lgn_tron_e.numero.tolist().count)
-    code_voie=max(set(lgn_tron_e.codevoie_d.tolist()), key=lgn_tron_e.codevoie_d.tolist().count)
+    code_voie=max(set(lgn_tron_e.nom_1_d.tolist()), key=lgn_tron_e.nom_1_d.tolist().count)
     importance=max(set(lgn_tron_e.importance.tolist()), key=lgn_tron_e.importance.tolist().count)# on en a besoin pour les voies aprrallele avec mm nom mais pas mm importance (cf filaire de voie BdxM)
     
     if voie !='NC' : 
         ligne_filtres=lignes_possibles.loc[(~lignes_possibles.id_ign.isin(list_troncon)) & (lignes_possibles['numero']==voie) & 
                                            (lignes_possibles['importance']==importance)].copy()
     elif voie =='NC' and code_voie != 'NR' : 
-        ligne_filtres=lignes_possibles.loc[(~lignes_possibles.id_ign.isin(list_troncon)) & (lignes_possibles['codevoie_d']==code_voie) &
+        ligne_filtres=lignes_possibles.loc[(~lignes_possibles.id_ign.isin(list_troncon)) & (lignes_possibles['nom_1_d']==code_voie) &
                                            (lignes_possibles['importance']==importance)].copy()
     else : #cas tordu d'une2*2 de nom inconnu 
         ligne_filtres=lignes_possibles.loc[(~lignes_possibles.id_ign.isin(list_troncon)) & (~lignes_possibles.source.isin(list_noeud)) & 

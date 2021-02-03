@@ -15,7 +15,7 @@ from shapely.ops import linemerge, unary_union
 import Outils
 
 #liste des colonnes necessaires pour aire le traotement
-list_colonnes_necessaires=['codevoie_d','id_ign','source','target','numero','id','sens','geom','nature']
+list_colonnes_necessaires=['nom_1_d','id_ign','source','target','numero','id','sens','geom','nature']
  
 def import_donnes_base(bdd, schema, table_graph,table_vertex, localisation='boulot' ):
     """
@@ -134,7 +134,7 @@ def tronc_tch(ids, df_lignes) :
             else [df_lignes.loc[x['id_ign']].geom[0].coords[i] for i in range(len(df_lignes.loc[x['id_ign']].geom[0].coords))][-1],axis=1)
         #angle
         df_tronc_tch['angle']=df_tronc_tch.apply(lambda x : Outils.angle_entre_2_ligne(x['coord_noued_centr'],x['coord_lgn_comp'], x['coord_lgn_base']),axis=1)
-        df_tronc_tch=df_tronc_tch.merge(df_lignes[['numero','codevoie_d',df_lignes.geometry.name]], left_on='id_ign', right_index=True)
+        df_tronc_tch=df_tronc_tch.merge(df_lignes[['numero','nom_1_d',df_lignes.geometry.name]], left_on='id_ign', right_index=True)
         df_tronc_tch['longueur']=df_tronc_tch[df_lignes.geometry.name].apply(lambda x : x.length)
     else : 
         df_ids=df_lignes.loc[list(ids)].copy()
@@ -162,9 +162,9 @@ def tronc_tch(ids, df_lignes) :
             else [df_lignes.loc[x['id_ign']].geom[0].coords[i] for i in range(len(df_lignes.loc[x['id_ign']].geom[0].coords))][-1],axis=1)
         #angle
         df_tronc_tch['angle']=df_tronc_tch.apply(lambda x : Outils.angle_entre_2_ligne(x['coord_noued_centr'],x['coord_lgn_comp'], x['coord_lgn_base']),axis=1)
-        #df_tronc_tch=df_tronc_tch.merge(df_lignes[['numero','codevoie_d']], left_on='id_ign', right_index=True)
+        #df_tronc_tch=df_tronc_tch.merge(df_lignes[['numero','nom_1_d']], left_on='id_ign', right_index=True)
         #ce qui suit n'est pas verifie, si besoin reprendre la ligne commentaire ci-dessus, mais qui ne permet pas d'avoir la geom et longueur
-        df_tronc_tch=df_tronc_tch.merge(df_lignes[['numero','codevoie_d',df_lignes.geometry.name]], left_on='id_ign', right_index=True)
+        df_tronc_tch=df_tronc_tch.merge(df_lignes[['numero','nom_1_d',df_lignes.geometry.name]], left_on='id_ign', right_index=True)
         df_tronc_tch['longueur']=df_tronc_tch[df_lignes.geometry.name].apply(lambda x : x.length)
     return df_tronc_tch
 
