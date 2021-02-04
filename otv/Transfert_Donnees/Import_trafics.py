@@ -1820,6 +1820,8 @@ class Comptage_cd33(Comptage):
         gdfPerm=gdfPerm.loc[~gdfPerm.tmja_2019.isna()].copy()
         gdfPerm['fichier']=self.fichier
         gdfPerm[f'src_{self.annee}']='tableur cpt permanent / tournant'
+        gdfPerm['convention']=True
+        gdfPerm['type_poste']='permanent'
         return gdfPerm
     
     def trierPermConnus(self, bdd, table, localisation):
@@ -1830,12 +1832,13 @@ class Comptage_cd33(Comptage):
         #on va récupérer les données existantes : 
         self.comptag_existant_bdd(bdd, table, schema='comptage',localisation=localisation,dep='33', gest='CD33')
         #et tenter une jointure sur les donnees 2018 :  tous y sont, donc c'est bon
-        GdfPermIdcomptag=gdfPerm[['troncon','route', f'tmja_{self.annee}', f'tmja_{self.annee-1}', f'pc_pl_{self.annee}', 'geometry',
-                                  'fichier',f'src_{self.annee}']+[k for k in dico_mois.keys()]].merge(
+        GdfPerm=gdfPerm[['troncon','route', f'tmja_{self.annee}', f'tmja_{self.annee-1}', f'pc_pl_{self.annee}', 'geometry',
+                                  'fichier',f'src_{self.annee}','convention','type_poste']+[k for k in dico_mois.keys()]].merge(
             self.existant.loc[~self.existant[f'tmja_{self.annee-1}'].isna()][['id_comptag', f'tmja_{self.annee-1}']], how='left')
-        gdfPermConnus=GdfPermIdcomptag.loc[~GdfPermIdcomptag.id_comptag.isna()]
-        gdfPermInconnus=GdfPermIdcomptag.loc[GdfPermIdcomptag.id_comptag.isna()]
-        return gdfPermConnus, gdfPermInconnus
+        gdfPermConnus=GdfPerm.loc[~GdfPerm.id_comptag.isna()].copy()
+        gdfPermInconnus=GdfPerm.loc[GdfPerm.id_comptag.isna()].copy()
+        return GdfPerm,gdfPermConnus, gdfPermInconnus
+   
     
     def assignerCptInconnus(self, dicoAssigne, gdfInconnus):
         """
@@ -1858,6 +1861,8 @@ class Comptage_cd33(Comptage):
         gdfTourn[f'obs_{self.annee}']=gdfTourn.apply(lambda x : ' ; '.join([f"{x[f'DDPériode{i}'].date()}-{x[f'DFPériode{i}'].date()}" for i in range(1,5) if not (pd.isnull(x[f'DDPériode{i}']) and pd.isnull(x[f'DFPériode{i}']))]), axis=1)
         gdfTourn['fichier']=self.fichier
         gdfTourn[f'src_{self.annee}']='tableur cpt permanent / tournant'
+        gdfTourn['convention']=True
+        gdfTourn['type_poste']='tournant'
         return gdfTourn
     
     def donneesMensTournant(self,gdfTourn):
@@ -1872,9 +1877,10 @@ class Comptage_cd33(Comptage):
                                                         ,pd.to_datetime(getattr(e,f'DDPériode{i}'), dayfirst=True)).month).most_common()[0][0]][0]
                 except ValueError : 
                     continue
+                #print(e)
                 donnees_mens_tour.loc[j,mois]=getattr(e,f'MJPTV{i}')
                 donnees_mens_tour.loc[j,'donnees_type']='tmja'
-                donnees_mens_tour.loc[j+1000,mois]=getattr(e,f'MJPPL{i}')
+                donnees_mens_tour.loc[j+1000,mois]=round(getattr(e,f'MJPPL{i}')/getattr(e,f'MJPTV{i}')*100,2)
                 donnees_mens_tour.loc[j,'troncon']=getattr(e,f'troncon')
                 donnees_mens_tour.loc[j+1000,'troncon']=getattr(e,f'troncon')
                 donnees_mens_tour.loc[j+1000,'donnees_type']='pc_pl'
@@ -1912,27 +1918,43 @@ class Comptage_cd33(Comptage):
         inconnuTournant=ppv_final.loc[~ppv_final['correspondance']]
         return correspTournant,inconnuTournant
     
-    def donneesMensuellesTournant(self, dfTournants):
+    def correctionCorrespondanceTournant(self,dicoCorrespTourn,tournant,correspTournant):
         """
-        creer les donnees mensuelles pour les cpt Tournants
+        suite a la determination des correspondance de comptage tournants, on ajoute les correction manuelle et on produit
+        la table de synthese : 
+        in :
+           dicoCorrespTourn : dico avec en cle l'identificant de troncon de la df des cpt perm inconnu en vlaue la valeur d'id_comptag
+           tournant : df issue de analyseTourn()
+           correspTournant : df issue de correspondanceTournant
+        """
+        cptTournantAffecte=tournant.merge(correspTournant[['troncon','id_comptag','correspondance']], on='troncon', how='left')
+        self.assignerCptInconnus(dicoCorrespTourn,cptTournantAffecte)
+        cptTournantAffecte.loc[~cptTournantAffecte.id_comptag.isna(),'correspondance']=True
+        cptTournantAffecte.loc[cptTournantAffecte.id_comptag.isna(),'correspondance']=False
+        return cptTournantAffecte
+    
+    def creerNouveauPointTournants(self,cptTournantAffecte,dicoNewCpt):
+        """
+        apres xorrection de la correspondance, creer les nouveaux points a inserer
         in : 
-            dfTournants : issue de analyseTourn()
+            dicoNewCpt : dico avec en cle le numero de troncon, le pr, l'abscisse et en valeur les listes de valeur
         """
-        tournant2=dfTournants.merge(corresp, on='troncon')
-        donnees_mens_tour=pd.DataFrame({'id_comptag':[],'donnees_type':[]})
-        for j,e in enumerate(tournant2.itertuples()) : 
-            for  i in range(1,5):
-                try :
-                    mois=[k for k, v in dico_mois.items() if v[0]==Counter(pd.date_range(pd.to_datetime(getattr(e,f'DDPériode{i}'), dayfirst=True)
-                                                        ,pd.to_datetime(getattr(e,f'DDPériode{i}'), dayfirst=True)).month).most_common()[0][0]][0]
-                except ValueError : 
-                    continue
-                donnees_mens_tour.loc[j,mois]=getattr(e,f'MJPTV{i}')
-                donnees_mens_tour.loc[j,'donnees_type']='tmja'
-                donnees_mens_tour.loc[j+1000,mois]=getattr(e,f'MJPPL{i}')
-                donnees_mens_tour.loc[j,'id_comptag']=getattr(e,f'id_comptag')
-                donnees_mens_tour.loc[j+1000,'id_comptag']=getattr(e,f'id_comptag')
-                donnees_mens_tour.loc[j+1000,'donnees_type']='pc_pl'
+        cptTournantInconnu=cptTournantAffecte.loc[cptTournantAffecte.correspondance==False]
+        df_attr_insert=cptTournantInconnu.merge(pd.DataFrame(dicoNewCpt).assign(src_geo='tableur millesime 2019', dep='33', reseau='RD', 
+                                                gestionnai='CD33', concession='N', obs_geo='pr et abscisse aproximatifs'), on='troncon')
+        df_attr_insert['route']=df_attr_insert.route.apply(lambda x : O.epurationNomRoute(x))
+        df_attr_insert['id_comptag']=df_attr_insert.apply(lambda x : f"33-{x['route']}-{x['pr']}+{x['absc']}", axis=1)
+        df_attr_insert['x_l93']=round(df_attr_insert.geometry.x,3)
+        df_attr_insert['y_l93']=round(df_attr_insert.geometry.x,3)
+        df_attr_insert[f'obs_{self.annee}']='nouveau_point, '+df_attr_insert[f'obs_{self.annee}']
+        return df_attr_insert[['id_comptag','route','type_poste','src_geo','obs_geo','dep','reseau','gestionnai','concession','x_l93','y_l93',f'tmja_{self.annee}',
+                f'pc_pl_{self.annee}', f'obs_{self.annee}', f'src_{self.annee}', 'fichier', 'convention', 'geometry', 'troncon']]
+        
+    def update_bdd_33(self,bdd, schema, table):
+        valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag',f'tmja_{self.annee}',f'pc_pl_{self.annee}',f'src_{self.annee}', 'fichier'])
+        dico_attr_modif={f'tmja_{self.annee}':f'tmja_{self.annee}', f'pc_pl_{self.annee}':f'pc_pl_{self.annee}',f'src_{self.annee}':f'src_{self.annee}', 
+                         'fichier':'fichier'}
+        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)
     
 class Comptage_vinci(Comptage):
     """
