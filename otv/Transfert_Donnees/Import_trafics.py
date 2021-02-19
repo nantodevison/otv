@@ -2976,7 +2976,7 @@ class Comptage_Dira(Comptage):
             idDira2=None
         return idDira2
     
-    def miseEnFormeFichier(self,nomFichier):
+    def miseEnFormeFichier(self,nomFichier, nbJoursValideMin=15):
         """
         transofrmer un fichier complet en df
         in : 
@@ -2985,7 +2985,7 @@ class Comptage_Dira(Comptage):
         fichier=pd.read_excel(os.path.join(self.dossierAnneeComplete,nomFichier),sheet_name=None)#A63_Ech24_Trimestre2_2019.xls
         dicoFeuille={}
         listFail=[] #pour la gestion du cas où une des 2 feuilles de la section courantes est invalide, il faut pouvoir identifier l'autre et la virer
-        for feuille in fichier.keys() : 
+        for feuille in  [k for k in fichier.keys() if k[:2]!="xx"] : 
             try :
                 df_horaire, idDira=self.miseEnFormeFeuille(fichier,feuille)
                 if idDira in listFail : 
@@ -3024,7 +3024,7 @@ class Comptage_Dira(Comptage):
                 dfHoraireFichierFiltre=dfHoraireFichierFiltre.loc[dfHoraireFichierFiltre.apply(lambda x : (x['jour'],x['id_comptag']) not in 
                         zip(e.dfCompInvalid.jour.tolist(),e.dfCompInvalid.id_comptag.tolist()),axis=1)].copy()
             
-        dfHoraireFichierFiltre=verifNbJoursValidDispo(dfHoraireFichierFiltre,15)[0]#tri sur id_comptag avec moins de 15 jours de donnees
+        dfHoraireFichierFiltre=verifNbJoursValidDispo(dfHoraireFichierFiltre,nbJoursValideMin)[0]#tri sur id_comptag avec moins de 15 jours de donnees
         return dfHoraireFichierFiltre
     
     
