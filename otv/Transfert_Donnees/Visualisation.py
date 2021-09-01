@@ -53,6 +53,7 @@ class IdComptage(object):
         """
         self.id_comptag=id_comptag
         self.bdd=bdd
+        self.recup_indic_agreges()
         
     def recup_indic_agreges(self):
         """
@@ -61,12 +62,13 @@ class IdComptage(object):
         with ct.ConnexionBdd(self.bdd) as c :
             rqt=f"select * from comptage_new.vue_indic_agrege_info_cpt where id_comptag='{self.id_comptag}'"
             self.dfIdComptagBdd=pd.read_sql(rqt,c.sqlAlchemyConn)
+        if self.dfIdComptagBdd.empty : 
+            raise IdComptagInconnuError(self.id_comptag)
 
 class IdComptagInconnuError(Exception):
     """
     Exception levee si un id_comptag n'est pas présent dans la base de données
     """     
-    def __init__(self, dfCompInvalid,dfComp):
-        self.dfCompInvalid=dfCompInvalid
-        self.dfComp=dfComp
-        Exception.__init__(self,f'les 2 sens de section courante ont des tafics non correles, ou il n\'y a qu\'un seul sens au lieu de 2')
+    def __init__(self, id_comptag):
+        self.id_comptag=id_comptag
+        Exception.__init__(self,f'le compteur {self.id_comptag} n\'est pas référencé dans la base')
