@@ -50,6 +50,7 @@ class IdComptage(object):
             id_comptag: text : identifiant du comptage
             bdd : text : valeur de connexion à la bdd, default 'local_otv_boulot'
             dfIdComptagBdd : dataframe recensensant tout les indicateurs agreges de toute les annees
+            chartTrafic : cahart Altair contenant soit que le TMJA ou TMJA + Pc_pl si dispo
         """
         self.id_comptag=id_comptag
         self.bdd=bdd
@@ -64,6 +65,27 @@ class IdComptage(object):
             self.dfIdComptagBdd=pd.read_sql(rqt,c.sqlAlchemyConn)
         if self.dfIdComptagBdd.empty : 
             raise IdComptagInconnuError(self.id_comptag)
+                
+    def graphTrafic(self):
+        """
+        fonction qui retourne un graph avec Pc_pl et TMJA, si pc_pl est présent
+        """
+        dfIdComptagBddTmja=self.dfIdComptagBdd.loc[self.dfIdComptagBdd['indicateur']=='tmja']
+        chartTmja=alt.Chart(dfIdComptagBddTmja, 
+                    title=f'{self.id_comptag} : {self.dfIdComptagBdd.type_poste.unique()[0]}',
+                    width=dfIdComptagBddTmja.annee.nunique()*50).mark_bar().encode(
+                    x='annee:O',
+                    y=alt.Y('valeur:Q', axis=alt.Axis(title='TMJA')))
+        dfIdComptagBddPcpl=self.dfIdComptagBdd.loc[self.dfIdComptagBdd['indicateur']=='pc_pl']
+        if dfIdComptagBddPcpl.empty : 
+            self.chartTrafic=chartTmja
+        else : 
+            self.chartTrafic=(chartTmja+alt.Chart(dfIdComptagBddPcpl, 
+                    title=f'{self.id_comptag} : {self.dfIdComptagBdd.type_poste.unique()[0]}',
+                    width=dfIdComptagBddPcpl.annee.nunique()*50).mark_line(color='red').encode(
+                   x='annee:O',
+                   y=alt.Y('valeur:Q', axis=alt.Axis(title='% PL'), 
+                           scale=alt.Scale(domain=(0,dfIdComptagBddPcpl.valeur.max()*2 ))))).resolve_scale(y='independent')
 
 class IdComptagInconnuError(Exception):
     """
