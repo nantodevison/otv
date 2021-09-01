@@ -4,12 +4,11 @@ Created on 14 sept 2020
 
 @author: martin.schoreisz
 
-module d'importation des donn�es de trafics forunies par les gestionnaires
+module d'importation des donnees de trafics forunies par les gestionnaires
 '''
 
 import pandas as pd
 import re
-import altair as alt
 
 
 vacances_2019=[j for k in [pd.date_range('2019-01-01','2019-01-06'),pd.date_range('2019-02-16','2019-03-03'),
@@ -145,34 +144,6 @@ def calculJourneeType(dfHoraire):
     dfMjo=regrouperHoraire(dfMjo)
     return dfMja,dfMjo
 
-def prepGraphJourneeType(dfTMJA,dfTMJO):
-    """
-    preparer une df pour réaliser un graph avec Altair. le graph comprend les courbes TMJA et TMJO d'unpoint de comptage.
-    in : 
-        dfTMJA : df issue de calculJourneeType()
-        dfTMJO : df issue de calculJourneeType()
-    """
-    dfTMJAStack=dfTMJA[[f'h{i}_{i+1}' for i in range (24)]].stack().reset_index().assign(type_jour='tmja')
-    dfTMJOStack=dfTMJO[[f'h{i}_{i+1}' for i in range (24)]].stack().reset_index().assign(type_jour='tmjo')
-    dfTMJAStack.columns, dfTMJOStack.columns=['id_comptag','heure','nb_veh','type_jour'],['id_comptag','heure','nb_veh','type_jour']
-    dfVisu=pd.concat([dfTMJAStack,dfTMJOStack], axis=0, sort=False)
-    dfVisu.heure=dfVisu.heure.apply(lambda x : pd.to_datetime(f"2019-01-01 {x.split('_')[0][1:]}:00:00"))
-    return dfVisu
-
-def GraphJourneeType(df,id_comptag):
-    dfTMJA,dfTMJO=calculJourneeType(df)
-    dfVisu=prepGraphJourneeType(dfTMJA,dfTMJO)
-    return alt.Chart(dfVisu.loc[dfVisu['id_comptag']==id_comptag], title=id_comptag).mark_line().encode(x='heure', y='nb_veh', color='type_jour')
- 
-def graph2SensParJour(dfComp): 
-    """
-    à partir de la Df dfComp fournie par la classe d'erreur SensAssymetriqueError ou la fonction comparer2Sens,
-    preparer une df et visu sur un graph la somme par jour pour cahque sens
-    """
-    dfGraph2sens=pd.concat([dfComp[['jour','type_veh','id_comptag','total_x']].rename(columns={'total_x':'nb_veh'}).assign(
-        sens='sens1'),dfComp[['jour','type_veh','id_comptag','total_y']].rename(columns={'total_y':'nb_veh'}).assign(
-            sens='sens2')], axis=0)
-    return alt.Chart(dfGraph2sens).mark_line().encode(x='jour', y='nb_veh', color='sens')
     
 class SensAssymetriqueError(Exception):
     """
