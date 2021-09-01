@@ -20,9 +20,6 @@ import Connexion_Transfert as ct
 from Donnees_horaires import comparer2Sens,verifValiditeFichier,concatIndicateurFichierHoraire,SensAssymetriqueError,verifNbJoursValidDispo
 from Donnees_sources import FIM
 import Outils as O
-from Base_BdTopo import Import_outils as io
-from Base_BdTopo import Rond_points as rp
-from Base_BdTopo import Regroupement_correspondance as rc
 
 dico_mois={'janv':[1,'Janv','Janvier'], 'fevr':[2,'Fév','Février','févr','Fevrier'], 'mars':[3,'Mars','Mars'], 'avri':[4,'Avril','Avril'], 'mai':[5,'Mai','Mai'], 'juin':[6,'Juin','Juin'], 
            'juil':[7,'Juill','Juillet', 'juil'], 'aout':[8,'Août','Aout'], 'sept':[9,'Sept','Septembre'], 'octo':[10,'Oct','Octobre'], 'nove':[11,'Nov','Novembre'], 'dece':[12,'Déc','Décembre','Decembre']}
@@ -203,71 +200,16 @@ class Comptage():
     
     def troncon_elemntaires(self,bdd, schema, table_graph,table_vertex,liste_lignes,id_name):    
         """
-        trouver les troncons elementaires d'une liste de ligne
-        se base sur travail interne cf Base_BdTopo Modules regroupement_Correspondace, Import_outils, Rond_Points
-        in : 
-            id_name : string : nom de l'integer identifiant uniq de la table_graph
+        a reprendre avec travail Vince
         """
-        def troncon_elementaires_params(self,bdd, schema, table_graph,table_vertex):
-            """
-            construire les parametres de determination des troncons elementaires
-            """    
-            df=io.import_donnes_base(bdd,schema, table_graph,table_vertex)
-            df2_chaussees=df.loc[df.nature.isin(['Autoroute', 'Quasi-autoroute', 'Route à 2 chaussées'])]
-            df_avec_rd_pt,carac_rd_pt,lign_entrant_rdpt=rp.identifier_rd_pt(df)
-            return df_avec_rd_pt, carac_rd_pt,df2_chaussees
-        
-        O.epurer_graph(bdd,id_name, schema, table_graph,table_vertex)
-        df_avec_rd_pt, carac_rd_pt,df2_chaussees=troncon_elementaires_params(self,bdd, schema, table_graph,table_vertex)
-        dico_corresp={}
-        for id_ign_lin in set(liste_lignes) :
-            try : 
-                dico_corresp[id_ign_lin]=rc.regrouper_troncon([id_ign_lin], df_avec_rd_pt, carac_rd_pt,df2_chaussees,[])[0].id.tolist()
-            except rc.PasAffectationError : 
-                continue
-        return dico_corresp
     
     def corresp_old_new_comptag(self,bdd, schema_temp,nom_table_temp,table_linearisation_existante,
                                 schema, table_graph,table_vertex,id_name,table_pr,table_cpt):
         """
-        trouver la correspndance entre des comptages gestionnaires nouveau et les données dans la base gti de comptage, pour des 
-        comptages n'ayant pas tout a fait les mm pr+abs.
-        attention, traitement de plusieurs heures possible.
-        Attention, si le comptage de la base linearise existante est aussi dans les données de comptage, en plus du nouveau point, alors on le conserve dans les points
-        a inserer
-        ON FAIT LA CORRESPONDANCE QU'AVEC LES IMPORTANCES 1,2,3,4 pour tout les types de points, mais pourça il faut recreer un graph ou mettre a jour l'existant
-        in : 
-            bdd : string : id de la base a laquelle se connecter (cf module id_connexion)
-            schema_temp : string : nom du schema en bdd opur calcul geom, cf localiser_comptage_a_inserer
-            nom_table_temp : string : nom de latable temporaire en bdd opur calcul geom, cf localiser_comptage_a_inserer
-            table_linearisation_existante : string : schema-qualified table de linearisation de reference cf donnees_existantes
-            schema : string : nom du schema contenant la table qui sert de topologie
-            table_graph : string : nom de la table topologie (normalement elle devrait etre issue de table_linearisation_existante
-            table_vertex : string : nom de la table des vertex de la topoolgie
-            id_name : nom de l'identifiant uniq en integer de la table_graoh
-            table_pr : string : schema qualifyed nom de la table de reference des pr
-            table_cpt : string : table des comptages
+         a reprendre avec travail Vince
         """
         
-        def pt_corresp(id_ign_lin,id_ign_cpt_new,dico_corresp) : 
-            if id_ign_cpt_new in dico_corresp[id_ign_lin] : 
-                return True
-            else : return False
-           
-        #verif que les colonnes necessaires sont presentes dans le fichier de base
-        flag_col, col_manquante=O.check_colonne_in_table_bdd(bdd, schema, table_graph,*io.list_colonnes_necessaires)
-        if not flag_col : 
-            raise io.ManqueColonneError(col_manquante)
-
-        ppv_final,points_a_inserer_geom=self.plus_proche_voisin_comptage_a_inserer(self.df_attr_insert,bdd, schema_temp,nom_table_temp,
-                                                             table_linearisation_existante, table_pr,table_cpt)
-        print('plus proche voisin fait')
-        dico_corresp=self.troncon_elemntaires(bdd, schema, table_graph,table_vertex,ppv_final.id_ign_lin.tolist(),id_name)
-        print('tronc elem fait')
-        ppv_final['correspondance']=ppv_final.apply(lambda x : pt_corresp(x['id_ign_lin'],x['id_ign_cpt_new'],dico_corresp),axis=1)
-        df_correspondance=ppv_final.loc[(ppv_final['correspondance']) & 
-              (~ppv_final['id_comptag_lin'].isin(self.df_attr.id_comptag.tolist()))].copy()[['id_comptag_lin','type_poste_lin','id_comptag','type_poste_new']]
-        return df_correspondance,points_a_inserer_geom
+        
     
     def creer_valeur_txt_update(self, df, liste_attr):
         """
