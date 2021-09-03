@@ -80,12 +80,31 @@ class IdComptage(object):
         if dfIdComptagBddPcpl.empty : 
             self.chartTrafic=chartTmja
         else : 
-            self.chartTrafic=(chartTmja+alt.Chart(dfIdComptagBddPcpl, 
+            nbAnneePcpl=dfIdComptagBddPcpl.annee.nunique()
+            chartPcpl=alt.Chart(dfIdComptagBddPcpl, 
+                     title=f'{self.id_comptag} : {self.dfIdComptagBdd.type_poste.unique()[0]}',
+                     width=nbAnneePcpl*50).encode(
+                         x='annee:O',
+                         y=alt.Y('valeur:Q', axis=alt.Axis(title='% PL'),
+                                scale=alt.Scale(domain=(0,dfIdComptagBddPcpl.valeur.max()*2 ))))
+            if nbAnneePcpl==1 : 
+                
+                self.chartTrafic=(chartTmja+chartPcpl.mark_point(color='red')).resolve_scale(y='independent')
+            else :
+                self.chartTrafic=(chartTmja+chartPcpl.mark_line(color='red')).resolve_scale(y='independent')
+                
+    def regressionTmja(self):
+        """
+        fonction qui retrourne une chart altair avec TMJA et droite de regression
+        """
+        dfIdComptagBddTmja=self.dfIdComptagBdd.loc[self.dfIdComptagBdd['indicateur']=='tmja']
+        chartTmja=alt.Chart(dfIdComptagBddTmja, 
                     title=f'{self.id_comptag} : {self.dfIdComptagBdd.type_poste.unique()[0]}',
-                    width=dfIdComptagBddPcpl.annee.nunique()*50).mark_line(color='red').encode(
-                   x='annee:O',
-                   y=alt.Y('valeur:Q', axis=alt.Axis(title='% PL'), 
-                           scale=alt.Scale(domain=(0,dfIdComptagBddPcpl.valeur.max()*2 ))))).resolve_scale(y='independent')
+                    width=dfIdComptagBddTmja.annee.nunique()*50).mark_bar().encode(
+                    x='annee:O',
+                    y=alt.Y('valeur:Q', axis=alt.Axis(title='TMJA')))
+        self.chartRegressTmja=chartTmja+chartTmja.transform_regression('annee', 'valeur').mark_line(color='black')
+        
 
 class IdComptagInconnuError(Exception):
     """

@@ -5,12 +5,15 @@ Created on 1 sept. 2021
 module de test des fonctions et classes de l'OTV
 '''
 import unittest
-import numpy as np
+from Tests_Connexion_Transfert import TestConnexionBdd
 from Visualisation import IdComptage, IdComptagInconnuError
 
 
 class TestIdComptage(unittest.TestCase):
-
+    
+    def TestConnexionBddreuse(self):
+        TestConnexionBdd()
+    
     def testIdComptageNonNull(self):
         self.assertRaises(IdComptagInconnuError,IdComptage,'toto')
         
