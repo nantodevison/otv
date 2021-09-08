@@ -10,6 +10,7 @@ from Donnees_horaires import calculJourneeType
 import pandas as pd
 import altair as alt
 import Connexion_Transfert as ct
+from prompt_toolkit.utils import to_int
 
 def prepGraphJourneeType(dfTMJA,dfTMJO):
     """
@@ -51,10 +52,13 @@ class IdComptage(object):
             bdd : text : valeur de connexion à la bdd, default 'local_otv_boulot'
             dfIdComptagBdd : dataframe recensensant tout les indicateurs agreges de toute les annees
             chartTrafic : cahart Altair contenant soit que le TMJA ou TMJA + Pc_pl si dispo
+            anneeMinConnue : integer : annee de comptage la plus ancienne
+            anneeMaxConnue : integer : annee de comptage la plus recente
         """
         self.id_comptag=id_comptag
         self.bdd=bdd
         self.recup_indic_agreges()
+        self.caracDonnees()
         
     def recup_indic_agreges(self):
         """
@@ -65,18 +69,37 @@ class IdComptage(object):
             self.dfIdComptagBdd=pd.read_sql(rqt,c.sqlAlchemyConn)
         if self.dfIdComptagBdd.empty : 
             raise IdComptagInconnuError(self.id_comptag)
+        
+    def caracDonnees(self):
+        """
+        recuperer les caracteristique des donnees : annee de comptage min, annee de comptage max, liste des indicateurs de comptage
+        """
+        self.anneeMinConnue=self.dfIdComptagBdd['annee'].min()
+        self.anneeMaxConnue=self.dfIdComptagBdd['annee'].max()
                 
-    def graphTrafic(self):
+    def graphTrafic(self, anneeMaxExclue=None):
         """
         fonction qui retourne un graph avec Pc_pl et TMJA, si pc_pl est présent
+        in : 
+            anneeMaxExclue : integer : annee max non prise en compte dans la droite de regression : default : toute les annees prises
         """
-        dfIdComptagBddTmja=self.dfIdComptagBdd.loc[self.dfIdComptagBdd['indicateur']=='tmja']
+        if  not anneeMaxExclue :
+            dfIdComptagBddTmja=self.dfIdComptagBdd.loc[self.dfIdComptagBdd['indicateur']=='tmja']
+            dfIdComptagBddPcpl=self.dfIdComptagBdd.loc[self.dfIdComptagBdd['indicateur']=='pc_pl']
+        elif anneeMaxExclue<int(self.anneeMinConnue) : 
+            raise ValueError(f'annee max de prise en compte : {self.anneeMaxExclue} inferieure a annee min connue : {self.anneeMinConnue}')
+        elif anneeMaxExclue>int(self.anneeMaxConnue) : 
+            raise UserWarning(f'annee max de prise en compte : {anneeMaxExclue} ne filtre pas par rapport a annee max connue {self.anneeMaxConnue}')
+        else : 
+            dfIdComptagBddTmja=self.dfIdComptagBdd.loc[(self.dfIdComptagBdd['indicateur']=='tmja') & 
+                                                       (self.dfIdComptagBdd.annee.astype(int)<anneeMaxExclue)]
+            dfIdComptagBddPcpl=self.dfIdComptagBdd.loc[(self.dfIdComptagBdd['indicateur']=='pc_pl') & 
+                                                       (self.dfIdComptagBdd.annee.astype(int)<anneeMaxExclue)]
         chartTmja=alt.Chart(dfIdComptagBddTmja, 
                     title=f'{self.id_comptag} : {self.dfIdComptagBdd.type_poste.unique()[0]}',
                     width=dfIdComptagBddTmja.annee.nunique()*50).mark_bar().encode(
                     x='annee:O',
                     y=alt.Y('valeur:Q', axis=alt.Axis(title='TMJA')))
-        dfIdComptagBddPcpl=self.dfIdComptagBdd.loc[self.dfIdComptagBdd['indicateur']=='pc_pl']
         if dfIdComptagBddPcpl.empty : 
             self.chartTrafic=chartTmja
         else : 
@@ -93,11 +116,23 @@ class IdComptage(object):
             else :
                 self.chartTrafic=(chartTmja+chartPcpl.mark_line(color='red')).resolve_scale(y='independent')
                 
-    def regressionTmja(self):
+    def regressionTmja(self, anneeMaxExclue=None):
         """
         fonction qui retrourne une chart altair avec TMJA et droite de regression
+        in : 
+            anneeMaxExclue : integer : annee max non prise en compte dans la droite de regression : default : toute les annees prises
         """
-        dfIdComptagBddTmja=self.dfIdComptagBdd.loc[self.dfIdComptagBdd['indicateur']=='tmja']
+        anneeMinConnue=self.dfIdComptagBdd['annee'].min()
+        anneeMaxConnue=
+        if  not anneeMaxExclue :
+            dfIdComptagBddTmja=self.dfIdComptagBdd.loc[self.dfIdComptagBdd['indicateur']=='tmja']
+        elif anneeMaxExclue<int(anneeMinConnue) : 
+            raise ValueError(f'annee max de prise en compte : {anneeMaxExclue} inferieure a annee min connue : {anneeMinConnue}')
+        elif anneeMaxExclue>int(anneeMaxConnue) : 
+            raise UserWarning(f'annee max de prise en compte : {anneeMaxExclue} ne filtre pas par rapport a annee max connue {anneeMaxConnue}')
+        else : 
+            dfIdComptagBddTmja=self.dfIdComptagBdd.loc[(self.dfIdComptagBdd['indicateur']=='tmja') & 
+                                                       (self.dfIdComptagBdd.annee.astype(int)<anneeMaxExclue)]
         chartTmja=alt.Chart(dfIdComptagBddTmja, 
                     title=f'{self.id_comptag} : {self.dfIdComptagBdd.type_poste.unique()[0]}',
                     width=dfIdComptagBddTmja.annee.nunique()*50).mark_bar().encode(
