@@ -9,6 +9,7 @@ Module de regroupement des fonctions de visualisation
 from Donnees_horaires import calculJourneeType 
 import pandas as pd
 import altair as alt
+import numpy as np
 import Connexion_Transfert as ct
 from prompt_toolkit.utils import to_int
 
@@ -76,6 +77,7 @@ class IdComptage(object):
         """
         self.anneeMinConnue=self.dfIdComptagBdd['annee'].min()
         self.anneeMaxConnue=self.dfIdComptagBdd['annee'].max()
+        self.listIndic=tuple(np.sort(self.dfIdComptagBdd.indicateur.unique()))
                 
     def graphTrafic(self, anneeMaxExclue=None):
         """
@@ -87,7 +89,7 @@ class IdComptage(object):
             dfIdComptagBddTmja=self.dfIdComptagBdd.loc[self.dfIdComptagBdd['indicateur']=='tmja']
             dfIdComptagBddPcpl=self.dfIdComptagBdd.loc[self.dfIdComptagBdd['indicateur']=='pc_pl']
         elif anneeMaxExclue<int(self.anneeMinConnue) : 
-            raise ValueError(f'annee max de prise en compte : {self.anneeMaxExclue} inferieure a annee min connue : {self.anneeMinConnue}')
+            raise ValueError(f'annee max de prise en compte : {anneeMaxExclue} inferieure a annee min connue : {self.anneeMinConnue}')
         elif anneeMaxExclue>int(self.anneeMaxConnue) : 
             raise UserWarning(f'annee max de prise en compte : {anneeMaxExclue} ne filtre pas par rapport a annee max connue {self.anneeMaxConnue}')
         else : 
@@ -122,14 +124,12 @@ class IdComptage(object):
         in : 
             anneeMaxExclue : integer : annee max non prise en compte dans la droite de regression : default : toute les annees prises
         """
-        anneeMinConnue=self.dfIdComptagBdd['annee'].min()
-        anneeMaxConnue=
         if  not anneeMaxExclue :
             dfIdComptagBddTmja=self.dfIdComptagBdd.loc[self.dfIdComptagBdd['indicateur']=='tmja']
-        elif anneeMaxExclue<int(anneeMinConnue) : 
-            raise ValueError(f'annee max de prise en compte : {anneeMaxExclue} inferieure a annee min connue : {anneeMinConnue}')
-        elif anneeMaxExclue>int(anneeMaxConnue) : 
-            raise UserWarning(f'annee max de prise en compte : {anneeMaxExclue} ne filtre pas par rapport a annee max connue {anneeMaxConnue}')
+        elif anneeMaxExclue<int(self.anneeMinConnue) : 
+            raise ValueError(f'annee max de prise en compte : {anneeMaxExclue} inferieure a annee min connue : {self.anneeMinConnue}')
+        elif anneeMaxExclue>int(self.anneeMaxConnue) : 
+            raise UserWarning(f'annee max de prise en compte : {anneeMaxExclue} ne filtre pas par rapport a annee max connue {self.anneeMaxConnue}')
         else : 
             dfIdComptagBddTmja=self.dfIdComptagBdd.loc[(self.dfIdComptagBdd['indicateur']=='tmja') & 
                                                        (self.dfIdComptagBdd.annee.astype(int)<anneeMaxExclue)]

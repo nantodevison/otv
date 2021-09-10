@@ -6,6 +6,8 @@ Created on 1 sept. 2021
 module de test des fonctions et classes de l'OTV
 '''
 import unittest
+import pandas as pd
+import Connexion_Transfert as ct
 from Tests_Connexion_Transfert import TestConnexionBdd
 from Visualisation import IdComptage, IdComptagInconnuError
 
@@ -24,20 +26,29 @@ class TestIdComptage(unittest.TestCase):
         """
         self.assertRaises(IdComptagInconnuError,IdComptage,'toto')
         
+    def testIdComptagListIndicValues(self):
+        """
+        verifie que les valuers de la liste de valeurs sont bien conformes 
+        """
+        with ct.ConnexionBdd('local_otv_boulot') as c : 
+            listValeur=pd.read_sql('select code from comptage_new.enum_indicateur', c.sqlAlchemyConn).code.to_list()
+        self.idComptage=IdComptage('17-D939-47+803')
+        self.assertTrue(all([e in listValeur for e in self.idComptage.listIndic]))
+        
     def testGraphTraficTmjaSeulemnt(self):
         """
         verfie qu'un comptage sans pcpl ne contient bien que des donnees tmja
         """
         self.idComptage=IdComptage('86-D97-18+0')
         self.idComptage.graphTrafic()
-        self.assertTrue(all(['tmja'== e for e in self.idComptage.chartTrafic.data.indicateur.tolist()]))
+        self.assertTrue(('tmja',)==self.idComptage.listIndic)
     
     def testGraphTraficTmjaPcpl(self):
         """
         verifie qu'un comptage qui continent tmja et pc_pl renvoi bien les deux dans ses donnees sources
         """
         self.idComptage=IdComptage('16-D1-17+0')    
-        self.assertTrue(['pc_pl', 'tmja']==sorted(list(self.idComptage.dfIdComptagBdd.indicateur.unique())))
+        self.assertTrue(('pc_pl', 'tmja')==self.idComptage.listIndic)
 
     def testGraphTraficAnneeMaxExclueDown(self):
         """
