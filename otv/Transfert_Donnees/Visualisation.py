@@ -139,6 +139,92 @@ class IdComptage(object):
                     x='annee:O',
                     y=alt.Y('valeur:Q', axis=alt.Axis(title='TMJA')))
         self.chartRegressTmja=chartTmja+chartTmja.transform_regression('annee', 'valeur').mark_line(color='black')
+
+class Otv(object):
+    """
+    production des graphs liés à l'OTV en général
+    """        
+    
+    def __init__(self, bdd='local_otv_boulot'):
+        """
+        attributs : 
+            bdd : text : chaine de caracteres de connexion a la bdd selon les identifiants 
+            dicoCorresp : dico décrivantles paramètres des graphs, selon key=typeGraph, values=) dico avec en key : rqt, title, note
+        """
+        self.bdd=bdd
+        self.dicoCorresp={'exhaust':{'rqt':"select * from qualite.vue_exaust_cptag",
+                                     'title':['Répartition des comptages selon l\'exhaustivité globale','et le type de poste'],
+                                     'note':'note_exhaust'},
+                          'coherence_affine':{'rqt':"select * from qualite.vue_coherence_fonction_affine_cptag",
+                                     'title':['Cohérence des comptages selon une fonction affine','et le type de poste'],
+                                     'note':'note_coherence_fonction_affine_cptage'},
+                          'coherence_evol':{'rqt':"select * from qualite.vue_coherence_evolution_cptag",
+                                     'title':['Cohérence des comptages selon l\'évolution annuelle','et le type de poste'],
+                                     'note':'note_coherence_evolutions_cptage'},
+                          'coherence':{'rqt':"select * from qualite.vue_coherence_cptag",
+                                     'title':['Cohérence des comptages selon le type de poste'],
+                                     'note':'note_coherence_cptag'},
+                          'periode' :{'rqt':"select * from qualite.vue_represent_typoste_periode_cptag",
+                                     'title':['Représentativité des comptages selon la ou les période(s)', 'de mesure et le type de poste'],
+                                     'note':'note_represent_typoste_periode'} }
+         
+    
+    def tableauEcartCoherencesComptages(self):
+        """
+        produire le tableau de recenesement des comptages selon leur classmeent de qualite par methode affine ou evolution
+        out : 
+            
+        """
+        with ct.ConnexionBdd('local_otv_boulot') as c:
+            df=pd.read_sql("select * from qualite.vue_coherence_cptag",c.sqlAlchemyConn)
+            df['txt_fonction_affine']=pd.Categorical(df['txt_fonction_affine'], ["NC", "faible", "moyenne", "bonne"])
+            df['txt_evolution']=pd.Categorical(df['txt_evolution'], ["NC", "faible", "moyenne", "bonne"])
+        return pd.pivot_table(df, values='id_comptag', index='txt_fonction_affine', columns='txt_evolution', aggfunc=lambda x : x.count()).fillna(0)
+        
+    
+    def donneesQualiteComptages(self, typeGraph):
+        """
+        production de graph selon les différentes vue qualité de l'OTV : 
+        in : 
+            typeGraph : text parmi (inserer un test sur ces valeurs)
+        out : 
+            grp : dataframe groupee par txt_qualite, note, type_poste
+        """
+        if typeGraph not in self.dicoCorresp.keys() : 
+            raise ValueError ('le type de graph doit etre parmi \'exhaust\', \'coherence_affine\',\'coherence_evol\',\'coherence,\'periode\' ')
+        with ct.ConnexionBdd(self.bdd) as c:
+            df=pd.read_sql(self.dicoCorresp[typeGraph]['rqt'],c.sqlAlchemyConn)
+        grp=df.groupby(['txt_qualite',self.dicoCorresp[typeGraph]['note'], 'type_poste']).id_comptag.count().reset_index()
+        return grp
+    
+    def graphQualiteComptages(self, typeGraph):
+        """
+        produire le graph de qualite de comptage a partir des donnees fournies par donneesQualiteComptages
+        in : 
+            typeGraph : text parmi (inserer un test sur ces valeurs)
+        out : 
+            chart : altair hconcatChart avec à gauche chart1 , a droite chart 2
+            chart1 : altair chart avec le type de poste en abscisse et la qualite en couleur, normalisee
+            chart2 : altair chart avec la qualite en absicce et le type de poste en couleur, en nombre
+        """
+        grp = self.donneesQualiteComptages(typeGraph)
+        chart1=alt.Chart(grp, width=300).mark_bar(width=40).encode(
+            x=alt.X('type_poste:N', axis=alt.Axis(title='type de poste', labelAngle=315), sort=['ponctuel', 'tournant', 'permanent']), 
+            y=alt.Y('id_comptag:Q',axis=alt.Axis(title='Nb de comptage', format='%'), stack='normalize'),
+            color=alt.Color('txt_qualite:N',legend=alt.Legend(title='qualité'), sort=['faible', 'moyenne', 'bonne']),
+            order =alt.Order(f"{self.dicoCorresp[typeGraph]['note']}:Q", sort='ascending'))
+        chart2=alt.Chart(grp, width=300).mark_bar(width=40).encode(
+            x=alt.X('txt_qualite:N', axis=alt.Axis(title='qualité', labelAngle=315), sort=['NC','faible', 'moyenne', 'bonne']), 
+            y=alt.Y('id_comptag:Q',axis=alt.Axis(title='Nb de comptage')),
+            color=alt.Color('type_poste:N',legend=alt.Legend(title='type de poste'), sort=['ponctuel', 'tournant', 'permanent']),
+            order=alt.Order(f"{self.dicoCorresp[typeGraph]['note']}:Q", sort='ascending'))
+        chart=alt.HConcatChart(hconcat=[chart1,chart2], 
+                title=alt.TitleParams(self.dicoCorresp[typeGraph]['title'],
+                 anchor='middle')).resolve_legend('independent').resolve_scale('independent').resolve_scale(color='independent')
+        chart1.title=self.dicoCorresp[typeGraph]['title']
+        chart2.title=self.dicoCorresp[typeGraph]['title']
+        return chart, chart1, chart2
+        
         
 
 class IdComptagInconnuError(Exception):

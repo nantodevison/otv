@@ -9,7 +9,7 @@ import unittest
 import pandas as pd
 import Connexion_Transfert as ct
 from Tests_Connexion_Transfert import TestConnexionBdd
-from Visualisation import IdComptage, IdComptagInconnuError
+from Visualisation import IdComptage, IdComptagInconnuError, Otv
 
 
 class TestIdComptage(unittest.TestCase):
@@ -77,8 +77,48 @@ class TestIdComptage(unittest.TestCase):
         """
         self.idComptage=IdComptage('86-D97-18+0')
         self.assertRaises(UserWarning,self.idComptage.regressionTmja,3000)
-        
 
+
+class TestOtv(unittest.TestCase):
+    
+    def TestConnexionBddreuse(self):
+        """
+        reprend les test du module de connexion
+        """
+        TestConnexionBdd()     
+        
+    def testdonneesQualiteComptagesValueDicoExist(self):
+        """
+        vérifier que les valeusr de dio demandéée existent
+        """
+        otv=Otv()
+        for e in ('exhaust', 'coherence_affine','coherence_evol','coherence','periode'):
+            with self.subTest(e=e):
+                self.assertTrue(e in otv.dicoCorresp.keys())
+            
+    def testdonneesQualiteComptagesValueDicoNotExist(self):
+        """
+        vérifie que si valeur nimp dans le dico, on a bioen une valueError
+        """   
+        otv=Otv()
+        self.assertRaises(ValueError,otv.donneesQualiteComptages, 'toto')
+
+    def testdonneesQualiteComptagesOutNotEmpty(self):
+        """
+        vérifie que si valeur nimp dans le dico, on a bioen une valueError
+        """   
+        otv=Otv()
+        df=otv.donneesQualiteComptages('exhaust')
+        self.assertFalse(df.empty)
+        
+    def tableauEcartCoherencesComptagesColonnesNames(self):
+        """
+        véifier que les noms de colonnes sont bien présents dans la vue
+        """
+        with ct.ConnexionBdd('local_otv_boulot') as c:
+            df=pd.read_sql("select * from qualite.vue_coherence_cptag",c.sqlAlchemyConn)
+        self.assertTrue('txt_fonction_affine' in df.columns and 'txt_evolution' in df.columns)
+        
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']
     unittest.main()
