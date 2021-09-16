@@ -92,7 +92,9 @@ class TestOtv(unittest.TestCase):
         vérifier que les valeusr de dio demandéée existent
         """
         otv=Otv()
-        for e in ('exhaust', 'coherence_affine','coherence_evol','coherence','periode'):
+        for e in ('exhaust_comptage', 'coherence_affine_comptage','coherence_evol_comptage','coherence_comptage',
+                  'periode_comptage', 'densite_compteur','fiabilite_geo_compteur', 'coherence_compteur', 'qualite_compteur',
+                  'qualite_comptage' ):
             with self.subTest(e=e):
                 self.assertTrue(e in otv.dicoCorresp.keys())
             

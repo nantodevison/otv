@@ -46,11 +46,12 @@ class IdComptage(object):
     """ 
     classe permettant de regrouepr tout les infos liées à un id_comptag dans la bdd version 2021 (millesime 2020)
     """
-    def __init__(self, id_comptag, bdd='local_otv_boulot'):
+    def __init__(self, id_comptag, bdd='local_otv_boulot', qualite=False):
         """
         attributs : 
             id_comptag: text : identifiant du comptage
             bdd : text : valeur de connexion à la bdd, default 'local_otv_boulot'
+            qualite : boolean : traduit si l'indicateur qualite des comptages du compteur doit etre rappatrié ou non
             dfIdComptagBdd : dataframe recensensant tout les indicateurs agreges de toute les annees
             chartTrafic : cahart Altair contenant soit que le TMJA ou TMJA + Pc_pl si dispo
             anneeMinConnue : integer : annee de comptage la plus ancienne
@@ -58,15 +59,23 @@ class IdComptage(object):
         """
         self.id_comptag=id_comptag
         self.bdd=bdd
+        self.qualite=qualite
         self.recup_indic_agreges()
         self.caracDonnees()
         
     def recup_indic_agreges(self):
         """
         fonction de récupérartion des données d'indicateur agrege
+        in : 
+            
         """
         with ct.ConnexionBdd(self.bdd) as c :
-            rqt=f"select * from comptage_new.vue_indic_agrege_info_cpt where id_comptag='{self.id_comptag}'"
+            if not self.qualite :
+                rqt=f"select * from comptage_new.vue_indic_agrege_info_cpt where id_comptag='{self.id_comptag}'"
+            else : 
+                rqt=f"""select c.*, ca.txt_qualite
+                     from comptage_new.vue_indic_agrege_info_cpt c join qualite.vue_qualite_cptag ca on ca.id_unique_cpt=c.id_comptag_uniq
+                     where c.id_comptag='{self.id_comptag}'"""
             self.dfIdComptagBdd=pd.read_sql(rqt,c.sqlAlchemyConn)
         if self.dfIdComptagBdd.empty : 
             raise IdComptagInconnuError(self.id_comptag)
@@ -102,6 +111,8 @@ class IdComptage(object):
                     width=dfIdComptagBddTmja.annee.nunique()*50).mark_bar().encode(
                     x='annee:O',
                     y=alt.Y('valeur:Q', axis=alt.Axis(title='TMJA')))
+        if self.qualite : 
+            chartTmja=chartTmja.encode(color=alt.Color('txt_qualite:N', scale=alt.Scale(domain=['bonne', 'moyenne', 'faible'],range=['green', 'blue','red'])))
         if dfIdComptagBddPcpl.empty : 
             self.chartTrafic=chartTmja
         else : 
@@ -113,11 +124,10 @@ class IdComptage(object):
                          y=alt.Y('valeur:Q', axis=alt.Axis(title='% PL'),
                                 scale=alt.Scale(domain=(0,dfIdComptagBddPcpl.valeur.max()*2 ))))
             if nbAnneePcpl==1 : 
-                
                 self.chartTrafic=(chartTmja+chartPcpl.mark_point(color='red')).resolve_scale(y='independent')
             else :
                 self.chartTrafic=(chartTmja+chartPcpl.mark_line(color='red')).resolve_scale(y='independent')
-                
+            
     def regressionTmja(self, anneeMaxExclue=None):
         """
         fonction qui retrourne une chart altair avec TMJA et droite de regression
@@ -152,21 +162,33 @@ class Otv(object):
             dicoCorresp : dico décrivantles paramètres des graphs, selon key=typeGraph, values=) dico avec en key : rqt, title, note
         """
         self.bdd=bdd
-        self.dicoCorresp={'exhaust':{'rqt':"select * from qualite.vue_exaust_cptag",
+        self.dicoCorresp={'exhaust_comptage':{'rqt':"select * from qualite.vue_exaust_cptag",
                                      'title':['Répartition des comptages selon l\'exhaustivité globale','et le type de poste'],
                                      'note':'note_exhaust'},
-                          'coherence_affine':{'rqt':"select * from qualite.vue_coherence_fonction_affine_cptag",
+                          'coherence_affine_comptage':{'rqt':"select * from qualite.vue_coherence_fonction_affine_cptag",
                                      'title':['Cohérence des comptages selon une fonction affine','et le type de poste'],
                                      'note':'note_coherence_fonction_affine_cptage'},
-                          'coherence_evol':{'rqt':"select * from qualite.vue_coherence_evolution_cptag",
+                          'coherence_evol_comptage':{'rqt':"select * from qualite.vue_coherence_evolution_cptag",
                                      'title':['Cohérence des comptages selon l\'évolution annuelle','et le type de poste'],
                                      'note':'note_coherence_evolutions_cptage'},
-                          'coherence':{'rqt':"select * from qualite.vue_coherence_cptag",
+                          'coherence_comptage':{'rqt':"select * from qualite.vue_coherence_cptag",
                                      'title':['Cohérence des comptages selon le type de poste'],
                                      'note':'note_coherence_cptag'},
-                          'periode' :{'rqt':"select * from qualite.vue_represent_typoste_periode_cptag",
+                          'periode_comptage' :{'rqt':"select * from qualite.vue_represent_typoste_periode_cptag",
                                      'title':['Représentativité des comptages selon la ou les période(s)', 'de mesure et le type de poste'],
-                                     'note':'note_represent_typoste_periode'} }
+                                     'note':'note_represent_typoste_periode'}, 
+                          'densite_compteur' :{'rqt':"select * from qualite.vue_densite_annee_before_cpteur",
+                                     'title':['Densité de comptage en fonction','du type de poste'],
+                                     'note':'note_densite_cptg_cpteur'},
+                          'fiabilite_geo_compteur' :{'rqt':"select * from qualite.vue_fiabilite_src_geo_cpteur",
+                                     'title':['fiabilité de la géolocalisation du compteur','selon le type de poste'],
+                                     'note':'note_src_geo'},
+                          'coherence_compteur' :{'rqt':"select * from qualite.vue_coherence_globale_cpteur",
+                                     'title':['cohérence de l\'ensemble des comptages du compteur','selon le type de poste'],
+                                     'note':'note_coherence_cpteur'},
+                          'qualite_comptage' :{'rqt':"select * from qualite.vue_qualite_cptag",
+                                     'title':['Répartition des comptages selon la qualité globale','et le type de poste'],
+                                     'note':'note_comptag_final'}}
          
     
     def tableauEcartCoherencesComptages(self):
@@ -191,7 +213,7 @@ class Otv(object):
             grp : dataframe groupee par txt_qualite, note, type_poste
         """
         if typeGraph not in self.dicoCorresp.keys() : 
-            raise ValueError ('le type de graph doit etre parmi \'exhaust\', \'coherence_affine\',\'coherence_evol\',\'coherence,\'periode\' ')
+            raise ValueError (f"le type de graph doit etre parmi {','.join(self.dicoCorresp.keys())}")
         with ct.ConnexionBdd(self.bdd) as c:
             df=pd.read_sql(self.dicoCorresp[typeGraph]['rqt'],c.sqlAlchemyConn)
         grp=df.groupby(['txt_qualite',self.dicoCorresp[typeGraph]['note'], 'type_poste']).id_comptag.count().reset_index()
