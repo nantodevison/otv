@@ -121,7 +121,39 @@ class Comptage():
         """
         with ct.ConnexionBdd(bdd) as c  :
             dfIdCptUniqs=pd.read_sql(f'select id, id_comptag, annee from comptage.comptage where id_comptag=ANY(ARRAY{listIdComptag}) and annee=\'{annee}\'', c.sqlAlchemyConn)
-        return  dfIdCptUniqs   
+        return  dfIdCptUniqs 
+    
+    def structureBddOld2NewForm(self,dfAConvertir, annee, listAttrFixe,listAttrIndics,typeIndic, bdd='local_otv_boulot'):
+        """
+        convertir les données creer par les classes et issus de la structure de bdd 2010-2019 (wide-form) vers une structure 2020 (long-form)
+        in : 
+            annee : texte : annee sur 4 caractere
+            bdd : string de connexion a la bdd
+            typeIndic : texte parmi 'agrege', 'mensuel'
+            dfAConvertir : dataframe a transformer
+            listAttrFixe : liste des attributs qui ne vont pas deveir des indicateurs
+            listAttrIndics : liste des attributs qui vont devenir des indicateurs
+        """  
+        if typeIndic not in ('agrege', 'mensuel') : 
+            raise ValueError ("le type d'indicateur doit etre parmi 'agrege', 'mensuel'" )
+        if any([e not in listAttrFixe for e in ['id_comptag', 'annee']]) : 
+            raise AttributeError('les attributs id_comptag et annee sont obligatoire dans listAttrFixe')
+        dfIdCptUniqs=self.recupererIdUniqComptage(dfAConvertir.id_comptag.tolist(), annee, bdd)
+        if typeIndic=='agrege' :
+            dfIndic=pd.melt(dfAConvertir, id_vars=listAttrFixe, value_vars=listAttrIndics, 
+                                  var_name='indicateur', value_name='valeur').merge(dfIdCptUniqs, on=['id_comptag', 'annee'], how='left')
+            columns=[c for c in ['id', 'indicateur', 'valeur', 'fichier', 'obs'] if c in dfIndic.columns]
+            dfIndic=dfIndic[columns].rename(columns={'id':'id_comptag_uniq'})
+        elif typeIndic=='mensuel' :
+            dfIndic=pd.melt(dfAConvertir, id_vars=listAttrFixe, value_vars=listAttrIndics, 
+                                  var_name='mois', value_name='valeur').merge(dfIdCptUniqs, on=['id_comptag', 'annee'], how='left')
+            columns=[c for c in ['id', 'donnees_type', 'valeur', 'mois', 'fichier'] if c in dfIndic.columns]
+            dfIndic=dfIndic[columns].rename(columns={'id':'id_comptag_uniq', 'donnees_type':'indicateur'})
+        #si valeur vide on vire la ligne
+        dfIndic.dropna(subset=['valeur'], inplace=True)
+        if not dfIndic.loc[dfIndic.id_comptag_uniq.isna()].empty : 
+            raise ValueError(f'certains comptages ne peuvent etre associes a la table des comptages de la Bdd {dfIndic.loc[dfIndic.id_comptag_uniq.isna()].id_comptag.tolist()}')
+        return dfIndic
         
     def maj_geom(self,bdd, schema, table, nom_table_ref,nom_table_pr,dep=False):
         """
@@ -745,21 +777,9 @@ class Comptage_cd40(Comptage):
         id_comptag=dep+'-'+voie+'-'+pr+'+'+absice    
         return compteur,vma, voie, pr, absice,dep,gest, reseau,concession,type_poste,id_comptag,tmja,pc_pl,tmje, tmjhe,df2
     
-    def remplir_dico(self, dico, *donnees):
-        dico['compteur'].append(donnees[0])
-        dico['vma'].append(donnees[1])
-        dico['voie'].append(donnees[2])
-        dico['pr'].append(donnees[3])
-        dico['absice'].append(donnees[4])
-        dico['dep'].append(donnees[5])
-        dico['gest'].append(donnees[6])
-        dico['reseau'].append(donnees[7])
-        dico['concession'].append(donnees[8])
-        dico['type_poste'].append(donnees[9])
-        dico['annee'].append(donnees[10])
-        dico['id_comptag'].append(donnees[11])
-        dico['tmja'].append(donnees[12])
-        dico['pc_pl'].append(donnees[13])
+    def remplir_dico(self, dico,datalist, *donnees):
+        for t, d in zip(datalist, donnees) : 
+            dico[t].append(d)
     
     def donnees_mensuelles(self, df2,id_comptag):
         """
@@ -786,7 +806,9 @@ class Comptage_cd40(Comptage):
             donnees_mens=df2.loc[df2[0]==2020][[6,15,24,33,42,51,60,69,78,87,96,105]]
             donnees_mens['annee']=self.annee
             donnees_mens['id_comptag']=id_comptag
-            donnees_mens.columns=['janv','fevr','mars','avri','mai','juin','juil','aout','sept','octo','nove','dece','id_comptag','annee']   
+            donnees_mens.columns=['janv','fevr','mars','avri','mai','juin','juil','aout','sept','octo','nove','dece','annee','id_comptag']   
+            donnees_mens['donnees_type']='tmja'
+            donnees_mens.replace('Panne', np.NaN, inplace=True)
         return donnees_mens
     
     def comptage_forme(self):
@@ -794,17 +816,24 @@ class Comptage_cd40(Comptage):
         mise en forme des comptages dans une df pour les donnees annuelles et une autre pour les donnees mensuelles
         """     
         #ouvrir un fichier et modifier son cotenu
-        dico_annee={'compteur':[],'vma':[],'voie':[],'pr':[],'absice':[],'dep':[],'gest':[],'reseau' :[],'concession':[],'type_poste':[],'annee':[],'id_comptag':[],'tmja':[],'pc_pl':[]}
- 
+        if self.donneesType=='B152' :
+                dataList=['compteur', 'vma', 'voie', 'pr', 'absice', 'dep', 'gest', 'reseau', 'concession', 'type_poste', 'annee',
+                         'id_comptag','tmja','pc_pl', 'fichier']
+        elif self.donneesType=='B153' :
+                dataList=['compteur', 'vma', 'voie', 'pr', 'absice', 'dep', 'gest', 'reseau', 'concession', 'type_poste', 'annee',
+                         'id_comptag','tmja','pc_pl', 'fichier', 'tmje', 'tmjhe']
+        dico_annee={k:[] for k in dataList}
         for i,fichier in enumerate(self.verif_liste_fichier()) :
             #traitement des donnees agregee a l'annee
             if self.donneesType=='B152' :
                 compteur,vma, voie, pr, absice,dep,gest, reseau,concession,type_poste,id_comptag,tmja,pc_pl,df2=self.extraire_donnees_annuelles(fichier)
+                self.remplir_dico(dico_annee,dataList,compteur,vma, voie, pr, absice,dep,gest, reseau,concession,type_poste,self.annee,id_comptag,tmja,pc_pl, os.path.basename(fichier))
             elif self.donneesType=='B153' :
                 compteur,vma, voie, pr, absice,dep,gest, reseau,concession,type_poste,id_comptag,tmja,pc_pl,tmje, tmjhe,df2=self.extraire_donnees_annuelles(fichier)
-            self.remplir_dico(dico_annee,compteur,vma, voie, pr, absice,dep,gest, reseau,concession,type_poste,self.annee,id_comptag,tmja,pc_pl)
+                self.remplir_dico(dico_annee,dataList, compteur,vma, voie, pr, absice,dep,gest, reseau,concession,type_poste,self.annee,id_comptag,tmja,pc_pl, os.path.basename(fichier), tmje, tmjhe)
             #traiteent des donnees mensuelles
             donnees_mens=self.donnees_mensuelles(df2,id_comptag)
+            donnees_mens['fichier']=os.path.basename(fichier)
             if i==0 : 
                 donnees_mens_tot=donnees_mens.copy()
             else : 
@@ -813,9 +842,6 @@ class Comptage_cd40(Comptage):
         #attributs finaux
         self.df_attr=pd.DataFrame(dico_annee)
         self.df_attr_mens=donnees_mens_tot.copy()
-        if self.donneesType=='B153' : 
-            self.df_attr['tmje']=tmje 
-            self.df_attr['tmjhe']=tmjhe 
     
     def classer_comptage_insert_update(self,bdd,table, schema):
         """
@@ -826,6 +852,7 @@ class Comptage_cd40(Comptage):
         self.comptag_existant_bdd(bdd, table, schema=schema,dep='40', type_poste=False)
         #mise a jour des noms selon la table de corresp existnate
         self.corresp_nom_id_comptag(bdd,self.df_attr)
+        self.corresp_nom_id_comptag(bdd,self.df_attr_mens)
         #classement
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
@@ -2054,9 +2081,41 @@ class Comptage_alienor(Comptage):
 class Comptage_atlandes(Comptage):    
     def __init__(self,fichier_perm, annee):
         self.fichier_perm=fichier_perm
-        self.annee=annee   
+        self.annee=annee  
+        
+    def miseEnForme(self):
+        """
+        traiter le fichier pour renommer et preparer les colonnes
+        """ 
+        donnees=pd.read_excel(self.fichier_perm)
+        donnees=donnees.loc[(~donnees['TMJA 2 sens confondus'].isna()) & (~donnees['TMJM VL'].isna())].copy()
+        val_l0=donnees.iloc[0].values
+        col_tmjm_vl=donnees.columns[donnees.columns.tolist().index('TMJM VL'):donnees.columns.tolist().index('TMJM PL')]
+        dico_nom_tmjm_vl={a:'tmjm_vl_'+b for a, b in zip(col_tmjm_vl,val_l0[donnees.columns.tolist().index('TMJM VL'):donnees.columns.tolist().index('TMJM PL')])}
+        col_tmjm_pl=donnees.columns[donnees.columns.tolist().index('TMJM PL'):]
+        dico_nom_tmjm_pl={a:'tmjm_pl_'+b for a, b in zip(col_tmjm_pl,val_l0[donnees.columns.tolist().index('TMJM VL'):donnees.columns.tolist().index('TMJM PL')])}
+        donnees=donnees.rename(columns=dico_nom_tmjm_vl).rename(columns=dico_nom_tmjm_pl).rename(columns={'TMJA 2 sens confondus':'tmja_vl','Unnamed: 8':'tmja_pl' })
+        donnees=donnees.iloc[1:].copy()
+        donnees['id_comptag']=donnees.apply(lambda x : f"40-A63-{str(x['Echangeur de début de section Trafic'])}+{str(x['Unnamed: 2'])}"if x['Echangeur de début de section Trafic'] != 36 else
+                                          f"33-A63-{str(x['Echangeur de début de section Trafic'])}+{str(x['Unnamed: 2'])}", axis=1)
+        donnees['fichier']=os.path.basename(self.fichier_perm)
+        donnees['src']='tableur gestionnaire'
+        donnees['annee']=str(self.annee)
+        return donnees
+    
+    def donneesAgregees(self):
+        """
+        creer la df format bdd
+        """
+        donneesAgrege=self.miseEnForme()[['id_comptag','tmja_vl','tmja_pl', 'fichier', 'annee', 'src' ]].copy()
+        donneesAgrege['type_veh']='vl/pl'
+        donneesAgrege['tmja']=(donneesAgrege.tmja_vl+donneesAgrege.tmja_pl).astype(int)
+        donneesAgrege['pc_pl']=donneesAgrege.tmja_pl/donneesAgrege.tmja*100
+        return donneesAgrege
+        
         
     def donnees_mens(self):
+        """
         donnees=pd.read_excel(self.fichier_perm)
         donnees=donnees.loc[(~donnees['TMJA 2 sens confondus'].isna()) & (~donnees['TMJM VL'].isna())].copy()
         val_l0=donnees.iloc[0].values
@@ -2068,20 +2127,22 @@ class Comptage_atlandes(Comptage):
         donnees=donnees.iloc[1:].copy()
         donnees['id_comptag']=donnees.apply(lambda x : f"40-A63-{str(x['Echangeur de début de section Trafic'])}+{str(x['Unnamed: 2'])}"if x['Echangeur de début de section Trafic'] != 36 else
                                           f"33-A63-{str(x['Echangeur de début de section Trafic'])}+{str(x['Unnamed: 2'])}", axis=1)
-        donnees_mens=donnees[[a for a in donnees.columns if a=='id_comptag' or 'tmjm' in a ]].copy()
+        """
+        donnees=self.miseEnForme()
+        colFixe=['id_comptag', 'fichier', 'annee']
+        donnees_mens=donnees[[a for a in donnees.columns if a in colFixe or 'tmjm' in a ]].copy()
         #calcul du tmjm_tv
         for m in dico_mois.values():
             donnees_mens[f'tmjm_tv_{m[1]}']=donnees_mens[f'tmjm_vl_{m[1]}']+donnees_mens[f'tmjm_pl_{m[1]}']
             donnees_mens[f'tmjm_pc_pl_{m[1]}']=donnees_mens.apply(lambda x : round(x[f'tmjm_pl_{m[1]}']/x[f'tmjm_tv_{m[1]}']*100,2), axis=1)
-        tmjm_tv_mens=donnees_mens[[a for a in donnees_mens.columns if 'tv' in a or a=='id_comptag']].copy()
+        tmjm_tv_mens=donnees_mens[[a for a in donnees_mens.columns if 'tv' in a or a in colFixe]].copy()
         tmjm_tv_mens.rename(columns={c:k for c in tmjm_tv_mens.columns if c!='id_comptag' for k, v in dico_mois.items()  if v[1]==c.split('_')[-1]}, inplace=True)
         tmjm_tv_mens['donnees_type']='tmja'
-        tmjm_pl_mens=donnees_mens[[a for a in donnees_mens.columns if 'pc_pl_' in a or a=='id_comptag']].copy()
+        tmjm_pl_mens=donnees_mens[[a for a in donnees_mens.columns if 'pc_pl_' in a or a in colFixe]].copy()
         tmjm_pl_mens.rename(columns={c:k for c in tmjm_pl_mens.columns if c!='id_comptag' for k, v in dico_mois.items()  if v[1]==c.split('_')[-1]}, inplace=True)
         tmjm_pl_mens['donnees_type']='pc_pl'
         donnees_mens_final=pd.concat([tmjm_tv_mens,tmjm_pl_mens], axis=0, sort=False).sort_values('id_comptag')
-        donnees_mens_final['annee']=str(self.annee)
-        self.df_attr_mens=donnees_mens_final.copy() 
+        return donnees_mens_final 
         
 class Comptage_GrandPoitiers(Comptage):
     def __init__(self,dossier, annee):

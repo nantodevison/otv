@@ -45,7 +45,22 @@ class TestComptage(unittest.TestCase):
                   '2020/01/01-2020/13/10', '2020/01/41-2020/09/10', '2020/01/01-2020/13/10','2020/01/33-2020/13/10') :
             with self.subTest(p=p):
                 self.assertRaises(ValueError,self.cpt.creer_comptage,'cpt', '2020', 'src', 'obs', 'tv/pl', p)
+                
+    def testSructureBddOld2NewFormAttrObligatoires(self):
+        """
+        vérifier que les erreurs sont bien levées si les conditions ne sont pas rempli sur les attributs obligatoires
+        """
+        self.assertRaises(AttributeError,self.cpt.structureBddOld2NewForm,'df', '2020', ['listAttrFixe, id_comptag'],['tmja'], 'agrege')
         
+    def testSructureBddOld2NewFormResultNonVide(self):
+        """
+        vérifier que les erreurs sont bien levées si les conditions ne sont pas rempli sur les attributs obligatoires
+        """
+        dfTest=pd.DataFrame({'id_comptag':['XXX-DXXXX-XX+XXX',], 'annee':'2020', 'tmja':10000})
+        self.assertRaises(ValueError,self.cpt.structureBddOld2NewForm,dfTest, '2020', ['annee', 'id_comptag'],['tmja'], 'agrege')
+        
+    def testStructureBddOld2NewFormTypeIndic(self):
+        self.assertRaises(ValueError,self.cpt.structureBddOld2NewForm,'df', '2020', ['annee', 'id_comptag'],['tmja'], 'toto')
         
 
 class TestComptageCd40(unittest.TestCase):
