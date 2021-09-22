@@ -10,7 +10,8 @@ module d'importation des données de trafics forunies par les gestionnaires
 import pandas as pd
 import geopandas as gp
 import numpy as np
-import os, re, csv,statistics,filecmp, unidecode
+import os, re, csv,statistics,filecmp
+from unidecode import unidecode
 import datetime as dt
 from geoalchemy2 import Geometry,WKTElement
 from shapely.geometry import Point, LineString
@@ -207,7 +208,7 @@ class Comptage():
                              set geom=(select geom_out  from comptage.geoloc_pt_comptag('{table_ref}','{table_pr}',id_comptag))
                              where geom is null"""
             c.sqlAlchemyConn.execute(rqt_maj_geom)
-            points_a_inserer=gp.GeoDataFrame.from_postgis(f'select * from {schema_temp}.{nom_table_temp}', c.sqlAlchemyConn, geom_col='geom',crs={'init': 'epsg:2154'})
+            points_a_inserer=gp.GeoDataFrame.from_postgis(f'select * from {schema_temp}.{nom_table_temp}', c.sqlAlchemyConn, geom_col='geom',crs={'epsg:2154'})
         return points_a_inserer
 
     def filtrer_periode_ponctuels(self):
@@ -328,6 +329,73 @@ class Comptage():
         elif isinstance(df, pd.DataFrame) : 
             with ct.ConnexionBdd(bdd,localisation) as c:
                 df.to_sql(table,c.sqlAlchemyConn,schema=schema,if_exists=if_exists, index=False )
+                
+class Comptage_cd64(Comptage):
+    """
+    premiere annee : 2020 : base fichier excel 
+    ATTENTION : le fichier continet plusieurs annee, il faut donc le filtrer pour ne garder que les annees inconnues (2018, 2019, 2020)
+    """
+    def __init__(self,fichier, annee) : 
+        """
+        attributs : 
+            fichier : raw string path complet
+            annee : string : annee sur 4 caracteres
+        """
+        self.fichier=fichier
+        self.annee=annee 
+        
+    def miseEnForme(self):
+        """
+        ouvrir le fichier, chnager le nom des attributs et ne conserver que les annees qui nous interesse
+        in : 
+            anneeMin : string : annee mini a conserver sur 4 caracteres
+        """
+        dfBrute=pd.read_excel(self.fichier, skiprows=1)
+        dfBrute=dfBrute.rename(columns={c:unidecode(c).lower().replace(' ','_').replace('%', 'pc_') for c in dfBrute.columns})
+        dfBrute['departement']=dfBrute['departement'].astype('str')
+        dfBrute['type']=dfBrute['type'].apply(lambda x : 'permanent' if x=='Per' else 'tournant')
+        dfBrute['route']=dfBrute['route'].apply(lambda x : O.epurationNomRoute(x.split()[1]))
+        dfBrute['type_veh']='tv/pl'
+        dfBrute['reseau']='RD'
+        dfBrute['gestionnai']='CD64'
+        dfBrute['concession']=False
+        dfBrute['src_geo']='pr+abs_gestionnaire'
+        dfBrute['obs_supl']=dfBrute.apply(lambda x : f'section : {x.section} ; indice : {x.indice} ; sens : {x.sens} ; localisation : {x.localisation}', axis=1)
+        dfBrute['fictif']=False
+        dfBrute['src_cpt']='convention gestionnaire'
+        dfBrute['convention']=True
+        dfBrute['sens_cpt']='double sens'
+        dfBrute.rename(columns={'type':'type_poste','departement':'dep', 'prc':'pr', 'abc':'abs', 'mja_tv':'tmja', 'mja_pc_pl':'pc_pl' }, inplace=True)
+        dfBrute['id_comptag']=dfBrute.apply(lambda x : f"{x.dep}-{x.route}-{x.pr}+{x['abs']}", axis=1)
+        self.df_attr=dfBrute
+    
+    def filtrerAnnee(self,df, anneeMin):
+        """
+        filtrer une dfBrute selon les annees a garder
+        in : 
+            anneeMin : string : annee mini a conserver sur 4 caracteres
+        """
+        return df.loc[df.annee>=int('2018')].copy()
+        
+    def classer_comptage_insert_update(self, bdd='local_otv_boulot',table='compteur', schema='comptage'):
+        """
+        repartir les comptages dans les classes de ceux qu'on connait et les nouveaux
+        in : 
+            bdd : string de connexion a la base postgres
+            table : strin : non schema-qualifyed table de la bdd contenant les compteurs
+            schema : schema contenant les donnees de comptage
+        """
+        self.df_attr=self.filtrerAnnee(self.df_attr, '2018')
+        #creation de l'existant
+        self.comptag_existant_bdd(bdd, table, schema=schema,dep='64', type_poste=False)
+        #mise a jour des noms selon la table de corresp existnate
+        self.corresp_nom_id_comptag(bdd,self.df_attr)
+        #ajouter une colonne de geometrie
+        #classement
+        self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        return
+        
 
 class Comptage_cd23(Comptage):
     """
