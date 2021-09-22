@@ -90,7 +90,7 @@ class Comptage():
         df['id_comptag']=df.apply(lambda x : corresp_comptg.loc[corresp_comptg['id_gest']==x['id_comptag']].id_gti.values[0] 
                                                     if x['id_comptag'] in corresp_comptg.id_gest.tolist() else x['id_comptag'], axis=1)
         
-    def creer_comptage(self,listComptage, annee, src, obs, type_veh,periode=None, bdd='local_otv_boulot') : 
+    def creer_comptage(self,listComptage, annee, src, type_veh,obs=None, periode=None, bdd='local_otv_boulot') : 
         """
         creer une df a inserer dans la table des comptage
         in : 
@@ -208,7 +208,7 @@ class Comptage():
                              set geom=(select geom_out  from comptage.geoloc_pt_comptag('{table_ref}','{table_pr}',id_comptag))
                              where geom is null"""
             c.sqlAlchemyConn.execute(rqt_maj_geom)
-            points_a_inserer=gp.GeoDataFrame.from_postgis(f'select * from {schema_temp}.{nom_table_temp}', c.sqlAlchemyConn, geom_col='geom',crs={'epsg:2154'})
+            points_a_inserer=gp.GeoDataFrame.from_postgis(f'select * from {schema_temp}.{nom_table_temp}', c.sqlAlchemyConn, geom_col='geom',crs='epsg:2154')
         return points_a_inserer
 
     def filtrer_periode_ponctuels(self):
@@ -287,11 +287,11 @@ class Comptage():
             df: df des donnees de base
             liste_attr : liste des attributs que l'on souhaite transferer dans la bdd (avec id_comptag)
         """
-        valeurs_txt=str(tuple([ tuple([elem[i] for i in range(len(liste_attr))]) 
+        valeurs_txt=str(tuple([ tuple([elem[i].replace('\'','_') if isinstance(i,str) else elem[i] for i in range(len(liste_attr)) ]) 
                                for elem in zip(*[df[a].tolist() for a in liste_attr])]))[1:-1]
         return valeurs_txt
     
-    def update_bdd(self,bdd, schema, table, valeurs_txt,dico_attr_modif,filtre=None, localisation=('boulot')):
+    def update_bdd(self, schema, table, valeurs_txt,dico_attr_modif,identifiant='id_comptag',bdd='local_otv_boulot',filtre=None, localisation=('boulot')):
         """
         mise à jour des id_comptag deja presents dans la base
         en entree : 
@@ -301,11 +301,12 @@ class Comptage():
             valeurs_txt : tuple des valeurs pour mise à jour, issu de creer_valeur_txt_update
             dico_attr_modif : dico de string avec en clé les nom d'attribut à mettre à jour, en value des noms des attributs source dans la df (ne pas mettre id_comptag,
                             garder les attributsdans l'ordre issu de creer_valeur_txt_update)
+            identifiant : string : nom de la''tribut permettant la mise a jour par jointure
             filtre : string : condition de requete where a ajouter. le permeir 'and' ne doit pas etre ecrit
         """
         rqt_attr=','.join(f'{attr_b}=v.{attr_f}' for (attr_b,attr_f) in dico_attr_modif.items())
         attr_fichier=','.join(f'{attr_f}' for attr_f in dico_attr_modif.values())
-        rqt_base=f'update {schema}.{table}  as c set {rqt_attr} from (values {valeurs_txt}) as v(id_comptag,{attr_fichier}) where v.id_comptag=c.id_comptag'
+        rqt_base=f'update {schema}.{table}  as c set {rqt_attr} from (values {valeurs_txt}) as v({identifiant},{attr_fichier}) where v.{identifiant}=c.{identifiant}'
         if filtre : 
             rqt_base=rqt_base+f' and {filtre}'
         with ct.ConnexionBdd(bdd, localisation) as c:
@@ -365,8 +366,10 @@ class Comptage_cd64(Comptage):
         dfBrute['src_cpt']='convention gestionnaire'
         dfBrute['convention']=True
         dfBrute['sens_cpt']='double sens'
+        dfBrute['fichier']=self.fichier
         dfBrute.rename(columns={'type':'type_poste','departement':'dep', 'prc':'pr', 'abc':'abs', 'mja_tv':'tmja', 'mja_pc_pl':'pc_pl' }, inplace=True)
         dfBrute['id_comptag']=dfBrute.apply(lambda x : f"{x.dep}-{x.route}-{x.pr}+{x['abs']}", axis=1)
+        
         self.df_attr=dfBrute
     
     def filtrerAnnee(self,df, anneeMin):
@@ -394,6 +397,23 @@ class Comptage_cd64(Comptage):
         #classement
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        return
+    
+    def verifComptageInsert(self, dicoCorresp,gdfInsertCorrigee, bdd='local_otv_boulot') : 
+        """
+        verifier que les comptages a inserer sont bine nouveau en les geolocalisant et comparant avec les donnes connues 
+        in : 
+            dicoCorresp = dico avec en clé l'id_comptag new et en value l'id_comptag gti
+            gdfInsertCorrigee = geoDataFrame avec les geometries nulles remplies le plus possibles via SIG
+        """
+
+        #il reste des geoms nulles, ajoutées manuellement
+        #après verif on passe le dico corresp dans la table bbd des coreesp_id_comptag
+        self.insert_bdd(bdd, 'comptage', 'corresp_id_comptag', 
+                        pd.DataFrame.from_dict({'id_gest': [k for k in  dicoCorresp.keys()],'id_gti':[v for v in  dicoCorresp.values()]}))
+        #recalcul des correspondances
+        self.classer_comptage_insert_update()
+        self.df_attr_insert= gp.GeoDataFrame(self.df_attr_insert.merge(gdfInsertCorrigee[['id_comptag', 'geometry']], on='id_comptag'))
         return
         
 
