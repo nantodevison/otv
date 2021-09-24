@@ -141,12 +141,12 @@ class Comptage():
             raise AttributeError('les attributs id_comptag et annee sont obligatoire dans listAttrFixe')
         dfIdCptUniqs=self.recupererIdUniqComptage(dfAConvertir.id_comptag.tolist(), annee, bdd)
         if typeIndic=='agrege' :
-            dfIndic=pd.melt(dfAConvertir, id_vars=listAttrFixe, value_vars=listAttrIndics, 
+            dfIndic=pd.melt(dfAConvertir.assign(annee=dfAConvertir.annee.astype(str)), id_vars=listAttrFixe, value_vars=listAttrIndics, 
                                   var_name='indicateur', value_name='valeur').merge(dfIdCptUniqs, on=['id_comptag', 'annee'], how='left')
             columns=[c for c in ['id', 'indicateur', 'valeur', 'fichier', 'obs'] if c in dfIndic.columns]
             dfIndic=dfIndic[columns].rename(columns={'id':'id_comptag_uniq'})
         elif typeIndic=='mensuel' :
-            dfIndic=pd.melt(dfAConvertir, id_vars=listAttrFixe, value_vars=listAttrIndics, 
+            dfIndic=pd.melt(dfAConvertir.assign(annee=dfAConvertir.annee.astype(str)), id_vars=listAttrFixe, value_vars=listAttrIndics, 
                                   var_name='mois', value_name='valeur').merge(dfIdCptUniqs, on=['id_comptag', 'annee'], how='left')
             columns=[c for c in ['id', 'donnees_type', 'valeur', 'mois', 'fichier'] if c in dfIndic.columns]
             dfIndic=dfIndic[columns].rename(columns={'id':'id_comptag_uniq', 'donnees_type':'indicateur'})
@@ -2094,11 +2094,12 @@ class Comptage_vinci(Comptage):
     
     def ouvrir_fichier(self):
         donnees_brutes=pd.read_excel(self.fichier_perm).rename(columns={'(*) PR début':'pr_deb'})
-        donnees_brutes=donnees_brutes.loc[~donnees_brutes.pr_deb.isna()].copy()
+        donnees_brutes=donnees_brutes.loc[~donnees_brutes.pr_deb.isna()][:-1].copy()
+        donnees_brutes['pr_deb']=donnees_brutes.pr_deb.astype(float)
         return donnees_brutes
     
     def importer_donnees_correspondance(self):
-        with ct.ConnexionBdd('local_otv_station_gti') as c :
+        with ct.ConnexionBdd('local_otv_boulot') as c :
             rqt=f"""select * from source.asf_otv_tmja_2017"""
             base=pd.read_sql(rqt, c.sqlAlchemyConn).rename(columns={'(*) PR début':'pr_deb'})
             base=base.loc[~base.pr_deb.isna()].copy()
@@ -2108,10 +2109,12 @@ class Comptage_vinci(Comptage):
     def comptage_forme(self):
         donnees_brutes=self.ouvrir_fichier()
         base=self.importer_donnees_correspondance() 
-        self.df_attr=donnees_brutes[['pr_deb',f'TMJA {str(self.annee)}',f'Pc PL {str(self.annee)}']].merge(base[['pr_deb','ID']], on='pr_deb').rename(columns=
+        self.df_attr=donnees_brutes[['pr_deb',f'TMJA {str(self.annee)}',f'Pc PL {str(self.annee)}']].merge(base[['pr_deb','ID']], on='pr_deb', how='left').rename(columns=
                                                             {'ID':'id_comptag',f'TMJA {str(self.annee)}':'tmja',f'Pc PL {str(self.annee)}':'pc_pl'})
         self.df_attr['pc_pl']=self.df_attr.pc_pl.apply(lambda x : round(x,2))
         self.df_attr['src']='tableur'
+        self.df_attr['fichier']=os.path.basename(self.fichier_perm)
+        self.df_attr['annee']=self.annee
         
         tmjm_mens=donnees_brutes[[a for a in donnees_brutes.columns if a =='pr_deb' or 'TMJM '+str(self.annee) in a]].merge(base[['pr_deb','ID']], on='pr_deb').rename(columns=
                                                             {'ID':'id_comptag'}).drop('pr_deb', axis=1)
@@ -2124,6 +2127,7 @@ class Comptage_vinci(Comptage):
         pc_pl_mens['donnees_type']='pc_pl'
         self.df_attr_mens=pd.concat([tmjm_mens,pc_pl_mens], axis=0, sort=False).sort_values('id_comptag')
         self.df_attr_mens['annee']=str(self.annee)
+        self.df_attr_mens['fichier']=os.path.basename(self.fichier_perm)
         
     def classer_comptage_update_insert(self,bdd, table_cpt):
         """
