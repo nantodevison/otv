@@ -47,14 +47,13 @@ class Comptage():
             df.replace('', np.NaN, inplace=True)
         return  df
    
-    def comptag_existant_bdd(self,bdd, table, schema='comptage',localisation='boulot',dep=False, type_poste=False, gest=False):
+    def comptag_existant_bdd(self, table, bdd='local_otv_boulot', schema='comptage',dep=False, type_poste=False, gest=False):
         """
         recupérer les comptages existants dans une df
         en entree : 
             bdd : string selon le fichier 'Id_connexions' du Projet Outils
             table : string : nom de la table
             schema : string : nom du schema
-            localisation : raccourci pour modif des chemins relatifs aux Id de connexions
             dep : string, code du deprtament sur 2 lettres
             type_poste : string ou list de string: type de poste dans 'permanent', 'tournant', 'ponctuel'
         en sortie : 
@@ -72,8 +71,27 @@ class Comptage():
         elif dep and isinstance(type_poste, list) and gest : 
             list_type_poste='\',\''.join(type_poste)
             rqt=f"""select * from {schema}.{table} where dep='{dep}' and type_poste in ('{list_type_poste}') and gestionnai='{gest}'"""
-        with ct.ConnexionBdd(bdd,localisation) as c:
+        with ct.ConnexionBdd(bdd) as c:
             self.existant=gp.GeoDataFrame.from_postgis(rqt, c.sqlAlchemyConn, geom_col='geom',crs='epsg:2154')
+            
+    def scinderComptagExistant(self, dfATester, table, bdd='local_otv_boulot', schema='comptage', dep=False, type_poste=False, gest=False):
+        """
+        utiliser la fonction comptag_existant_bdd pour comparer une df avec les donnees de comptage dans la base
+        in: 
+            dfATester : df avec un champs id_comptag
+            le reste des parametres de la fonction comptag_existant_bdd
+        out : 
+            dfIdsConnus : dataframe testee dont les id_comptag sont dabs la bdd
+            dfIdsInconnus : dataframe testee dont les id_comptag ne sont pas dabs la bdd
+        """
+        #verifier que la colonne id_comptag est presente
+        if not 'id_comptag' in dfATester.columns : 
+            raise AttributeError('la colonne id_comptag doit etre dans la dataframe')
+        self.comptag_existant_bdd(table, bdd, schema,dep, type_poste, gest)
+        dfIdsConnus=dfATester.loc[dfATester.id_comptag.isin(self.existant.id_comptag)].copy()
+        dfIdsInconnus=dfATester.loc[~dfATester.id_comptag.isin(self.existant.id_comptag)].copy()
+        return dfIdsConnus, dfIdsInconnus
+        
     
     def corresp_nom_id_comptag(self,bdd,df,localisation='boulot'):
         """
@@ -153,7 +171,8 @@ class Comptage():
         #si valeur vide on vire la ligne
         dfIndic.dropna(subset=['valeur'], inplace=True)
         if not dfIndic.loc[dfIndic.id_comptag_uniq.isna()].empty : 
-            raise ValueError(f'certains comptages ne peuvent etre associes a la table des comptages de la Bdd {dfIndic.loc[dfIndic.id_comptag_uniq.isna()].id_comptag.tolist()}')
+            print(dfIndic.columns)
+            raise ValueError(f"certains comptages ne peuvent etre associes a la table des comptages de la Bdd {dfIndic.loc[dfIndic.id_comptag_uniq.isna()].id_comptag_uniq.tolist()}")
         return dfIndic
         
     def maj_geom(self,bdd, schema, table, nom_table_ref,nom_table_pr,dep=False):
@@ -2109,8 +2128,8 @@ class Comptage_vinci(Comptage):
     def comptage_forme(self):
         donnees_brutes=self.ouvrir_fichier()
         base=self.importer_donnees_correspondance() 
-        self.df_attr=donnees_brutes[['pr_deb',f'TMJA {str(self.annee)}',f'Pc PL {str(self.annee)}']].merge(base[['pr_deb','ID']], on='pr_deb', how='left').rename(columns=
-                                                            {'ID':'id_comptag',f'TMJA {str(self.annee)}':'tmja',f'Pc PL {str(self.annee)}':'pc_pl'})
+        self.df_attr=donnees_brutes[['pr_deb',f'TMJA {str(self.annee)}',f'Pc PL {str(self.annee)}', 'Vitesse moyenne annuelle']].merge(base[['pr_deb','ID']], on='pr_deb', how='left').rename(columns=
+                                                            {'ID':'id_comptag',f'TMJA {str(self.annee)}':'tmja',f'Pc PL {str(self.annee)}':'pc_pl', 'Vitesse moyenne annuelle':'vmoy'})
         self.df_attr['pc_pl']=self.df_attr.pc_pl.apply(lambda x : round(x,2))
         self.df_attr['src']='tableur'
         self.df_attr['fichier']=os.path.basename(self.fichier_perm)
@@ -2966,11 +2985,12 @@ class Comptage_LaRochelle(Comptage):
 class Comptage_Dira(Comptage):
     """
     pour la DIRA on a besoinde connaitre le nom du fichierde syntheses tmja par section, 
-    et le nom du dossier qui contient les fichiers excel de l'année complete
+    et le nom du dossier qui contient les fichiers excel de l'année complete, plus le nom du fihcier de Comptage issu de la carto (cf dossier historique)
     on ajoute aussi le nom de table et de schema comptagede la Bdd pour pouvoir de suite se connecter et obtenir les infos des points existants
     """ 
-    def __init__(self,fichierTmjaParSection, dossierAnneeComplete, annee,bdd, table):
+    def __init__(self,fichierTmjaParSection, dossierAnneeComplete,fichierComptageCarto, annee,bdd, table):
         self.fichierTmjaParSection=fichierTmjaParSection
+        self.fichierComptageCarto=fichierComptageCarto
         self.dossierAnneeComplete=dossierAnneeComplete
         self.annee=annee
         self.dfCorrespExistant=self.correspIdsExistant(bdd, table)
@@ -2980,7 +3000,7 @@ class Comptage_Dira(Comptage):
         a partir du fichier, on limite les données, on ajoute le type de donnees, on supprime les NaN, on prepare un id de jointure sans carac spéciaux, 
         on change les noms de mois
         """
-        dfBase=pd.read_excel(self.fichierTmjaParSection, engine='odf', sheet_name=f'TMJM_{self.annee}')
+        dfBase=pd.read_excel(self.fichierTmjaParSection, engine='odf', sheet_name=f'TMJM_{self.annee}', na_values=['No data'])
         dfLimitee=dfBase.iloc[:,0:14]
         mois,colonnes=[m for m in dfLimitee.iloc[0,1:].tolist() if m in [a for v in dico_mois.values() for a in v]] ,['nom']+dfLimitee.iloc[0,1:].tolist()
         dfLimitee.columns=colonnes
@@ -2989,20 +3009,25 @@ class Comptage_Dira(Comptage):
         dfFiltree.loc[~dfFiltree.nom.isna(),'donnees_type']='tmja'
         dfFiltree.loc[dfFiltree.nom.isna(),'donnees_type']='pc_pl'
         dfFiltree.nom=dfFiltree.nom.fillna(method='pad')
-        dfFiltree.nom=dfFiltree.nom.apply(lambda x : re.sub('(é|è|ê)','e',re.sub('( |_|-)','',x.lower())))
+        dfFiltree.nom=dfFiltree.nom.apply(lambda x : re.sub('(é|è|ê)','e',re.sub('( |_|-)','',x.lower())).replace('ç','c'))
         dfFiltree.rename(columns={c:k for k, v in dico_mois.items()  for c in dfFiltree.columns if c not in ('nom','MJA','donnees_type') if c in v}, inplace=True)
+        dfFiltree['nom_simple']=dfFiltree.nom.apply(lambda x : x.split('mb')[0]+')' if 'mb' in x else x)
         return dfFiltree
     
-    def decomposeObsSupl(self,obs_supl, id_comptag) : 
+    def decomposeObsSupl(self,obs_supl, id_comptag, id_cpt) : 
         """
         decomposer le obs_supl des comptages existant de la base de donnees en 2 lignes renoyant au mm id_comptag pour la mise a jour des donnees mesnuelle
         """
         if obs_supl :
             if 'voie : ' in obs_supl : 
+                #print(id_comptag, id_cpt)
                 voie=obs_supl.split(';')[0].split('voie : ')[1]
                 nb_voie=len(voie.split(',')) 
                 site=obs_supl.split(';')[3].split('nom_site : ')[1]
-                df=pd.DataFrame({'id_comptag':[id_comptag]*nb_voie, 'voie':voie.split(','), 'site':[site]*nb_voie})
+                if id_cpt : 
+                    df=pd.DataFrame({'id_comptag':[id_comptag]*nb_voie, 'voie':voie.split(','), 'site':[site]*nb_voie, 'id_cpt':id_cpt.split(',')})
+                else : 
+                    df=pd.DataFrame({'id_comptag':[id_comptag]*nb_voie, 'voie':voie.split(','), 'site':[site]*nb_voie, 'id_cpt':['NC']*nb_voie})
                 df['id_dira']=df.apply(lambda x : re.sub('(é|è|ê)','e',re.sub('( |_|-)','',x['site'].lower()))+'('+re.sub('(é|è|ê)','e',re.sub('( |_)','',x['voie'].lower()))+')', axis=1).reset_index(drop=True)
                 return df
         return pd.DataFrame([])
@@ -3012,18 +3037,17 @@ class Comptage_Dira(Comptage):
         obtenir une df de correspndance entre l'id_comptag et les valeusr stockées dans obs_supl de la Bdd
         """
         self.comptag_existant_bdd(bdd, table_cpt, schema='comptage',dep=False, type_poste=False, gest='DIRA')
-        return pd.concat([self.decomposeObsSupl(b,c) for b,c in zip(self.existant.obs_supl.tolist(),self.existant.id_comptag.tolist())], axis=0, sort=False)
+        return pd.concat([self.decomposeObsSupl(b,c,d) for b,c,d in zip(self.existant.obs_supl.tolist(),self.existant.id_comptag.tolist(), self.existant.id_cpt.tolist())], axis=0, sort=False)
     
-    def jointureExistantFichierTmja(self,bdd,table_cpt):
+    def jointureExistantFichierTmja(self, nomAttrFichierDira='nom_simple'):
         """
         creer une df jointe entre les pointsde comptages existants dans la bdd et le fichier excel de comptage
+        in : 
+            nomAttrFichierDira : string : nom de l'attribut issu du fihcier source DIRA pour faire la jointure
         """
-        #fonction de mise en form des données contenues dans l'existant pour jointure avec tableur excel        
-        #recuperation de l'existant
-        
         #jointure avec donnees mensuelle
         dfFiltree=self.ouvrirMiseEnFormeFichierTmja()
-        dfMens=dfFiltree.merge(self.dfCorrespExistant,left_on='nom',right_on='id_dira')
+        dfMens=dfFiltree.merge(self.dfCorrespExistant,left_on=nomAttrFichierDira,right_on='id_dira')
         return dfMens
     
     def verifValiditeMensuelle(self,dfMens) : 
@@ -3046,7 +3070,7 @@ class Comptage_Dira(Comptage):
             elif  test.nb_lgn.isin((1,2)).all() : 
                 verifValidite.loc[verifValidite['id_comptag']==idComptag]=verifValidite.loc[verifValidite['id_comptag']==idComptag].fillna(-99)
             else : 
-                print('cas non prevu')
+                print(f'cas non prevu {test.nb_lgn}, {idComptag}')
         return verifValidite
     
     def MiseEnFormeMensuelleAnnuelle(self,verifValidite):
@@ -3071,7 +3095,7 @@ class Comptage_Dira(Comptage):
         self.df_attr=dfMensGrpFiltre.loc[dfMensGrpFiltre['donnees_type']=='tmja'][['MJA']].rename(columns={'MJA':'tmja'}).merge(
                         dfMensGrpFiltre.loc[dfMensGrpFiltre['donnees_type']=='pc_pl'][['MJA']].rename(columns={'MJA':'pc_pl'}),how='left', right_index=True, left_index=True)
         self.df_attr['src']='donnees_mensuelle tableur'
-        self.df_attr['fichier']=self.fichierTmjaParSection
+        self.df_attr['fichier']=os.path.basename(self.fichierTmjaParSection)
         self.df_attr.reset_index(inplace=True)
         
     def MiseEnFormeMensuelle(self,dfMensGrp, idComptagAexclure=None):
@@ -3087,6 +3111,7 @@ class Comptage_Dira(Comptage):
             self.df_attr_mens['donnees_type']=='pc_pl','janv':'dece'].applymap(lambda x : round(x,2))
         self.df_attr_mens.reset_index(inplace=True)
         self.df_attr_mens['annee']=self.annee
+        self.df_attr_mens['fichier']=os.path.basename(self.fichierTmjaParSection)
         
         
     def enteteFeuilHoraire(self, fichier,feuille):
@@ -3099,15 +3124,24 @@ class Comptage_Dira(Comptage):
         """
         transformer une feuille horaire en df
         """
-        idDira=self.enteteFeuilHoraire(fichier,feuille)[2]
+        voie, idDira=self.enteteFeuilHoraire(fichier,feuille)[1:3]
+        flagVoie=False
         if not idDira in self.dfCorrespExistant.id_dira.tolist() : #il n'y a pas de correspondance avec un point de comptage
-            raise self.BoucleNonConnueError(idDira)
+            if not voie in self.dfCorrespExistant.id_cpt.str.replace('_', ' ').tolist() :
+                raise self.BoucleNonConnueError(idDira)
+            else : 
+                flagVoie=True
         colonnes=['jour','type_veh']+['h'+c[:-1].replace('-','_') for c in fichier[feuille].iloc[4,:].values if c[-1]=='h']
         df_horaire=fichier[feuille].iloc[5:fichier[feuille].loc[fichier[feuille].iloc[:,0]=='Moyenne Jours'].index.values[0]-1,:26]
         df_horaire.columns=colonnes
         df_horaire.jour.fillna(method='pad', inplace=True)
-        df_horaire['id_dira']=idDira
-        df_horaire=df_horaire.merge(self.dfCorrespExistant, on='id_dira')
+        if flagVoie :
+            df_horaire['id_dira']=voie
+            df_horaire=df_horaire.merge(self.dfCorrespExistant.assign(id_cpt=self.dfCorrespExistant.id_cpt.str.replace('_', ' ')),
+                                         left_on='id_dira', right_on='id_cpt')
+        else : 
+            df_horaire['id_dira']=idDira
+            df_horaire=df_horaire.merge(self.dfCorrespExistant, on='id_dira')
         if any([(len(df_horaire.loc[(df_horaire.isna().any(axis=1))&(df_horaire['type_veh']==t)])>len(
             df_horaire.loc[df_horaire['type_veh']==t])/2) or len(df_horaire.loc[df_horaire['type_veh']==t].loc[
                 df_horaire.loc[df_horaire['type_veh']==t][df_horaire.loc[df_horaire['type_veh']==t]==0].count(axis=1)>8]
@@ -3189,7 +3223,7 @@ class Comptage_Dira(Comptage):
                         zip(e.dfCompInvalid.jour.tolist(),e.dfCompInvalid.id_comptag.tolist()),axis=1)].copy()
             
         dfHoraireFichierFiltre=verifNbJoursValidDispo(dfHoraireFichierFiltre,nbJoursValideMin)[0]#tri sur id_comptag avec moins de 15 jours de donnees
-        return dfHoraireFichierFiltre
+        return dfHoraireFichierFiltre.assign(fichier=nomFichier)
     
     
     def concatTousFichierHoraire(self):
@@ -3203,6 +3237,8 @@ class Comptage_Dira(Comptage):
                     listDf.append(concatIndicateurFichierHoraire(self.miseEnFormeFichier(fichier)))
                 except self.AucuneBoucleConnueError : 
                     print(i, fichier, '\n    aucune boucle dans ce fichier')
+                except Exception as e:
+                    print(fichier, f'ERREUR {e}')
             continue
         dfTousFichier=pd.concat(listDf, axis=0, sort=False)
         dblATraiter=dfTousFichier.loc[dfTousFichier.duplicated(['id_comptag', 'jour','type_veh'], keep=False)]
@@ -3210,7 +3246,62 @@ class Comptage_Dira(Comptage):
             dfTousFichier.id_comptag.tolist())].id_comptag.tolist()
         idCptNonAffectes.sort()
         return dfTousFichier,idCptNonAffectes,dblATraiter
-         
+    
+    def cptCartoOuvrir(self):
+        """
+        les donnes de cmptage de la carto de la DIRA doiecvnt etre transferees dans un tableur sur la base du modele 2020 dira_tmja_2020.ods
+        on ouvre
+        """
+        return pd.read_excel(self.fichierComptageCarto, engine='odf')
+    
+    def cptCartoVerif(self, tableurCarto):
+        """
+        a partir de cptCartoOuvrir on verifie que les champs sont bien renseignes
+        in : 
+            tableurCarto dataframe issue de cptCartoOuvrir
+        """       
+        if not (tableurCarto.loc[tableurCarto[f'carto_{self.annee}']=='t'].reset_index(drop='True').equals(tableurCarto.loc[~tableurCarto.src.isna()].reset_index(drop='True')) and 
+            tableurCarto.loc[tableurCarto.diffusable=='t'].reset_index(drop='True').equals(tableurCarto.loc[~tableurCarto.src.isna()].reset_index(drop='True')) ) : 
+            raise ValueError(f"les valeurs dans les champs carto_{self.annee}, src, diffusable ne sont pas concordante")
+        return tableurCarto
+    
+    def cptCartoForme(self, tableurCarto):
+        """
+        a partir des donnees ouvertes et verifiee, mise en forme des donnees
+        in : 
+            tableurCarto donnees issues de cptCartoVerif
+        """
+        #limitation du tableau aux donnees de la carte et calcul des indicateurs tout sens confondus
+        donneesCarto=tableurCarto.loc[tableurCarto.carto_2020=='t']
+        #verifier que toutes la valeurs sans TMJA on tbien la mention ''Donnees Non Disponibles''
+        if (donneesCarto.loc[donneesCarto.tmja.isna()].obs.apply(lambda x : 'Donnees Non Disponibles' not in x if not pd.isnull(x) else True).any()
+            or
+            donneesCarto.loc[~donneesCarto.tmja.isna()].obs.apply(lambda x : 'Donnees Non Disponibles' in x if not pd.isnull(x) else False).any()): 
+            raise ValueError(f"les lignes sans valeur de TMJA doivent contenir la mention 'Donnees Non Disponibles' (et inversement) dans le champs obs ")
+        
+        donneesAgregees=tableurCarto.loc[tableurCarto.carto_2020=='t'].groupby('id_comptag').agg({
+            'tmja':'sum', 'pc_pl':'mean', 'src':lambda x : tuple(x)[0], 'obs':lambda x : tuple(x)[0] if not any(['Donnees Non Disponibles' in y if not pd.isnull(y) else False for y in tuple(x)]) else 'Donnees Non Disponibles' }).reset_index()
+        #corriger toutes les donnees en DND
+        donneesAgregees.loc[donneesAgregees.obs.apply(lambda x : 'Donnees Non Disponibles' in x if not pd.isnull(x) else False), 'tmja']=np.nan
+        donneesAgregees.loc[donneesAgregees.obs.apply(lambda x : 'Donnees Non Disponibles' in x if not pd.isnull(x) else False), 'pc_pl']=np.nan
+        #ajout du fichier, de l'année, etc..
+        donneesAgregees['fichier']=os.path.basename(self.fichierComptageCarto)
+        donneesAgregees['annee']=self.annee
+        return donneesAgregees
+    
+    def cptCartoInsertUpdate(self):
+        """
+        classer les comptages carto selon qu'ils doivent mettre à jour les données issus du tableau annuel, ou creer un nouveau comptage
+        out : 
+            donneesAgregeesInsert : donnes issus des cpt carto agrege tout sens pour lesquelles il faut creer un nouveau comptage
+            donneesAgregeesUpdate : donnes issus des cpt carto agrege tout sens pour lesquelles il faut MaJ un comptage existant
+        """
+        donneesAgregees=self.cptCartoForme(self.cptCartoVerif(self.cptCartoOuvrir()))
+        donneesAgregeesUpdate=donneesAgregees.merge(self.recupererIdUniqComptage(donneesAgregees.id_comptag.tolist(), self.annee), on=('id_comptag'))
+        donneesAgregeesInsert=donneesAgregees.loc[~donneesAgregees.id_comptag.isin(self.recupererIdUniqComptage(donneesAgregees.id_comptag.tolist(), self.annee).id_comptag.tolist())]
+        return donneesAgregeesUpdate, donneesAgregeesInsert
+        
+        
         
     def update_bdd_Dira(self,bdd, schema, table, nullOnly=True):
         """

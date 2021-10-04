@@ -115,9 +115,9 @@ def concatIndicateurFichierHoraire(dfHoraireFichier):
     creer les données TV et PL à partir dela dfHOraire creee par miseEnFormeFichier()
     il y a un jeu entre les fillna() de la presente et de miseEnFormeFichier() pour garder les valeusr NaN malgé les sommes
     """
-    dfTv=dfHoraireFichier[['jour','id_comptag']+
+    dfTv=dfHoraireFichier[['jour','id_comptag', 'fichier']+
          [f'h{i}_{i+1}' for i in range (24)]].groupby(['jour','id_comptag']).sum().assign(type_veh='TV').reset_index()
-    dfPl=dfHoraireFichier.loc[dfHoraireFichier['type_veh']=='PL'][['jour','id_comptag']+[f'h{i}_{i+1}' for i in range (24)]].groupby(['jour','id_comptag']).sum().assign(type_veh='PL').reset_index()
+    dfPl=dfHoraireFichier.loc[dfHoraireFichier['type_veh']=='PL'][['jour','id_comptag', 'fichier']+[f'h{i}_{i+1}' for i in range (24)]].groupby(['jour','id_comptag']).sum().assign(type_veh='PL').reset_index()
     dfHoraireFinale=pd.concat([dfTv,dfPl], axis=0, sort=False)
     return dfHoraireFinale
 
