@@ -9,6 +9,7 @@ module d'importation des donnees de trafics forunies par les gestionnaires
 
 import pandas as pd
 import re
+import Outils as O
 
 
 vacances_2019=[j for k in [pd.date_range('2019-01-01','2019-01-06'),pd.date_range('2019-02-16','2019-03-03'),
@@ -143,6 +144,47 @@ def calculJourneeType(dfHoraire):
     dfMja=regrouperHoraire(dfMja)
     dfMjo=regrouperHoraire(dfMjo)
     return dfMja,dfMjo
+
+def tmjaDepuisHoraire(dfHoraire):
+    """
+    fournir une df pour les tables comptage et indic_agrege depuis une df Horaire
+    la df comprend les attribut id_comptag, annee, indicateur, valeur
+    in :
+        dfHoraire : dataframe sous forme indic_horaire, doit contenir les attributs 
+    out : 
+        dfTmjaPcpl : dataframe agrege eu format id_comptag, annee, indicaeur, valeur, 
+    """
+    O.checkAttributsinDf(dfHoraire, ['id_comptag', 'annee','indicateur', 'jour']+[f'h{i}_{i+1}' for i in range (24)])
+    dfMeltInconnus=pd.melt(dfHoraire, value_vars=[c for c in dfHoraire.columns if c[0]=='h'], id_vars=['id_comptag', 'annee','indicateur', 'jour'],
+                   value_name='valeur')
+    dfTmja=dfMeltInconnus.groupby(['id_comptag','annee','indicateur']).agg({'valeur':'sum', 'jour':'count'}).reset_index()
+    dfTmja2=dfTmja.assign(jour=dfTmja.jour/24 )
+    dfTmja2['valeur']=(dfTmja2.valeur/dfTmja2.jour).astype(int)
+    dfTmjaPcpl=dfTmja2.loc[dfTmja2.indicateur=='TV'].merge(dfTmja2.loc[dfTmja2.indicateur=='PL'][['id_comptag', 'valeur']], on=['id_comptag'])
+    dfTmjaPcpl['pc_pl']=round(dfTmjaPcpl.valeur_y/dfTmjaPcpl.valeur_x*100, 2)
+    dfTmjaPcpl.rename(columns={'valeur_x':'tmja'}, inplace=True)
+    dfTmjaPcpl=pd.melt(dfTmjaPcpl, value_vars=['pc_pl', 'tmja'], id_vars=['id_comptag', 'annee'], value_name='valeur', var_name='indicateur')
+    return dfTmjaPcpl
+
+def periodeDepuisHoraire(dfHoraire):
+    """
+    sur la base du travail Dira, a partir de donnees de comptages permanents horaires repartis sur plusieurs fichier, calculer
+    les periodes de comptage en utilisant la colonne jour
+    in : 
+       dfHoraire : dataframe sous forme indic_horaire, doit contenir les attributs 
+    out : 
+        dfMeltInconnusPeriode : dataframe avec attribut id_comptag, jourmin, jourmax, periode (au format periode bdd)
+    """
+    O.checkAttributsinDf(dfHoraire, ['id_comptag', 'annee','indicateur', 'jour']+[f'h{i}_{i+1}' for i in range (24)])
+    dfMeltInconnus=pd.melt(dfHoraire, value_vars=[c for c in dfHoraire.columns if c[0]=='h'], id_vars=['id_comptag', 'annee','indicateur', 'jour'],
+                   value_name='valeur')
+    dfMeltInconnusPeriode=dfMeltInconnus.groupby('id_comptag').agg({'jour':[min, max]}).reset_index()
+    dfMeltInconnusPeriode.columns=dfMeltInconnusPeriode.columns.droplevel(0)
+    dfMeltInconnusPeriode.columns=['id_comptag', 'jourmin', 'jourmax']
+    dfMeltInconnusPeriode['jourmin']=dfMeltInconnusPeriode.jourmin.astype(str).apply(lambda x : x.replace('-', '/'))
+    dfMeltInconnusPeriode['jourmax']=dfMeltInconnusPeriode.jourmax.astype(str).apply(lambda x : x.replace('-', '/'))
+    dfMeltInconnusPeriode['periode']=dfMeltInconnusPeriode['jourmin']+'-'+dfMeltInconnusPeriode['jourmax']
+    return dfMeltInconnusPeriode
 
     
 class SensAssymetriqueError(Exception):

@@ -7,6 +7,7 @@ Created on 17 sept. 2021
 import unittest
 import pandas as pd
 import numpy as np
+import geopandas as gp
 from Tests_Connexion_Transfert import TestConnexionBdd
 from Import_trafics import Comptage, Comptage_cd40, Comptage_Dira
 
@@ -23,6 +24,20 @@ class TestComptage(unittest.TestCase):
     
     def setUp(self):
         self.cpt=Comptage('fichier')
+        
+    def test_comptag_existant_bdd_typeTableGeom(self):
+        """
+        vérifier que la fonction comptag_existant_bdd renvoi bien une gdf si 'compteur'
+        """
+        self.cpt.comptag_existant_bdd()
+        self.assertIsInstance(self.cpt.existant, gp.GeoDataFrame, 'la donnees renvoyeee par la table compteur n\'est pas une gdf')
+    
+    def test_comptag_existant_bdd_typeTableNonGeom(self):
+        """
+        vérifier que la fonction comptag_existant_bdd renvoi bien une gdf si 'compteur'
+        """
+        self.cpt.comptag_existant_bdd('comptage')
+        self.assertIsInstance(self.cpt.existant, pd.DataFrame, 'la donnees renvoyeee par la table compteur n\'est pas une gdf')    
     
     def testCreerComptageTypeVeh(self):
         """
@@ -66,6 +81,20 @@ class TestComptage(unittest.TestCase):
         
     def testStructureBddOld2NewFormTypeIndic(self):
         self.assertRaises(ValueError,self.cpt.structureBddOld2NewForm,'df', annee, ['annee', 'id_comptag'],['tmja'], 'toto')
+        
+    def test_scinderComptagExistant_idComptagFail(self):
+        """
+        verifier que si la df passée ne contient pas de colonne id_comptag alors erreur
+        """
+        self.assertRaises(AttributeError, self.cpt.scinderComptagExistant,pd.DataFrame({'nom':['JP', 'Toto']}), annee )
+        
+    def test_scinderComptagExistant_ScinderOk(self):
+        """
+        verifier que si la df passée ne contient pas de colonne id_comptag alors erreur
+        """
+        dfATester=pd.DataFrame({'id_comptag':['33-A65-0+0', 'Toto']})
+        dfIdsConnus, dfIdsInconnus=self.cpt.scinderComptagExistant(dfATester, annee)
+        self.assertTrue(len(dfIdsConnus)+len(dfIdsInconnus)==len(dfATester))
         
 
 class TestComptageCd40(unittest.TestCase):
