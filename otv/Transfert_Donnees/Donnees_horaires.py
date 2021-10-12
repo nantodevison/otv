@@ -19,6 +19,7 @@ vacances_2019=[j for k in [pd.date_range('2019-01-01','2019-01-06'),pd.date_rang
 ferie_2019=['2019-01-01','2019-04-22','2019-05-01','2019-05-08','2019-05-30','2019-06-10',
                       '2019-07-14','2019-08-15','2019-11-01','2019-11-11','2019-12-25']
 dicoFerieVacance={'2019':pd.to_datetime(vacances_2019+[pd.to_datetime(a) for a in ferie_2019 if pd.to_datetime(a) not in vacances_2019])}
+attributsHoraire=[f'h{i}_{i+1}' for i in range (24)]
 
 def statsHoraires(df_horaire,attributHeure, typeVeh,typeJour='semaine'):
     """
@@ -60,7 +61,7 @@ def correctionHoraire(df_horaire):
     corriger une df horaire en passant à-99 les valeurs qui semble non correlees avec le reste des valeusr
     """
     #corriger les valuers inferieures  a moyenne-2*ecart_type
-    for attributHeure, typeVeh, typeJour in [e+s for e in [(h,t) for h in [f'h{i}_{i+1}' for i in range (24)]
+    for attributHeure, typeVeh, typeJour in [e+s for e in [(h,t) for h in attributsHoraire
                                                            for t in ('VL','PL')] for s in (('semaine',), ('we',))] :
         plageMinSemaine=statsHoraires(df_horaire,attributHeure, typeVeh, typeJour)[3]
         plageMinWe=statsHoraires(df_horaire,attributHeure, typeVeh, typeJour)[3]
@@ -101,8 +102,8 @@ def comparer2Sens(dfHoraireFichierFiltre,facteurComp=3,TauxErreur=10) :
         sens2=dfSc.loc[dfSc['voie']==senss[1]].copy()
     else : 
         raise SensAssymetriqueError(dfSc,dfSc)
-    sens1['total']=sens1[[f'h{i}_{i+1}' for i in range (24)]].sum(axis=1)#.groupby(['jour','type_veh']).sum()
-    sens2['total']=sens2[[f'h{i}_{i+1}' for i in range (24)]].sum(axis=1)
+    sens1['total']=sens1[attributsHoraire].sum(axis=1)#.groupby(['jour','type_veh']).sum()
+    sens2['total']=sens2[attributsHoraire].sum(axis=1)
     dfComp=sens1[['jour','type_veh','id_comptag','total']].merge(sens2[['jour','type_veh','id_comptag','total']], 
                                                                  on=['jour','type_veh','id_comptag'])
     dfCompInvalid=dfComp.loc[(dfComp['total_x']>facteurComp*dfComp['total_y']) | (dfComp['total_y']>3*dfComp['total_x'])]
@@ -117,8 +118,8 @@ def concatIndicateurFichierHoraire(dfHoraireFichier):
     il y a un jeu entre les fillna() de la presente et de miseEnFormeFichier() pour garder les valeusr NaN malgé les sommes
     """
     dfTv=dfHoraireFichier[['jour','id_comptag', 'fichier']+
-         [f'h{i}_{i+1}' for i in range (24)]].groupby(['jour','id_comptag']).sum().assign(type_veh='TV').reset_index()
-    dfPl=dfHoraireFichier.loc[dfHoraireFichier['type_veh']=='PL'][['jour','id_comptag', 'fichier']+[f'h{i}_{i+1}' for i in range (24)]].groupby(['jour','id_comptag']).sum().assign(type_veh='PL').reset_index()
+         attributsHoraire].groupby(['jour','id_comptag', 'fichier']).sum().assign(type_veh='TV').reset_index()
+    dfPl=dfHoraireFichier.loc[dfHoraireFichier['type_veh']=='PL'][['jour','id_comptag', 'fichier']+attributsHoraire].groupby(['jour','id_comptag', 'fichier']).sum().assign(type_veh='PL').reset_index()
     dfHoraireFinale=pd.concat([dfTv,dfPl], axis=0, sort=False)
     return dfHoraireFinale
 
@@ -134,7 +135,7 @@ def calculJourneeType(dfHoraire):
         """
         df2=df.loc[df['type_veh']=='TV'].groupby(['id_comptag']).sum().merge(df.loc[df['type_veh']=='TV'].groupby(
             ['id_comptag']).agg({'jour':'count'}).rename(columns={'jour':'nb_jours'}),left_on='id_comptag', right_index=True)
-        for attrheur in [f'h{i}_{i+1}' for i in range (24)]:
+        for attrheur in attributsHoraire:
             df2[attrheur]=df2.apply(lambda x : int(x[attrheur]/x['nb_jours']), axis=1)
         return df2
         
@@ -154,7 +155,7 @@ def tmjaDepuisHoraire(dfHoraire):
     out : 
         dfTmjaPcpl : dataframe agrege eu format id_comptag, annee, indicaeur, valeur, 
     """
-    O.checkAttributsinDf(dfHoraire, ['id_comptag', 'annee','indicateur', 'jour']+[f'h{i}_{i+1}' for i in range (24)])
+    O.checkAttributsinDf(dfHoraire, ['id_comptag', 'annee','indicateur', 'jour']+attributsHoraire)
     dfMeltInconnus=pd.melt(dfHoraire, value_vars=[c for c in dfHoraire.columns if c[0]=='h'], id_vars=['id_comptag', 'annee','indicateur', 'jour'],
                    value_name='valeur')
     dfTmja=dfMeltInconnus.groupby(['id_comptag','annee','indicateur']).agg({'valeur':'sum', 'jour':'count'}).reset_index()
@@ -175,7 +176,7 @@ def periodeDepuisHoraire(dfHoraire):
     out : 
         dfMeltInconnusPeriode : dataframe avec attribut id_comptag, jourmin, jourmax, periode (au format periode bdd)
     """
-    O.checkAttributsinDf(dfHoraire, ['id_comptag', 'annee','indicateur', 'jour']+[f'h{i}_{i+1}' for i in range (24)])
+    O.checkAttributsinDf(dfHoraire, ['id_comptag', 'annee','indicateur', 'jour']+attributsHoraire)
     dfMeltInconnus=pd.melt(dfHoraire, value_vars=[c for c in dfHoraire.columns if c[0]=='h'], id_vars=['id_comptag', 'annee','indicateur', 'jour'],
                    value_name='valeur')
     dfMeltInconnusPeriode=dfMeltInconnus.groupby('id_comptag').agg({'jour':[min, max]}).reset_index()

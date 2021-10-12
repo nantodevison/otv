@@ -3,7 +3,7 @@
 Created on 12 oct. 2020
 
 @author: martin.schoreisz
-Traitementsdes donnes individuelles fournies par a DREAM TEAM en mixtra ou vikings
+Traitementsdes donnes individuelles en mixtra ou vikings et de donnees mdb fournies par les agglos
 '''
 
 import pandas as pd
@@ -737,6 +737,22 @@ class ComptageFim(object):
         self.dicoHoraire,self.dicoJournalier=IndicsGraphs(self.dfSemaineMoyenne,typesVeh,typesDonnees,sens)
         figSyntheses, figJournaliere=graphsGeneraux(self.dfSemaineMoyenne,self.dicoHoraire, self.dicoJournalier,typesVeh, vitesse)          
         return figSyntheses, figJournaliere
+    
+class MHCorbin(Object):
+    """
+    Classe de caracterisation / traitement des fihciers issus du logiciel MHCorbin, founis par la ville d'Anglet et d'Angouleme notamment
+    les fihiers peuvent etre des .mdb (microsoftDabase) ou des pdf. 
+    pour les .mdb on s'appuie sur Pandas et la librairie Perso de connexion à une bdd
+    """
+    
+    def __init__(self, fichier):
+        """
+        attributes : 
+            fichier : rawString de parh complet
+        """
+    
+    def ouvrirMdb    
+    
       
 class PasAssezMesureError(Exception):
     """
