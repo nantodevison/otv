@@ -4,10 +4,7 @@ Created on 17 sept. 2021
 
 @author: martin.schoreisz
 '''
-import unittest
-import pandas as pd
-import numpy as np
-import geopandas as gp
+import Transfert_Donnees.Tests
 from Tests_Connexion_Transfert import TestConnexionBdd
 from Import_trafics import Comptage, Comptage_cd40, Comptage_Dira, Comptage_Dirco, dico_mois
 
