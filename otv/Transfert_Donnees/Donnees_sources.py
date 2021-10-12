@@ -11,11 +11,12 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from Params.DonneesSourcesParams import MHcorbinMaxLength, MHcorbinMaxSpeed, MHCorbinValue0, MHCorbinFailAdviceCode
+from Params.DonneesSourcesParams import MHcorbinMaxLength, MHcorbinMaxSpeed, MHCorbinValue0, MHCorbinFailAdviceCode, dicoTables
 from datetime import datetime
 from importlib import resources
 import Connexion_Transfert as ct
 import os, re
+from pyodbc import DatabaseError
 
 #tuple avec le type de jours, le nombre de jours associes et les jours (de 0à6)
 tupleParams=(('mja',7,range(7)),('mjo',5,range(5)),('lundi',1,[0]), ('mardi',1,[1]), ('mercredi',1,[2]),('jeudi',1,[3]),('vendredi',1,[4]),('samedi',1,[5]),('dimanche',1,[6]))
@@ -755,36 +756,59 @@ class MHCorbin(object):
             fichier : rawString de parh complet
             fichierCourt : string du nom du fichier sans path
             tables : liste des tables conotenues dans le fichier mdb
-            a1, a2, c1, c2, e1, e2, v1, v2, pe1, pe2, hdhdr : tables contenues dans le fihciers mdb. Décrivent :
+            dico_tables : dico des tables avec en clé (et en value la df correspolnvdante) a1, a2, c1, c2, e1, e2, v1, v2, pe1, pe2, hdhdr : tables contenues dans le fihciers mdb. Décrivent :
                 - les donnees individuelle pour chaque sens ('a')
                 - les donnes parclasse de vitesse ('c') et par sens
                 - les donnees d etemperatur et de sens ('e') par periode de regroupement et par sens
                 - les donnees de nb de vehicules par periode de regroupement ('v') et par sens
                 - les donnees techniques du compteuir par sens (pe)
                 - la description du point de comptage (hshdr) : denomination des sens, et autres 
-            lengthMax : integer : longueur maxi en millier, au delo       
+            listTablesManquante : list de string : list des tables ci-dessus non présentes dans le fichier
+            nbSens  : integer : nombre de sens mesures 
+            df2SensPropres : df des 2 sens de circulation, sans les comptages avec des valeurs aberrantes
+            df2SensFail : df des 2sens de circulation pour les enregsitramrents avec valeur aberrantes
         """
         self.fichier=fichier
         self.fichierCourt=os.path.basename(self.fichier)
-        self.ouvrirMdb
+        self.ouvrirMdb()
+        self.calculNbSens()
+        self.verifTables()
     
     def ouvrirMdb(self):
         """
         ouvrir le fichier mdb et retourner les tables non système
         """
-        with ct.ConnexionBdd('mdb', fichierMdb=r'C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\donnees_gestionnaires\Niort\historique\2019\livraison V0_09-03-2020\Donnees niort\rue de souche du 31 01 au 07 02 2020.mdb') as c:
+        self.dicoTables={}
+        self.listTablesManquante=[]
+        with ct.ConnexionBdd('mdb', fichierMdb=self.fichier) as c:
             self.tables = list(c.mdbCurs.tables())
-            self.a1 = pd.read_sql("SELECT * FROM A1", c.connexionMdb)
-            self.a2 = pd.read_sql("SELECT * FROM A2", c.connexionMdb)
-            self.c1 = pd.read_sql("SELECT * FROM C1", c.connexionMdb)
-            self.c2 = pd.read_sql("SELECT * FROM C2", c.connexionMdb)
-            self.e1 = pd.read_sql("SELECT * FROM E1", c.connexionMdb)
-            self.e2 = pd.read_sql("SELECT * FROM E2", c.connexionMdb)
-            self.v1 = pd.read_sql("SELECT * FROM V1", c.connexionMdb)
-            self.v2 = pd.read_sql("SELECT * FROM V2", c.connexionMdb)
-            self.pe1 = pd.read_sql("SELECT * FROM PE1", c.connexionMdb)
-            self.pe2 = pd.read_sql("SELECT * FROM PE2", c.connexionMdb)
-            self.hshdr = pd.read_sql("SELECT * FROM HSHDR", c.connexionMdb)
+            for k, v in dicoTables :
+                try : 
+                    self.dico_tables[k]=pd.read_sql(f"SELECT * FROM {v}", c.connexionMdb)
+                except DatabaseError:
+                    self.listTablesManquante.append(k)
+     
+    def calculNbSens(self): 
+        """
+        verifier que le comptage concerne 1 ou 2 sens
+        """    
+        nbSens=len(self.hshdr)
+        if nbSens<=0 or nbSens > 2 : 
+            raise ValueError("il n'y aucun sens dans le fihcier hshdr ou plus de 2")
+        else : 
+            self.nbSens=nbSens
+        return
+            
+    def verifTables(self):
+        """
+        en fonction du nombre de sens, verifier que toute les tables sont presentes 
+        """
+        if any([k in self.listTablesManquante for k in dicoTables]) and self.nbSens==2: 
+            raise ValueError("2 sens mais un des fichiers de tables est vide")
+        elif any([e in self.listTablesManquante for e in ('a1', 'c1', 'e1', 'v1', 'pe1', 'hshdr')]) and self.nbSens==1:
+            raise ValueError("1 sens mais un des fichiers de tables est vide")
+        return
+        
             
     def dfRessourceCorrespondance(self):
         """
@@ -793,6 +817,43 @@ class MHCorbin(object):
         """
         return pd.read_json(resources.read_text('data.MHCorbin','compSequentialMdb.json' ))     
     
+    def agreg2Sens(self):
+        """
+        Agreger les donnees brutes stockees dans les tables a1 et a2, avec ajout des champs sens, sensTxt, obs_supl et nb_sens
+        out : 
+            concatenation brutes de a1 et a2 si deux , sens, sinon a1
+        """
+        if self.nbSens==2 :
+            return pd.concat([self.dicoTables['a1'].assign(sens=1,sensTxt=f"sens 1 ; {self.hshdr.loc[self.hshdr.Rangenum==1, 'Lane'].values[0]}", 
+                    obs_supl=','.join(set([self.hshdr.loc[self.hshdr.Rangenum==i, 'Street'].values[0] for i in (1,2)])),
+                    nb_sens='double sens'),
+              self.dicoTables['a2'].assign(sens=2, sensTxt=f"sens 2 ; {self.hshdr.loc[self.hshdr.Rangenum==2, 'Lane'].values[0]}", 
+                    obs_supl=','.join(set([self.hshdr.loc[self.hshdr.Rangenum==i, 'Street'].values[0] for i in (1,2)])),
+                    nb_sens='double sens')], axis=0, sort=False)
+        else : 
+            return self.dicoTables['a1'].assign(sens=1,sensTxt=f"sens 1 ; {self.hshdr.loc[self.hshdr.Rangenum==1, 'Lane'].values[0]}", 
+                    obs_supl=self.hshdr.loc[self.hshdr.Rangenum==i, 'Street'].values[0],
+                    nb_sens='sens unique')
+            
+    def filtreDonneesAberrantes(self):
+        """
+        sur la base des valeurs de parametres aberrants du module DonneesSOurcesParams, enlever les donnees de valeurs aberrantes 
+        et fournir une df filtree, une df des donnees aberrantes 
+        """
+        #calculer les df de chauqe cas
+        dfAgreg2Sens=self.agreg2Sens()
+        dfAdviceCodeFail=dfAgreg2Sens.loc[(dfAgreg2Sens.AdviceCode==MHCorbinFailAdviceCode)]
+        dfLengthFail=dfAgreg2Sens.loc[(dfAgreg2Sens.Length>=MHcorbinMaxLength)]
+        dfSpeedFail=dfAgreg2Sens.loc[(dfAgreg2Sens.Length>=MHcorbinMaxSpeed)]
+        dfValue0=dfAgreg2Sens.loc[(dfAgreg2Sens.Length==MHCorbinValue0)|(dfAgreg2Sens.Speed==MHCorbinValue0)]
+        #la df filmtree
+        self.df2SensPropres=dfAgreg2Sens.loc[~dfAgreg2Sens.index.isin(dfAdviceCodeFail.index.tolist()+dfLengthFail.index.tolist()+dfSpeedFail.index.tolist()+dfValue0.index.tolist())]
+        self.df2SensFail=pd.concat([dfLengthFail.reset_index().assign(fail_type='longueur'),
+           dfSpeedFail.reset_index().assign(fail_type='vitesse'),
+           dfAdviceCodeFail.reset_index().assign(fail_type='adviceCode'),
+           dfValue0.reset_index().assign(fail_type='value0')]).drop_duplicates('index').drop('index', axis=1).reset_index(drop=True)
+        return 
+        
       
 class PasAssezMesureError(Exception):
     """
