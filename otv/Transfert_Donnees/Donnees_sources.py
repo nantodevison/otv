@@ -12,6 +12,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime
+import Connexion_Transfert as ct
 import os, re
 
 #tuple avec le type de jours, le nombre de jours associes et les jours (de 0à6)
@@ -738,7 +739,7 @@ class ComptageFim(object):
         figSyntheses, figJournaliere=graphsGeneraux(self.dfSemaineMoyenne,self.dicoHoraire, self.dicoJournalier,typesVeh, vitesse)          
         return figSyntheses, figJournaliere
     
-class MHCorbin(Object):
+class MHCorbin(object):
     """
     Classe de caracterisation / traitement des fihciers issus du logiciel MHCorbin, founis par la ville d'Anglet et d'Angouleme notamment
     les fihiers peuvent etre des .mdb (microsoftDabase) ou des pdf. 
@@ -749,9 +750,38 @@ class MHCorbin(Object):
         """
         attributes : 
             fichier : rawString de parh complet
+            fichierCourt : string du nom du fichier sans path
+            tables : liste des tables conotenues dans le fichier mdb
+            a1, a2, c1, c2, e1, e2, v1, v2, pe1, pe2, hdhdr : tables contenues dans le fihciers mdb. Décrivent :
+                - les donnees individuelle pour chaque sens ('a')
+                - les donnes parclasse de vitesse ('c') et par sens
+                - les donnees d etemperatur et de sens ('e') par periode de regroupement et par sens
+                - les donnees de nb de vehicules par periode de regroupement ('v') et par sens
+                - les donnees techniques du compteuir par sens (pe)
+                - la description du point de comptage (hshdr) : denomination des sens, et autres        
         """
+        self.fichier=fichier
+        self.fichierCourt=os.path.basename(self.fichier)
     
-    def ouvrirMdb    
+    def ouvrirMdb(self):
+        """
+        ouvrir le fichier mdb et retourner les tables non système
+        """
+        with ct.ConnexionBdd('mdb', fichierMdb=r'C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\donnees_gestionnaires\Niort\historique\2019\livraison V0_09-03-2020\Donnees niort\rue de souche du 31 01 au 07 02 2020.mdb') as c:
+            self.tables = list(c.mdbCurs.tables())
+            self.a1 = pd.read_sql("SELECT * FROM A1", c.connexionMdb)
+            self.a2 = pd.read_sql("SELECT * FROM A2", c.connexionMdb)
+            self.c1 = pd.read_sql("SELECT * FROM C1", c.connexionMdb)
+            self.c2 = pd.read_sql("SELECT * FROM C2", c.connexionMdb)
+            self.e1 = pd.read_sql("SELECT * FROM E1", c.connexionMdb)
+            self.e2 = pd.read_sql("SELECT * FROM E2", c.connexionMdb)
+            self.v1 = pd.read_sql("SELECT * FROM V1", c.connexionMdb)
+            self.v2 = pd.read_sql("SELECT * FROM V2", c.connexionMdb)
+            self.pe1 = pd.read_sql("SELECT * FROM PE1", c.connexionMdb)
+            self.pe2 = pd.read_sql("SELECT * FROM PE2", c.connexionMdb)
+            self.hshdr = pd.read_sql("SELECT * FROM HSHDR", c.connexionMdb)
+        
+           
     
       
 class PasAssezMesureError(Exception):
