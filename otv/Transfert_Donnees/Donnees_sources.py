@@ -11,7 +11,9 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from Params.DonneesSourcesParams import MHcorbinMaxLength, MHcorbinMaxSpeed, MHCorbinValue0, MHCorbinFailAdviceCode
 from datetime import datetime
+from importlib import resources
 import Connexion_Transfert as ct
 import os, re
 
@@ -744,6 +746,7 @@ class MHCorbin(object):
     Classe de caracterisation / traitement des fihciers issus du logiciel MHCorbin, founis par la ville d'Anglet et d'Angouleme notamment
     les fihiers peuvent etre des .mdb (microsoftDabase) ou des pdf. 
     pour les .mdb on s'appuie sur Pandas et la librairie Perso de connexion à une bdd
+    on peut acceder a une comparaison du fichier mdb et du fichier sequential produit via le package Data ou via la fonction dfRessourceCorrespondance
     """
     
     def __init__(self, fichier):
@@ -758,10 +761,12 @@ class MHCorbin(object):
                 - les donnees d etemperatur et de sens ('e') par periode de regroupement et par sens
                 - les donnees de nb de vehicules par periode de regroupement ('v') et par sens
                 - les donnees techniques du compteuir par sens (pe)
-                - la description du point de comptage (hshdr) : denomination des sens, et autres        
+                - la description du point de comptage (hshdr) : denomination des sens, et autres 
+            lengthMax : integer : longueur maxi en millier, au delo       
         """
         self.fichier=fichier
         self.fichierCourt=os.path.basename(self.fichier)
+        self.ouvrirMdb
     
     def ouvrirMdb(self):
         """
@@ -780,8 +785,13 @@ class MHCorbin(object):
             self.pe1 = pd.read_sql("SELECT * FROM PE1", c.connexionMdb)
             self.pe2 = pd.read_sql("SELECT * FROM PE2", c.connexionMdb)
             self.hshdr = pd.read_sql("SELECT * FROM HSHDR", c.connexionMdb)
-        
-           
+            
+    def dfRessourceCorrespondance(self):
+        """
+        ouvrir la ressource sur Niort (fichier sequential et fichier .mdb) et fournir une df qui permet de visauliser 
+        pour chaque vehicule les donnees en mdb et en sequential
+        """
+        return pd.read_json(resources.read_text('data.MHCorbin','compSequentialMdb.json' ))     
     
       
 class PasAssezMesureError(Exception):
