@@ -843,7 +843,7 @@ class MHCorbin(object):
                     nb_sens='double sens'),
               self.dicoTables['a2'].assign(sens=2, sensTxt=f"sens 2 ; {self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==2, 'Lane'].values[0]}", 
                     obs_supl=','.join(set([self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==i, 'Street'].values[0] for i in (1,2)])),
-                    nb_sens='double sens')], axis=0, sort=False)
+                    nb_sens='double sens')], axis=0, sort=False).reset_index(drop=True)
         else : 
             return self.dicoTables['a1'].assign(sens=1,sensTxt=f"sens 1 ; {self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==1, 'Lane'].values[0]}", 
                     obs_supl=self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==i, 'Street'].values[0],
@@ -885,10 +885,10 @@ class MHCorbin(object):
             attributY=attribut+'_y'
         concatNettoyees=self.dfRessourceCorrespondance()[1]
         #creation des donnees : on va séparer le jeu de donnes en avant et après 10 000, car ça matche mieux en polynomial avant 10k et linear apres 10k
-        XInf10k=concatNettoyees.loc[concatNettoyees.Length_y<10000][[attributY]].copy()
-        YInf10k=concatNettoyees.loc[concatNettoyees.Length_y<10000][[attributX]].copy()
-        XSup10k=concatNettoyees.loc[concatNettoyees.Length_y>=10000][[attributY]].copy()
-        YSup10k=concatNettoyees.loc[concatNettoyees.Length_y>=10000][[attributX]].copy()
+        XInf10k=concatNettoyees.loc[concatNettoyees[attributY]<10000][[attributY]].copy()
+        YInf10k=concatNettoyees.loc[concatNettoyees[attributY]<10000][[attributX]].copy()
+        XSup10k=concatNettoyees.loc[concatNettoyees[attributY]>=10000][[attributY]].copy()
+        YSup10k=concatNettoyees.loc[concatNettoyees[attributY]>=10000][[attributX]].copy()
         #separation en train et test
         X_trainSup10k, X_testSup10k, y_trainSup10k, y_testSup10k=train_test_split(XSup10k, YSup10k, test_size=0.2)
         X_trainInf10k, X_testInf10k, y_trainInf10k, y_testInf10k=train_test_split(XInf10k, YInf10k, test_size=0.2)
@@ -900,11 +900,12 @@ class MHCorbin(object):
         linearSup10k.fit(X_trainSup10k, y_trainSup10k)
         return poly4, linearSup10k
     
-    def predireAttribut(self, attribut, poly4,linearSup10k ):
+    def predireAttribut(self, Series,nomAttribut, poly4,linearSup10k ):
         """
         predire les valeurs correspndantes des attribts longueur ou vitesse.Utilise les modeles crees par creerModelePredictionAttribut
         in : 
-           attribut : series de l'attribut a convertir 
+           Series : df avec 1 seul attribut, celui a convertir 
+           nomAttribut: string : nom de l'attribut a convertir
            poly4 : scikit learn regression model (polynomial 4) entraine. issu de creerModelePredictionAttribut
            linearSup10k : scikit learn regression model (polynomial 4) entraine. issu de creerModelePredictionAttribut
         out:
@@ -912,23 +913,28 @@ class MHCorbin(object):
             resultsPoly4TestInf10k : list des valeurs résultat pour la valeur d'attribut <10000
             resultsLinearTestSup10k : list des valeurs résultat pour la valeur d'attribut >=10000
         """
-        X_testInf10k=attribut.loc[attribut<10000]
-        X_testSup10k=attribut.loc[attribut>=10000]
+        X_testInf10k=Series.loc[Series[nomAttribut]<10000]
+        X_testSup10k=Series.loc[Series[nomAttribut]>=10000]
         resultsPoly4TestInf10k=poly4.predict(X_testInf10k)
         resultsLinearTestSup10k=linearSup10k.predict(X_testSup10k)
         dfPrediction=pd.concat([X_testInf10k.assign(prediction=resultsPoly4TestInf10k), 
                               X_testSup10k.assign(prediction=resultsLinearTestSup10k)]
-           ).merge(attribut, left_index=True, right_index=True)
+           ).merge(Series, left_index=True, right_index=True)
         return dfPrediction, resultsPoly4TestInf10k, resultsLinearTestSup10k
      
     
-    def conversionLongueur(self):
+    def conversionAttribut(self,Series,nomAttribut):
         """
         convertir les longueur de la base du fihcier mdb en longueur en m. On utilise le fichier sequential fourni sur Niort
         pour calculer un modele de prediction basé sur du polynomial avant 10k et du lineaire apres 10k
         in : 
             dfACalculer : df issue du fichier mdb 
+            Series : df avec 1 seul attribut, celui a convertir 
+            nomAttribut: string : nom de l'attribut a convertir
         """
+        poly4, linearSup10k=self.creerModelePredictionAttribut(nomAttribut)
+        dfPrediction=self.predireAttribut(Series,nomAttribut,poly4, linearSup10k)[0]
+        return dfPrediction
         
       
 class PasAssezMesureError(Exception):
