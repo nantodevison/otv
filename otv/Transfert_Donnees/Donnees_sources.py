@@ -7,16 +7,25 @@ Traitementsdes donnes individuelles en mixtra ou vikings et de donnees mdb fourn
 '''
 
 import pandas as pd
+from pandas.io.sql import DatabaseError
 import numpy as np
+
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from Params.DonneesSourcesParams import MHcorbinMaxLength, MHcorbinMaxSpeed, MHCorbinValue0, MHCorbinFailAdviceCode, dicoTables
+
 from datetime import datetime
 from importlib import resources
+
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.linear_model import LinearRegression
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_absolute_error
+
+from Params.DonneesSourcesParams import MHcorbinMaxLength, MHcorbinMaxSpeed, MHCorbinValue0, MHCorbinFailAdviceCode, dicoTables
 import Connexion_Transfert as ct
 import os, re
-from pyodbc import DatabaseError
 
 #tuple avec le type de jours, le nombre de jours associes et les jours (de 0à6)
 tupleParams=(('mja',7,range(7)),('mjo',5,range(5)),('lundi',1,[0]), ('mardi',1,[1]), ('mercredi',1,[2]),('jeudi',1,[3]),('vendredi',1,[4]),('samedi',1,[5]),('dimanche',1,[6]))
@@ -782,9 +791,9 @@ class MHCorbin(object):
         self.listTablesManquante=[]
         with ct.ConnexionBdd('mdb', fichierMdb=self.fichier) as c:
             self.tables = list(c.mdbCurs.tables())
-            for k, v in dicoTables :
+            for k, v in dicoTables.items() :
                 try : 
-                    self.dico_tables[k]=pd.read_sql(f"SELECT * FROM {v}", c.connexionMdb)
+                    self.dicoTables[k]=pd.read_sql(f"SELECT * FROM {v}", c.connexionMdb)
                 except DatabaseError:
                     self.listTablesManquante.append(k)
      
@@ -792,7 +801,7 @@ class MHCorbin(object):
         """
         verifier que le comptage concerne 1 ou 2 sens
         """    
-        nbSens=len(self.hshdr)
+        nbSens=len(self.dicoTables['hshdr'])
         if nbSens<=0 or nbSens > 2 : 
             raise ValueError("il n'y aucun sens dans le fihcier hshdr ou plus de 2")
         else : 
@@ -807,6 +816,8 @@ class MHCorbin(object):
             raise ValueError("2 sens mais un des fichiers de tables est vide")
         elif any([e in self.listTablesManquante for e in ('a1', 'c1', 'e1', 'v1', 'pe1', 'hshdr')]) and self.nbSens==1:
             raise ValueError("1 sens mais un des fichiers de tables est vide")
+        elif any([e in self.tables for e in ('a2', 'c2', 'e2', 'v2', 'pe2')]) and self.nbSens==1:
+            raise ValueError("1 sens mais plusieurs tables de 2eme sens")
         return
         
             
@@ -814,8 +825,11 @@ class MHCorbin(object):
         """
         ouvrir la ressource sur Niort (fichier sequential et fichier .mdb) et fournir une df qui permet de visauliser 
         pour chaque vehicule les donnees en mdb et en sequential
+        out : 
+            dataframe des donnes de comparaison brutes
+            dataframe des donnees de comparaison filtrees selon les criteres du modules DonneesSOurcesParams
         """
-        return pd.read_json(resources.read_text('data.MHCorbin','compSequentialMdb.json' ))     
+        return pd.read_json(resources.read_text('data.MHCorbin','compSequentialMdb.json' )),pd.read_json(resources.read_text('data.MHCorbin','compSequentialMdbNettoyee.json' ))    
     
     def agreg2Sens(self):
         """
@@ -824,15 +838,15 @@ class MHCorbin(object):
             concatenation brutes de a1 et a2 si deux , sens, sinon a1
         """
         if self.nbSens==2 :
-            return pd.concat([self.dicoTables['a1'].assign(sens=1,sensTxt=f"sens 1 ; {self.hshdr.loc[self.hshdr.Rangenum==1, 'Lane'].values[0]}", 
-                    obs_supl=','.join(set([self.hshdr.loc[self.hshdr.Rangenum==i, 'Street'].values[0] for i in (1,2)])),
+            return pd.concat([self.dicoTables['a1'].assign(sens=1,sensTxt=f"sens 1 ; {self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==1, 'Lane'].values[0]}", 
+                    obs_supl=','.join(set([self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==i, 'Street'].values[0] for i in (1,2)])),
                     nb_sens='double sens'),
-              self.dicoTables['a2'].assign(sens=2, sensTxt=f"sens 2 ; {self.hshdr.loc[self.hshdr.Rangenum==2, 'Lane'].values[0]}", 
-                    obs_supl=','.join(set([self.hshdr.loc[self.hshdr.Rangenum==i, 'Street'].values[0] for i in (1,2)])),
+              self.dicoTables['a2'].assign(sens=2, sensTxt=f"sens 2 ; {self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==2, 'Lane'].values[0]}", 
+                    obs_supl=','.join(set([self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==i, 'Street'].values[0] for i in (1,2)])),
                     nb_sens='double sens')], axis=0, sort=False)
         else : 
-            return self.dicoTables['a1'].assign(sens=1,sensTxt=f"sens 1 ; {self.hshdr.loc[self.hshdr.Rangenum==1, 'Lane'].values[0]}", 
-                    obs_supl=self.hshdr.loc[self.hshdr.Rangenum==i, 'Street'].values[0],
+            return self.dicoTables['a1'].assign(sens=1,sensTxt=f"sens 1 ; {self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==1, 'Lane'].values[0]}", 
+                    obs_supl=self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==i, 'Street'].values[0],
                     nb_sens='sens unique')
             
     def filtreDonneesAberrantes(self):
@@ -853,6 +867,68 @@ class MHCorbin(object):
            dfAdviceCodeFail.reset_index().assign(fail_type='adviceCode'),
            dfValue0.reset_index().assign(fail_type='value0')]).drop_duplicates('index').drop('index', axis=1).reset_index(drop=True)
         return 
+    
+    def creerModelePredictionAttribut(self, attribut):
+        """
+        a partir des donnees ressources de Niort, creer le modele de prediction des donnees
+        in : 
+            attribut : string parmi 'Length' ou 'Speed'
+        out :     
+            modelPoly4Inf10k : modele polynomial entraine avec les donnees ressources
+            linearSup10k : modele lineaire entraine avec les donnees resosurces de longueur inf a 10k
+            Y : series de la''tribu
+        """
+        if attribut not in ('Length', 'Speed') : 
+            raise ValueError("la valeur d'attribut doit etre parmi 'Length' ou 'Speed' ")
+        else : 
+            attributX=attribut+'_x'
+            attributY=attribut+'_y'
+        concatNettoyees=self.dfRessourceCorrespondance()[1]
+        #creation des donnees : on va séparer le jeu de donnes en avant et après 10 000, car ça matche mieux en polynomial avant 10k et linear apres 10k
+        XInf10k=concatNettoyees.loc[concatNettoyees.Length_y<10000][[attributY]].copy()
+        YInf10k=concatNettoyees.loc[concatNettoyees.Length_y<10000][[attributX]].copy()
+        XSup10k=concatNettoyees.loc[concatNettoyees.Length_y>=10000][[attributY]].copy()
+        YSup10k=concatNettoyees.loc[concatNettoyees.Length_y>=10000][[attributX]].copy()
+        #separation en train et test
+        X_trainSup10k, X_testSup10k, y_trainSup10k, y_testSup10k=train_test_split(XSup10k, YSup10k, test_size=0.2)
+        X_trainInf10k, X_testInf10k, y_trainInf10k, y_testInf10k=train_test_split(XInf10k, YInf10k, test_size=0.2)
+        #preparation de plusieurs methode de test
+        poly4=Pipeline([('poly',PolynomialFeatures(degree=4)), ('linear', LinearRegression())])
+        linearSup10k=LinearRegression()
+        #entrainement
+        poly4.fit(X_trainInf10k, y_trainInf10k)
+        linearSup10k.fit(X_trainSup10k, y_trainSup10k)
+        return poly4, linearSup10k
+    
+    def predireAttribut(self, attribut, poly4,linearSup10k ):
+        """
+        predire les valeurs correspndantes des attribts longueur ou vitesse.Utilise les modeles crees par creerModelePredictionAttribut
+        in : 
+           attribut : series de l'attribut a convertir 
+           poly4 : scikit learn regression model (polynomial 4) entraine. issu de creerModelePredictionAttribut
+           linearSup10k : scikit learn regression model (polynomial 4) entraine. issu de creerModelePredictionAttribut
+        out:
+            dfPrediction : dartaframe des resultats avec attribut 'prediction'
+            resultsPoly4TestInf10k : list des valeurs résultat pour la valeur d'attribut <10000
+            resultsLinearTestSup10k : list des valeurs résultat pour la valeur d'attribut >=10000
+        """
+        X_testInf10k=attribut.loc[attribut<10000]
+        X_testSup10k=attribut.loc[attribut>=10000]
+        resultsPoly4TestInf10k=poly4.predict(X_testInf10k)
+        resultsLinearTestSup10k=linearSup10k.predict(X_testSup10k)
+        dfPrediction=pd.concat([X_testInf10k.assign(prediction=resultsPoly4TestInf10k), 
+                              X_testSup10k.assign(prediction=resultsLinearTestSup10k)]
+           ).merge(attribut, left_index=True, right_index=True)
+        return dfPrediction, resultsPoly4TestInf10k, resultsLinearTestSup10k
+     
+    
+    def conversionLongueur(self):
+        """
+        convertir les longueur de la base du fihcier mdb en longueur en m. On utilise le fichier sequential fourni sur Niort
+        pour calculer un modele de prediction basé sur du polynomial avant 10k et du lineaire apres 10k
+        in : 
+            dfACalculer : df issue du fichier mdb 
+        """
         
       
 class PasAssezMesureError(Exception):
