@@ -16,6 +16,7 @@ from plotly.subplots import make_subplots
 
 from datetime import datetime
 from importlib import resources
+import os, re
 
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
@@ -25,7 +26,8 @@ from sklearn.metrics import mean_absolute_error
 
 from Params.DonneesSourcesParams import MHcorbinMaxLength, MHcorbinMaxSpeed, MHCorbinValue0, MHCorbinFailAdviceCode, dicoTables
 import Connexion_Transfert as ct
-import os, re
+import Outils as O
+
 
 #tuple avec le type de jours, le nombre de jours associes et les jours (de 0à6)
 tupleParams=(('mja',7,range(7)),('mjo',5,range(5)),('lundi',1,[0]), ('mardi',1,[1]), ('mercredi',1,[2]),('jeudi',1,[3]),('vendredi',1,[4]),('samedi',1,[5]),('dimanche',1,[6]))
@@ -45,7 +47,7 @@ def NettoyageTemps(dfVehiculesValides):
     if nbJours==8 : 
         #vérif qu'il y a recouvrement
         if timstampMin.time()>timstampMax.time() : 
-            PasAssezMesureError(nbJours-1) #sinon renvoyer sur l'erreur ci-dessus
+            raise PasAssezMesureError(nbJours-2) #sinon renvoyer sur l'erreur ci-dessus
         #on relimite la df : 
         dfValide=dfVehiculesValides.loc[dfVehiculesValides.date_heure>datetime.combine(timstampMin.date(),timstampMax.time())].copy()
         #puis on triche et on modifie la date du dernier jour pour le mettre sur celle du 1er, en conservant l'heure
@@ -68,6 +70,10 @@ def GroupeCompletude(dfValide, vitesse=False):
     out : 
         dfHeureTypeSens : df avec attribut date_heure, type_veh, sens, nbVeh et si vitesse : V10, V50, V85
     """
+    O.checkAttributsinDf(dfValide, ['date_heure', 'sens', 'type_veh', 'nbVeh'])
+    if vitesse : 
+        O.checkAttributsinDf(dfValide, 'vitesse')
+        
     dfGroupTypeHeure=dfValide.set_index('date_heure').groupby([pd.Grouper(freq='1H'),'type_veh','sens'])['nbVeh'].count().reset_index().sort_values('date_heure')
     #completude des données
     #ajout des données horaires à 0 si aucun type de vehicules mesures
@@ -774,14 +780,17 @@ class MHCorbin(object):
                 - la description du point de comptage (hshdr) : denomination des sens, et autres 
             listTablesManquante : list de string : list des tables ci-dessus non présentes dans le fichier
             nbSens  : integer : nombre de sens mesures 
-            df2SensPropres : df des 2 sens de circulation, sans les comptages avec des valeurs aberrantes
-            df2SensFail : df des 2sens de circulation pour les enregsitramrents avec valeur aberrantes
+            dfAgreg2Sens : df des 2 sens de circulation, brutes sans nettoyages,avec attribut 'fail_type' type tuple avec erreur parmi 'adviceCode', 'longueur', 'vitesse', 'value0'
+            indicQualite : integer parmi 1,2,3, traduit sla qualite surla base des notes en bdd otv schema qualite table enum_qualite
         """
         self.fichier=fichier
         self.fichierCourt=os.path.basename(self.fichier)
         self.ouvrirMdb()
         self.calculNbSens()
         self.verifTables()
+        self.filtreDonneesAberrantes()
+        self.dfAgreg2Sens=self.calculLongueurVitesse()
+        self.indicQualite=self.qualificationQualite()
     
     def ouvrirMdb(self):
         """
@@ -861,11 +870,13 @@ class MHCorbin(object):
         dfSpeedFail=dfAgreg2Sens.loc[(dfAgreg2Sens.Length>=MHcorbinMaxSpeed)]
         dfValue0=dfAgreg2Sens.loc[(dfAgreg2Sens.Length==MHCorbinValue0)|(dfAgreg2Sens.Speed==MHCorbinValue0)]
         #la df filmtree
-        self.df2SensPropres=dfAgreg2Sens.loc[~dfAgreg2Sens.index.isin(dfAdviceCodeFail.index.tolist()+dfLengthFail.index.tolist()+dfSpeedFail.index.tolist()+dfValue0.index.tolist())]
-        self.df2SensFail=pd.concat([dfLengthFail.reset_index().assign(fail_type='longueur'),
-           dfSpeedFail.reset_index().assign(fail_type='vitesse'),
-           dfAdviceCodeFail.reset_index().assign(fail_type='adviceCode'),
-           dfValue0.reset_index().assign(fail_type='value0')]).drop_duplicates('index').drop('index', axis=1).reset_index(drop=True)
+        dfFail=pd.concat([dfAdviceCodeFail.assign(fail_type='adviceCode'),
+            dfLengthFail.assign(fail_type='longueur'),
+            dfSpeedFail.assign(fail_type='vitesse'),
+           dfValue0.assign(fail_type='value0')])
+        dfFailCause=dfFail.drop('fail_type', axis=1).merge(dfFail.groupby(level=0).agg({'fail_type':lambda x : tuple(x)}), left_index=True, right_index=True)
+        df2SensFail=dfFailCause.reset_index().drop_duplicates('index').set_index('index')
+        self.dfAgreg2Sens=dfAgreg2Sens.merge(df2SensFail[['fail_type']],left_index=True, right_index=True, how='left')
         return 
     
     def creerModelePredictionAttribut(self, attribut):
@@ -919,7 +930,7 @@ class MHCorbin(object):
         resultsLinearTestSup10k=linearSup10k.predict(X_testSup10k)
         dfPrediction=pd.concat([X_testInf10k.assign(prediction=resultsPoly4TestInf10k), 
                               X_testSup10k.assign(prediction=resultsLinearTestSup10k)]
-           ).merge(Series, left_index=True, right_index=True)
+           ).merge(Series, left_index=True, right_index=True).drop([nomAttribut+'_x', nomAttribut+'_y'], axis=1).rename(columns={'prediction':nomAttribut+'_calc'})
         return dfPrediction, resultsPoly4TestInf10k, resultsLinearTestSup10k
      
     
@@ -935,8 +946,45 @@ class MHCorbin(object):
         poly4, linearSup10k=self.creerModelePredictionAttribut(nomAttribut)
         dfPrediction=self.predireAttribut(Series,nomAttribut,poly4, linearSup10k)[0]
         return dfPrediction
+    
+    def calculLongueurVitesse(self):
+        """
+        ajouter une vitesse et une longueur calculee et corrigee a la df self.dfAgreg2Sens
+        """
+        dfLongueurCalc=self.conversionAttribut(self.dfAgreg2Sens[['Length']], 'Length')
+        dfVitesseCalc=self.conversionAttribut(self.dfAgreg2Sens[['Speed']], 'Speed')
+        return self.correctionPrediction(dfLongueurCalc,dfVitesseCalc )
         
-      
+    
+    def correctionPrediction(self,dfLongueurCalc,dfVitesseCalc  ):
+        """
+        une fois les predictions faite et jointe a la table de base, il faut corriger les valeurs aberrantes liees 
+        aux lignes de la table df2SensFail : si la vitesse ou la longuer ont trop importante ou egale a 0 on les passe a NaN
+        in : 
+            dfLongueurCalc : dataframe issu de conversionAttribut
+            dfVitesseCalc : dataframe issu de conversionAttribut
+        out : 
+            dfCorrection : jointure entre l'attribut d'instance dfAgrege2Sens et les valeur calculees de vitesse et longueur
+        """
+        dfCorrection=self.dfAgreg2Sens.merge(dfLongueurCalc, left_index=True, right_index=True).merge(
+            dfVitesseCalc, left_index=True, right_index=True)
+        for attr in ('Length_calc', 'Speed_calc') : 
+            dfCorrection.loc[dfCorrection.fail_type.apply(lambda x : any([e in x for e in ('longueur', 'vitesse', 'value0')]) if not pd.isnull(x) else False),attr]=np.nan
+        return dfCorrection
+    
+    def qualificationQualite(self):
+        """
+        en fonction du ration nombr d'objet qui présente un fail (cf fonction filtreDonneesAberrantes) / nb objet total, affecter une 
+        valeur de qualite selon la liste enumeree en base (0:NC, 1:faible, 2:moyen, 3:bonne)
+        """
+        dfFail=self.dfAgreg2Sens.loc[~self.dfAgreg2Sens.fail_type.isna()]
+        if len(dfFail)/len(self.dfAgreg2Sens) >= 0.3 :
+            return 1
+        elif 0.1 < len(dfFail)/len(self.dfAgreg2Sens) < 0.3 : 
+            return 2
+        else : 
+            return 3
+        
 class PasAssezMesureError(Exception):
     """
     Exception levee si le fichier comport emoins de 7 jours
