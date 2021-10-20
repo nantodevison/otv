@@ -24,7 +24,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error
 
-from Params.DonneesSourcesParams import MHcorbinMaxLength, MHcorbinMaxSpeed, MHCorbinValue0, MHCorbinFailAdviceCode, dicoTables
+from Params.DonneesSourcesParams import MHcorbinMaxLength, MHcorbinMaxSpeed, MHCorbinValue0, MHCorbinFailAdviceCode
 import Connexion_Transfert as ct
 import Outils as O
 
@@ -32,12 +32,35 @@ import Outils as O
 #tuple avec le type de jours, le nombre de jours associes et les jours (de 0à6)
 tupleParams=(('mja',7,range(7)),('mjo',5,range(5)),('lundi',1,[0]), ('mardi',1,[1]), ('mercredi',1,[2]),('jeudi',1,[3]),('vendredi',1,[4]),('samedi',1,[5]),('dimanche',1,[6]))
 
+def verifNbJour(dfVehiculesValides):
+    """
+    verifier le nombre de jours dans une df de donnees individuelle, et remonte une erreur si pb, sinon True
+    in :     
+        dfVehiculesValides : données issues de NettoyageDonnees()
+    """
+    O.checkAttributsinDf(dfVehiculesValides, ['date_heure',])
+    nbJours=dfVehiculesValides.date_heure.dt.dayofyear.nunique()
+    timstampMin=dfVehiculesValides.date_heure.min()
+    timstampMax=dfVehiculesValides.date_heure.max()
+    if nbJours==8 : 
+        #vérif qu'il y a recouvrement
+        if timstampMin.time()>timstampMax.time() : 
+            raise PasAssezMesureError(nbJours-2)
+    elif nbJours>8 :
+        return
+    else : 
+        nbJours=nbJours if nbJours!=7 else nbJours-1
+        raise PasAssezMesureError(nbJours)
+        
+
 def NettoyageTemps(dfVehiculesValides):
     """
     Analyser le nb de jours dispo, lever un erreur si inférieur à 7, si 7 verifier que recouvrement sinon erreur
     ensuite si besoin fusion du 1er et dernier jours, sinon suppression jours incomplet
     in  : 
         dfVehiculesValides : données issues de NettoyageDonnees()
+    out : 
+        dfValide : dataframe modifié en date selon conditions, sinon egale a l'entree
     """
     #analyse du nombre de jours mesurés 
     nbJours=dfVehiculesValides.date_heure.dt.dayofyear.nunique()
@@ -47,17 +70,17 @@ def NettoyageTemps(dfVehiculesValides):
     if nbJours==8 : 
         #vérif qu'il y a recouvrement
         if timstampMin.time()>timstampMax.time() : 
-            raise PasAssezMesureError(nbJours-2) #sinon renvoyer sur l'erreur ci-dessus
-        #on relimite la df : 
-        dfValide=dfVehiculesValides.loc[dfVehiculesValides.date_heure>datetime.combine(timstampMin.date(),timstampMax.time())].copy()
-        #puis on triche et on modifie la date du dernier jour pour le mettre sur celle du 1er, en conservant l'heure
-        dfValide.loc[dfValide.date_heure.dt.dayofyear==timstampMax.dayofyear,'date_heure']=dfValide.loc[dfValide.date_heure.
-           dt.dayofyear==timstampMax.dayofyear].apply(lambda x : datetime.combine(timstampMin.date(),x['date_heure'].time()),axis=1)    
+            #on relimite la df : 
+            dfValide=dfVehiculesValides.loc[dfVehiculesValides.date_heure>datetime.combine(timstampMin.date(),timstampMax.time())].copy()
+            #puis on triche et on modifie la date du dernier jour pour le mettre sur celle du 1er, en conservant l'heure
+            dfValide.loc[dfValide.date_heure.dt.dayofyear==timstampMax.dayofyear,'date_heure']=dfValide.loc[dfValide.date_heure.
+               dt.dayofyear==timstampMax.dayofyear].apply(lambda x : datetime.combine(timstampMin.date(),x['date_heure'].time()),axis=1)    
+        else : 
+            dfValide=dfVehiculesValides.copy()
     elif nbJours>8 :#si nb jour >8 on enleve les premier ete dernier jours
         dfValide=dfVehiculesValides.loc[~dfVehiculesValides.date_heure.dt.dayofyear.isin((timstampMin.dayofyear,timstampMax.dayofyear))].copy()
     else : 
-        nbJours=nbJours if nbJours!=7 else nbJours-1
-        raise PasAssezMesureError(nbJours)
+        dfValide=dfVehiculesValides.copy()
     return dfValide
 
 def GroupeCompletude(dfValide, vitesse=False):
@@ -73,6 +96,9 @@ def GroupeCompletude(dfValide, vitesse=False):
     O.checkAttributsinDf(dfValide, ['date_heure', 'sens', 'type_veh', 'nbVeh'])
     if vitesse : 
         O.checkAttributsinDf(dfValide, 'vitesse')
+        
+    O.checkAttributValues(dfValide, 'sens', 'sens1', 'sens2')
+    O.checkAttributValues(dfValide, 'type_veh', 'tv', 'vl', 'pl', '2r')
         
     dfGroupTypeHeure=dfValide.set_index('date_heure').groupby([pd.Grouper(freq='1H'),'type_veh','sens'])['nbVeh'].count().reset_index().sort_values('date_heure')
     #completude des données
@@ -105,6 +131,24 @@ def GroupeCompletude(dfValide, vitesse=False):
         dfHeureTypeSens=dfHeureTypeSens.loc[dfHeureTypeSens.sens==dfTestSens.loc[dfTestSens.nbVeh!=0].sens.values[0]]
        
     return dfHeureTypeSens
+
+def donneesIndiv2HoraireBdd(dfHeureTypeSens):
+    """
+    transformer une df de donnees individuelles en df format horaire de la Bdd
+    in :
+        dfHeureTypeSens : dataframe comrenant les attributs principaux des donnees individuelle. issue de dfHeureTypeSens
+    out : 
+        dataframe avec date et indictauer + heures en atteributs
+    """
+    O.checkAttributsinDf(dfHeureTypeSens, ['date', 'heure', 'nbVeh'])
+    dfHoraireTmja=dfHeureTypeSens.loc[dfHeureTypeSens.type_veh.str.lower()!='tv'].groupby(['date', 'heure']).nbVeh.sum().reset_index().rename(
+        columns={'date':'jour','nbVeh':'valeur'}).assign(indicateur='tv').pivot(index=['jour', 'indicateur'], columns='heure', values='valeur'
+                                                                               ).rename(columns={n:f'h{n}_{n+1}' for n in range(24)})
+    dfHorairePl=dfHeureTypeSens.loc[dfHeureTypeSens.type_veh.str.lower()=='pl'].groupby(['date', 'heure']).nbVeh.sum().reset_index().rename(
+        columns={'date':'jour','nbVeh':'valeur'}).assign(indicateur='pl').pivot(index=['jour', 'indicateur'], columns='heure', values='valeur'
+                                                                               ).rename(columns={n:f'h{n}_{n+1}' for n in range(24)})
+    return pd.concat([dfHoraireTmja, dfHorairePl])
+    
 
 def NombreDeJours(dfHeureTypeSens):
     """
@@ -473,7 +517,7 @@ class ComptageDonneesIndiv(object):
         pour chaque sens et 2 sens confondus : gerer les cas ou l enb de jours n'est pas o cf NettoyageTemps()k
        ensuite on regroupe les donnees par heure et type de vehicule et sens, cf GroupeCompletude() 
         """
-        
+        verifNbJour(self.df2SensBase) #verfier que le nb de jours est ok
         dfValide=NettoyageTemps(self.df2SensBase)
         dfHeureTypeSens=GroupeCompletude(dfValide,self.vitesse)
         dicoNbJours=NombreDeJours(dfHeureTypeSens)
@@ -693,6 +737,7 @@ class FIM():
         calculer le tmjs, pl et pc_pl pour un fichier
         """
         #calcul d'une semaine moyenne
+        verifNbJour(self.dfHeureTypeSens)#verif nb jours ok
         dfSemaineMoyenne=semaineMoyenne(NettoyageTemps(self.dfHeureTypeSens))
         #TMJA
         if 'tv' in dfSemaineMoyenne.type_veh.unique() : 
@@ -720,6 +765,7 @@ class ComptageFim(object):
         """
         self.dossier=dossier
         self.dfHeureTypeSens=self.analyseNbFichier()
+        verifNbJour(self.dfHeureTypeSens)#verif nb jours ok
         self.dfSemaineMoyenne=semaineMoyenne(NettoyageTemps(self.dfHeureTypeSens))
     
     def analyseNbFichier(self):
@@ -765,10 +811,11 @@ class MHCorbin(object):
     on peut acceder a une comparaison du fichier mdb et du fichier sequential produit via le package Data ou via la fonction dfRessourceCorrespondance
     """
     
-    def __init__(self, fichier):
+    def __init__(self, fichier, nature=None):
         """
         attributes : 
             fichier : rawString de parh complet
+            nature : None ou Test : si test, le parametre fichier est ignore et les donnees de test "rue de souche du 31 01 au 07 02 2020.mdb" sont utilise
             fichierCourt : string du nom du fichier sans path
             tables : liste des tables conotenues dans le fichier mdb
             dico_tables : dico des tables avec en clé (et en value la df correspolnvdante) a1, a2, c1, c2, e1, e2, v1, v2, pe1, pe2, hdhdr : tables contenues dans le fihciers mdb. Décrivent :
@@ -783,14 +830,15 @@ class MHCorbin(object):
             dfAgreg2Sens : df des 2 sens de circulation, brutes sans nettoyages,avec attribut 'fail_type' type tuple avec erreur parmi 'adviceCode', 'longueur', 'vitesse', 'value0'
             indicQualite : integer parmi 1,2,3, traduit sla qualite surla base des notes en bdd otv schema qualite table enum_qualite
         """
-        self.fichier=fichier
+        self.fichier=fichier    
         self.fichierCourt=os.path.basename(self.fichier)
         self.ouvrirMdb()
         self.calculNbSens()
         self.verifTables()
         self.filtreDonneesAberrantes()
         self.dfAgreg2Sens=self.calculLongueurVitesse()
-        self.indicQualite=self.qualificationQualite()
+        self.indicQualite=self.qualificationQualite() 
+            
     
     def ouvrirMdb(self):
         """
@@ -800,9 +848,9 @@ class MHCorbin(object):
         self.listTablesManquante=[]
         with ct.ConnexionBdd('mdb', fichierMdb=self.fichier) as c:
             self.tables = list(c.mdbCurs.tables())
-            for k, v in dicoTables.items() :
+            for k in [t[2] for t in self.tables if t[2].lower() not in ('msysaces','msysobjects','msysqueries','msysrelationships')] :
                 try : 
-                    self.dicoTables[k]=pd.read_sql(f"SELECT * FROM {v}", c.connexionMdb)
+                    self.dicoTables[k.lower()]=pd.read_sql(f"SELECT * FROM {k}", c.connexionMdb)
                 except DatabaseError:
                     self.listTablesManquante.append(k)
      
@@ -821,11 +869,14 @@ class MHCorbin(object):
         """
         en fonction du nombre de sens, verifier que toute les tables sont presentes 
         """
-        if any([k in self.listTablesManquante for k in dicoTables]) and self.nbSens==2: 
+        if not all([len([t[2] for t in self.tables if t[2].lower() not in ('msysaces','msysobjects','msysqueries','msysrelationships') 
+                     and t[2].lower()[0]==l])==2 for l in ('a', 'v', 'e', 'c')]) and self.nbSens==2: 
             raise ValueError("2 sens mais un des fichiers de tables est vide")
-        elif any([e in self.listTablesManquante for e in ('a1', 'c1', 'e1', 'v1', 'pe1', 'hshdr')]) and self.nbSens==1:
+        elif not all([len([t[2] for t in self.tables if t[2].lower() not in ('msysaces','msysobjects','msysqueries','msysrelationships') 
+                       and t[2].lower()[0]==l])==1 for l in ('a', 'v', 'e', 'c')]) and self.nbSens==1:
             raise ValueError("1 sens mais un des fichiers de tables est vide")
-        elif any([e in self.tables for e in ('a2', 'c2', 'e2', 'v2', 'pe2')]) and self.nbSens==1:
+        elif any([len([t[2] for t in self.tables if t[2].lower() not in ('msysaces','msysobjects','msysqueries','msysrelationships') 
+                       and t[2].lower()[0]==l])==2 for l in ('a', 'v', 'e', 'c')]) and self.nbSens==1:
             raise ValueError("1 sens mais plusieurs tables de 2eme sens")
         return
         
@@ -838,7 +889,17 @@ class MHCorbin(object):
             dataframe des donnes de comparaison brutes
             dataframe des donnees de comparaison filtrees selon les criteres du modules DonneesSOurcesParams
         """
-        return pd.read_json(resources.read_text('data.MHCorbin','compSequentialMdb.json' )),pd.read_json(resources.read_text('data.MHCorbin','compSequentialMdbNettoyee.json' ))    
+        return (pd.read_json(resources.read_text('data.MHCorbin','compSequentialMdb.json' )),
+                pd.read_json(resources.read_text('data.MHCorbin','compSequentialMdbNettoyee.json' )))
+    
+    def dfRessourceTests(self):
+        """
+        ouvrir les donnees necessaires aux tests unitaires
+        out : 
+            df de verif diu format de conversion vers donneesIndiv
+        """   
+        return pd.read_json(resources.read_text('data.MHCorbin','verifFormat2Sens.json' ), convert_dates=['date_heure'])
+        
     
     def agreg2Sens(self):
         """
@@ -846,16 +907,18 @@ class MHCorbin(object):
         out : 
             concatenation brutes de a1 et a2 si deux , sens, sinon a1
         """
-        if self.nbSens==2 :
-            return pd.concat([self.dicoTables['a1'].assign(sens=1,sensTxt=f"sens 1 ; {self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==1, 'Lane'].values[0]}", 
-                    obs_supl=','.join(set([self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==i, 'Street'].values[0] for i in (1,2)])),
+        if self.nbSens==2 : 
+            listSens=[t[2].lower() for t in self.tables if t[2].lower() not in ('msysaces','msysobjects','msysqueries','msysrelationships') and t[2].lower()[0]=='a']
+            listNum=[int(s[-1]) for s in listSens]
+            return pd.concat([self.dicoTables[listSens[0]].assign(sens=1,sensTxt=f"sens 1 ; {self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==listNum[0], 'Lane'].values[0]}", 
+                    obs_supl=','.join(set([self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==i, 'Street'].values[0] for i in listNum])),
                     nb_sens='double sens'),
-              self.dicoTables['a2'].assign(sens=2, sensTxt=f"sens 2 ; {self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==2, 'Lane'].values[0]}", 
-                    obs_supl=','.join(set([self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==i, 'Street'].values[0] for i in (1,2)])),
+              self.dicoTables[listSens[1]].assign(sens=2, sensTxt=f"sens 2 ; {self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==listNum[1], 'Lane'].values[0]}", 
+                    obs_supl=','.join(set([self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==i, 'Street'].values[0] for i in listNum])),
                     nb_sens='double sens')], axis=0, sort=False).reset_index(drop=True)
         else : 
             return self.dicoTables['a1'].assign(sens=1,sensTxt=f"sens 1 ; {self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==1, 'Lane'].values[0]}", 
-                    obs_supl=self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==i, 'Street'].values[0],
+                    obs_supl=self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==1, 'Street'].values[0],
                     nb_sens='sens unique')
             
     def filtreDonneesAberrantes(self):
@@ -984,6 +1047,39 @@ class MHCorbin(object):
             return 2
         else : 
             return 3
+        
+    def formaterDonneesIndiv(self, df):
+        """
+        passer du format MHCorbin au format des donnees indiv ci-dessus
+        in : 
+            df : df des donnees a transformer, generalement ce sera dfAgreg2Sens
+        out : 
+            df2sensFormatIndiv : modificarion de format (nom de champ, ajout de champ, valeurs)
+        """
+        df2sensFormatIndiv=self.dfAgreg2Sens.copy()
+        df2sensFormatIndiv.loc[(df2sensFormatIndiv.Length_calc<6) | (df2sensFormatIndiv.Length_calc.isna()), 'type_veh']='vl'
+        df2sensFormatIndiv.loc[df2sensFormatIndiv.Length_calc>=6, 'type_veh']='pl'
+        df2sensFormatIndiv.rename(columns={'ATime':'date_heure'}, inplace=True)
+        df2sensFormatIndiv['nbVeh']=1
+        df2sensFormatIndiv.sens.replace([1,2], ['sens1', 'sens2'], inplace=True)
+        return df2sensFormatIndiv  
+    
+    def formaterDonneesHoraires(self, df): 
+        """
+        passer les donnees indiv au format de donnees horaires de la Bdd Otv
+        in : 
+            df : df au format donnees indiv, issue de formaterDonneesIndiv
+        out : 
+            dfHoraireBdd : 
+        """ 
+        try : 
+            verifNbJour(df)#verif nb jours ok
+        except PasAssezMesureError : 
+            print(f'pas assez de mesure sur le fichier {self.fichierCourt}')
+        dfFormatGroupe=GroupeCompletude(NettoyageTemps(df))
+        dfHoraireBdd=donneesIndiv2HoraireBdd(dfFormatGroupe)
+        return dfHoraireBdd
+        
         
 class PasAssezMesureError(Exception):
     """
