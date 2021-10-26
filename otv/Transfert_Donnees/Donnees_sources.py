@@ -69,7 +69,7 @@ def NettoyageTemps(dfVehiculesValides):
     #si nb jour==8 : (sinon <8 erreur )
     if nbJours==8 : 
         #vérif qu'il y a recouvrement
-        if timstampMin.time()>timstampMax.time() : 
+        if timstampMin.time()<=timstampMax.time() : 
             #on relimite la df : 
             dfValide=dfVehiculesValides.loc[dfVehiculesValides.date_heure>datetime.combine(timstampMin.date(),timstampMax.time())].copy()
             #puis on triche et on modifie la date du dernier jour pour le mettre sur celle du 1er, en conservant l'heure
@@ -837,7 +837,7 @@ class MHCorbin(object):
         self.verifTables()
         self.filtreDonneesAberrantes()
         self.dfAgreg2Sens=self.calculLongueurVitesse()
-        self.indicQualite=self.qualificationQualite() 
+        self.indicQualite, self.comQualite=self.qualificationQualite() 
             
     
     def ouvrirMdb(self):
@@ -859,10 +859,14 @@ class MHCorbin(object):
         verifier que le comptage concerne 1 ou 2 sens
         """    
         nbSens=len(self.dicoTables['hshdr'])
-        if nbSens<=0 or nbSens > 2 : 
-            raise ValueError("il n'y aucun sens dans le fihcier hshdr ou plus de 2")
-        else : 
+        if nbSens in (1,2) : 
             self.nbSens=nbSens
+        elif nbSens==3 and len(self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Lane.apply(lambda x : not (re.match('^ *$', x) and not pd.isnull(x)))])==2: 
+            self.nbSens=nbSens
+            self.dicoTables['hshdr']=self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Lane.apply(
+                lambda x : not (re.match('^ *$', x) and not pd.isnull(x)))].copy()
+        else : 
+            raise ValueError("il n'y aucun sens dans le fihcier hshdr ou plus de 2")
         return
             
     def verifTables(self):
@@ -870,11 +874,11 @@ class MHCorbin(object):
         en fonction du nombre de sens, verifier que toute les tables sont presentes 
         """
         if not all([len([t[2] for t in self.tables if t[2].lower() not in ('msysaces','msysobjects','msysqueries','msysrelationships') 
-                     and t[2].lower()[0]==l])==2 for l in ('a', 'v', 'e', 'c')]) and self.nbSens==2: 
-            raise ValueError("2 sens mais un des fichiers de tables est vide")
-        elif not all([len([t[2] for t in self.tables if t[2].lower() not in ('msysaces','msysobjects','msysqueries','msysrelationships') 
-                       and t[2].lower()[0]==l])==1 for l in ('a', 'v', 'e', 'c')]) and self.nbSens==1:
-            raise ValueError("1 sens mais un des fichiers de tables est vide")
+                     and t[2].lower()[0]==l])==self.nbSens for l in ('a', 'v', 'e', 'c')]): 
+            raise ValueError("1 ou 2 sens mais un des fichiers de tables est vide")
+        elif any([len([t[2] for t in self.tables if t[2].lower() not in ('msysaces','msysobjects','msysqueries','msysrelationships') 
+                       and t[2].lower()[0]==l])==2 for l in ('a', 'v', 'e', 'c')]) and self.nbSens==1:
+            raise ValueError("1 sens mais plusieurs tables de 2eme sens")
         elif any([len([t[2] for t in self.tables if t[2].lower() not in ('msysaces','msysobjects','msysqueries','msysrelationships') 
                        and t[2].lower()[0]==l])==2 for l in ('a', 'v', 'e', 'c')]) and self.nbSens==1:
             raise ValueError("1 sens mais plusieurs tables de 2eme sens")
@@ -907,18 +911,29 @@ class MHCorbin(object):
         out : 
             concatenation brutes de a1 et a2 si deux , sens, sinon a1
         """
-        if self.nbSens==2 : 
+        if self.nbSens==2: 
             listSens=[t[2].lower() for t in self.tables if t[2].lower() not in ('msysaces','msysobjects','msysqueries','msysrelationships') and t[2].lower()[0]=='a']
             listNum=[int(s[-1]) for s in listSens]
-            return pd.concat([self.dicoTables[listSens[0]].assign(sens=1,sensTxt=f"sens 1 ; {self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==listNum[0], 'Lane'].values[0]}", 
+            return pd.concat([self.dicoTables[listSens[0]].assign(sens=1,sensTxt=f"sens 1 : {self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==listNum[0], 'Lane'].values[0]}", 
                     obs_supl=','.join(set([self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==i, 'Street'].values[0] for i in listNum])),
                     nb_sens='double sens'),
-              self.dicoTables[listSens[1]].assign(sens=2, sensTxt=f"sens 2 ; {self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==listNum[1], 'Lane'].values[0]}", 
+              self.dicoTables[listSens[1]].assign(sens=2, sensTxt=f"sens 2 : {self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==listNum[1], 'Lane'].values[0]}", 
                     obs_supl=','.join(set([self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==i, 'Street'].values[0] for i in listNum])),
                     nb_sens='double sens')], axis=0, sort=False).reset_index(drop=True)
+        elif self.nbSens==3 and len(self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Lane.apply(lambda x : not (re.match('^ *$', x) and not pd.isnull(x)))])==2:
+            listSens=[f'a{n}' for n in self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Lane.apply(lambda x : not (re.match('^ *$', x) and not pd.isnull(x)))].Rangenum.values]
+            listNum=[int(s[-1]) for s in listSens]
+            return pd.concat([self.dicoTables[listSens[0]].assign(sens=1,sensTxt=f"sens 1 : {self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==listNum[0], 'Lane'].values[0]}", 
+                                obs_supl=','.join(set([self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==i, 'Street'].values[0] for i in listNum])),
+                                nb_sens='double sens'),
+                          self.dicoTables[listSens[1]].assign(sens=2, sensTxt=f"sens 2 : {self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==listNum[1], 'Lane'].values[0]}", 
+                                obs_supl=','.join(set([self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==i, 'Street'].values[0] for i in listNum])),
+                                nb_sens='double sens')], axis=0, sort=False).reset_index(drop=True)
         else : 
-            return self.dicoTables['a1'].assign(sens=1,sensTxt=f"sens 1 ; {self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==1, 'Lane'].values[0]}", 
-                    obs_supl=self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==1, 'Street'].values[0],
+            listSens=[t[2].lower() for t in self.tables if t[2].lower() not in ('msysaces','msysobjects','msysqueries','msysrelationships') and t[2].lower()[0]=='a']
+            listNum=[int(s[-1]) for s in listSens]
+            return self.dicoTables[listSens[0]].assign(sens=1,sensTxt=f"sens 1 : {self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==listNum[0], 'Lane'].values[0]}", 
+                    obs_supl=self.dicoTables['hshdr'].loc[self.dicoTables['hshdr'].Rangenum==listNum[0], 'Street'].values[0],
                     nb_sens='sens unique')
             
     def filtreDonneesAberrantes(self):
@@ -1041,12 +1056,35 @@ class MHCorbin(object):
         valeur de qualite selon la liste enumeree en base (0:NC, 1:faible, 2:moyen, 3:bonne)
         """
         dfFail=self.dfAgreg2Sens.loc[~self.dfAgreg2Sens.fail_type.isna()]
+        #note de qualite sur le nombre de vehicule ayant des valeurs aberrantes
         if len(dfFail)/len(self.dfAgreg2Sens) >= 0.3 :
-            return 1
+            noteQualiteFail = 1
+            commQualiteFail="plus de 30% de valeur de longueur ou de vitesse aberrantes ou a 0, ou d'adviceCode speciaux"
         elif 0.1 < len(dfFail)/len(self.dfAgreg2Sens) < 0.3 : 
-            return 2
+            noteQualiteFail = 2
+            commQualiteFail="entre 10% et 30% de valeur de longueur ou de vitesse aberrantes ou a 0, ou d'adviceCode speciaux"
         else : 
-            return 3
+            noteQualiteFail = 3
+            commQualiteFail="moins de 10% de valeur de longueur ou de vitesse aberrantes ou a 0, ou d'adviceCode speciaux"
+        #note de qualite sur le nombre de sens et la qualite de leur descriptions
+        if self.nbSens in (1,2) and not self.dicoTables['hshdr'].Lane.isna().any() : 
+            noteSens=3
+            commQualiteSens="1 ou 2 sens nommé"
+        elif self.nbSens in (1,2) and self.dicoTables['hshdr'].Lane.isna().any() : 
+            noteSens=2
+            commQualiteSens="1 ou 2 sens, certains ou tous non nommés"
+        else : 
+            noteSens=1
+            commQualiteSens="0 ou plus de 2 sens, peu importe le nom" 
+        #note et com finale
+        if noteQualiteFail == 1 or noteSens == 1 : 
+            noteFinale=1
+        elif noteQualiteFail != noteSens :
+            noteFinale=2
+        else : 
+            noteFinale=noteQualiteFail
+        comFinal=commQualiteFail+' ; '+commQualiteSens
+        return noteFinale, comFinal
         
     def formaterDonneesIndiv(self, df):
         """
@@ -1076,6 +1114,8 @@ class MHCorbin(object):
             verifNbJour(df)#verif nb jours ok
         except PasAssezMesureError : 
             print(f'pas assez de mesure sur le fichier {self.fichierCourt}')
+            self.indcQualite=1
+            self.comQualite="moins de 7 jours de mesure"
         dfFormatGroupe=GroupeCompletude(NettoyageTemps(df))
         dfHoraireBdd=donneesIndiv2HoraireBdd(dfFormatGroupe)
         return dfHoraireBdd

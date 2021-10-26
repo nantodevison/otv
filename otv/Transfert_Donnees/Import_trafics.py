@@ -126,7 +126,7 @@ class Comptage():
         in : 
             listComptage : liste des id_comptag concernes
             annee : text 4 caracteres : annee des comptage
-            periode : text de forme YYYY/MM/DD-YYYY/MM/DD separe par ' ; ' si plusieurs periodes
+            periode : text de forme YYYY/MM/DD-YYYY/MM/DD separe par ' ; ' si plusieurs periodes ou list de texte
             src : texte ou list : source des donnnes
             obs : txt ou list : observation
             type_veh : txt parmis les valeurs de enum_type_veh
@@ -138,8 +138,17 @@ class Comptage():
             raise ValueError(f'type_veh doit etre parmi {enumTypeVeh}')
         if not (int(annee)<=dt.datetime.now().year and int(annee)>2000) or annee=='1900' :
             raise ValueError(f'annee doit etre compris entre 2000 et {dt.datetime.now().year} ou egale a 1900')
-        if periode and not re.search('(20[0-9]{2}\/(0[1-9]|1[0-2])\/(0[1-9]|[1-2][0-9]|3[0-1])-20[0-9]{2}\/(0[1-9]|1[0-2])\/(0[1-9]|[1-2][0-9]|3[0-1]))+( ; )*', periode) :
-            raise ValueError(f'la periode doit etre de la forme YYYY/MM/DD-YYYY/MM/DD separe par \' ; \' si plusieurs periodes')
+        #periode        
+        if isinstance(periode, str) :
+            if periode and not re.search('(20[0-9]{2}\/(0[1-9]|1[0-2])\/(0[1-9]|[1-2][0-9]|3[0-1])-20[0-9]{2}\/(0[1-9]|1[0-2])\/(0[1-9]|[1-2][0-9]|3[0-1]))+( ; )*', periode) :
+                raise ValueError(f'la periode doit etre de la forme YYYY/MM/DD-YYYY/MM/DD separe par \' ; \' si plusieurs periodes')
+        if isinstance(periode, list) :
+            #verif que ça colle avec les id_comptag
+            if len(periode)!=len(listComptage) :
+                raise ValueError('les liste de comptage et de periode doievnt avoir le mm nombre d elements')
+            for p in periode : 
+                if p and not re.search('(20[0-9]{2}\/(0[1-9]|1[0-2])\/(0[1-9]|[1-2][0-9]|3[0-1])-20[0-9]{2}\/(0[1-9]|1[0-2])\/(0[1-9]|[1-2][0-9]|3[0-1]))+( ; )*', p) :
+                    raise ValueError(f'la periode doit etre de la forme YYYY/MM/DD-YYYY/MM/DD separe par \' ; \' si plusieurs periodes')
         return pd.DataFrame({'id_comptag':listComptage, 'annee':annee, 'periode':periode,'src':src, 'obs':obs, 'type_veh' : type_veh})
     
     
@@ -162,6 +171,8 @@ class Comptage():
             listIdComptag : list des id_comptage a chercher
             annee : texte : annee sur 4 caractere
             bdd : string de connexion a la bdd
+        out : 
+            dfIdCptUniqs df avec id_comptag_uniq, id_comptag, annee
         """
         with ct.ConnexionBdd(bdd) as c  :
             dfIdCptUniqs=pd.read_sql(f'select id id_comptag_uniq, id_comptag, annee from comptage.comptage where id_comptag=ANY(ARRAY{listIdComptag}) and annee=\'{annee}\'', c.sqlAlchemyConn)
@@ -371,7 +382,7 @@ class Comptage():
         with ct.ConnexionBdd(bdd) as c:
                 c.sqlAlchemyConn.execute(rqt_base)
 
-    def insert_bdd(self,bdd, schema, table, df, if_exists='append',geomType='POINT',localisation='boulot'):
+    def insert_bdd(self,bdd, schema, table, df, if_exists='append',geomType='POINT'):
         """
         insérer les données dans la bdd et mettre à jour la geometrie
         en entree : 
@@ -383,11 +394,11 @@ class Comptage():
             if df.geometry.name!='geom':
                 df=O.gp_changer_nom_geom(df, 'geom')
                 df.geom=df.apply(lambda x : WKTElement(x['geom'].wkt, srid=2154), axis=1)
-            with ct.ConnexionBdd(bdd,localisation) as c:
+            with ct.ConnexionBdd(bdd) as c:
                 df.to_sql(table,c.sqlAlchemyConn,schema=schema,if_exists=if_exists, index=False,
                           dtype={'geom': Geometry()} )
         elif isinstance(df, pd.DataFrame) : 
-            with ct.ConnexionBdd(bdd,localisation) as c:
+            with ct.ConnexionBdd(bdd) as c:
                 df.to_sql(table,c.sqlAlchemyConn,schema=schema,if_exists=if_exists, index=False )
                 
 class Comptage_cd64(Comptage):

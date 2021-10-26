@@ -161,7 +161,7 @@ def tmjaDepuisHoraire(dfHoraire):
     dfTmja=dfMeltInconnus.groupby(['id_comptag','annee','indicateur']).agg({'valeur':'sum', 'jour':'count'}).reset_index()
     dfTmja2=dfTmja.assign(jour=dfTmja.jour/24 )
     dfTmja2['valeur']=(dfTmja2.valeur/dfTmja2.jour).astype(int)
-    dfTmjaPcpl=dfTmja2.loc[dfTmja2.indicateur=='TV'].merge(dfTmja2.loc[dfTmja2.indicateur=='PL'][['id_comptag', 'valeur']], on=['id_comptag'])
+    dfTmjaPcpl=dfTmja2.loc[dfTmja2.indicateur.str.upper()=='TV'].merge(dfTmja2.loc[dfTmja2.indicateur.str.upper()=='PL'][['id_comptag', 'valeur']], on=['id_comptag'])
     dfTmjaPcpl['pc_pl']=round(dfTmjaPcpl.valeur_y/dfTmjaPcpl.valeur_x*100, 2)
     dfTmjaPcpl.rename(columns={'valeur_x':'tmja'}, inplace=True)
     dfTmjaPcpl=pd.melt(dfTmjaPcpl, value_vars=['pc_pl', 'tmja'], id_vars=['id_comptag', 'annee'], value_name='valeur', var_name='indicateur')
