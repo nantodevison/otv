@@ -874,14 +874,14 @@ class MHCorbin(object):
         en fonction du nombre de sens, verifier que toute les tables sont presentes 
         """
         if not all([len([t[2] for t in self.tables if t[2].lower() not in ('msysaces','msysobjects','msysqueries','msysrelationships') 
-                     and t[2].lower()[0]==l])==self.nbSens for l in ('a', 'v', 'e', 'c')]): 
-            raise ValueError("1 ou 2 sens mais un des fichiers de tables est vide")
+                     and t[2].lower()[0]==l])==self.nbSens for l in ('a', 'v', 'c')]): 
+            raise DataSensError()
         elif any([len([t[2] for t in self.tables if t[2].lower() not in ('msysaces','msysobjects','msysqueries','msysrelationships') 
-                       and t[2].lower()[0]==l])==2 for l in ('a', 'v', 'e', 'c')]) and self.nbSens==1:
-            raise ValueError("1 sens mais plusieurs tables de 2eme sens")
+                       and t[2].lower()[0]==l])==2 for l in ('a', 'v', 'c')]) and self.nbSens==1:
+            raise DataSensError()
         elif any([len([t[2] for t in self.tables if t[2].lower() not in ('msysaces','msysobjects','msysqueries','msysrelationships') 
-                       and t[2].lower()[0]==l])==2 for l in ('a', 'v', 'e', 'c')]) and self.nbSens==1:
-            raise ValueError("1 sens mais plusieurs tables de 2eme sens")
+                       and t[2].lower()[0]==l])==2 for l in ('a', 'v', 'c')]) and self.nbSens==1:
+            raise DataSensError()
         return
         
             
@@ -1126,6 +1126,13 @@ class PasAssezMesureError(Exception):
     Exception levee si le fichier comport emoins de 7 jours
     """     
     def __init__(self, nbjours):
-        Exception.__init__(self,f'le fichier comporte moins de 7 jours complets de mesures. Nb jours complets : {nbjours} ')        
+        Exception.__init__(self,f'le fichier comporte moins de 7 jours complets de mesures. Nb jours complets : {nbjours} ')   
+        
+class DataSensError(Exception):
+    """
+    Exception levee pour classe MHCorbin si le fichier comporte des sens dans la table hshdr mais que  les tables a ou c ou v ne sont pas présentes
+    """     
+    def __init__(self, nbjours):
+        Exception.__init__(self,f'Il manque la table a, c ou v dans le fichier.mdb')     
         
         

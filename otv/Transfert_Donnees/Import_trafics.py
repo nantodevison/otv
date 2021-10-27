@@ -19,10 +19,9 @@ from shapely.ops import transform
 from collections import Counter
 
 import Connexion_Transfert as ct
-from Donnees_horaires import comparer2Sens,verifValiditeFichier,concatIndicateurFichierHoraire,SensAssymetriqueError,verifNbJoursValidDispo, tmjaDepuisHoraire
-from Donnees_sources import FIM
+from Donnees_horaires import comparer2Sens,verifValiditeFichier,concatIndicateurFichierHoraire,SensAssymetriqueError,verifNbJoursValidDispo, tmjaDepuisHoraire, periodeDepuisHoraire
+from Donnees_sources import FIM, MHCorbin, DataSensError
 import Outils as O
-from sqlalchemy.dialects import oracle
 
 dico_mois={'janv':[1,'Janv','Janvier'], 'fevr':[2,'Fév','Février','févr','Fevrier'], 'mars':[3,'Mars','Mars'], 'avri':[4,'Avril','Avril'], 'mai':[5,'Mai','Mai'], 'juin':[6,'Juin','Juin'], 
            'juil':[7,'Juill','Juillet', 'juil'], 'aout':[8,'Août','Aout'], 'sept':[9,'Sept','Septembre'], 'octo':[10,'Oct','Octobre'], 'nove':[11,'Nov','Novembre'], 'dece':[12,'Déc','Décembre','Decembre']}
@@ -3032,6 +3031,211 @@ class Comptage_LaRochelle(Comptage):
         valeurs_txt=self.creer_valeur_txt_update(self.df_attr,['id_comptag','tmja_2015','pc_pl_2015','src_2015', 'fichier'])
         dico_attr_modif={f'tmja_2016':'tmja_2015', f'pc_pl_2016':'pc_pl_2015',f'src_2016':'src_2015', 'fichier':'fichier'}
         self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)  
+        
+class Comptage_Anglet(Comptage):
+    """
+    basé sur l'utilisation des fichiers .mdb au format MHCorbin du module Donnees_sources
+    fonctionne par annee ; utilisation manuelle de 'mon geocodeur' IGN en cours de route
+    """
+    
+    def __init__(self, annee, dossier, dossierResume):
+        """
+        aatribuut : 
+            anneee : string : 4 caracteres
+            dossier : rawstring du path du dossier contenant les fihcires
+            dossierResume : rawstring du path du dossier allant recevoir le fichier de geoloc
+            codepostal : 64600
+            commune : Anglet
+            gdfGeoloc : gdf avec le nom de fichier, des infos sur la geoloc et les attributs necessaires pour creer des compteurs dans bdd
+            dfHoraire : dataframe des donnees horaires, tous points confondus
+            dfIndicAgrege : dataframe des donnees agreges, tous points confondus
+        """
+        self.annee=annee 
+        self.dossier=dossier
+        self.codepostal='64600'
+        self.commune='Anglet'
+        self.resumeComptage=os.path.join(dossierResume,f'Comptage{annee}.csv')
+        self.resumeComptageGeoloc=os.path.join(dossierResume,f'Comptage{annee}_geoloc.csv')
+    
+    def exporterCsvAGeocoder(self):
+        """
+        creer le csv qui va permettre le geocodage manuel dans 'monGeocodeur de l'IGN'
+        """
+        #lister les fichiers et exporter le fichier csv pour géocodage IGN
+        dicoAdresse={'fichier':[], 'adresse':[], 'codePostal':self.codepostal, 'Commune':self.commune}
+        #exporter les adresses (géocodées ensuite via mongeocodeur)
+        def replaceAdresse(matchobj):
+            return matchobj.group(0).replace('.',',')
+        for files in os.listdir(self.dossier):
+            if os.path.isfile(os.path.join(self.dossier, files)) and files.endswith('.mdb'):
+                dicoAdresse['fichier'].append(os.path.join(self.dossier, files))
+                dicoAdresse['adresse'].append(re.sub('^[1-9]+\.', replaceAdresse,files[:-4] ))
+        dfFichierAdresse=pd.DataFrame(dicoAdresse)
+        dfFichierAdresse.to_csv(self.resumeComptage, sep=';')  
+        return 
+    
+    def creerDfGeoloc(self):  
+        """
+        creer la df qui va contenir tous les attributs relatifs aux compteurs
+        """
+        #importer le fichier des points de comptage geolocalise et le mettre en forme
+        gdfGeoloc=gp.read_file(self.resumeComptageGeoloc, encoding='utf-8')#C:\Users\martin.schoreisz\Documents\temp\OTV\Anglet\Comptage2019_geoloc.csv
+        gdfGeoloc.geometry=gp.points_from_xy(x=gdfGeoloc['longitude'], y=gdfGeoloc['latitude'], crs=4326)
+        gdfGeoloc=gdfGeoloc.to_crs('epsg:2154')
+        gdfGeoloc['id_comptag']=gdfGeoloc.apply(lambda x : 'Anglet-'+re.sub('_{2,50}', '_',re.sub('(,|\.|\'| +)', '_', x['adresse']))+f"-{round(float(x['longitude']), 4)};{round(float(x['latitude']),4)}", axis=1)
+        gdfGeoloc['route']=gdfGeoloc.adresse.apply(lambda x : re.sub('^([1-9]{1,3},)+','', x))
+        gdfGeoloc['reseau']='VC'
+        gdfGeoloc['dep']='64'
+        gdfGeoloc['gestionnai']='Anglet'
+        gdfGeoloc['concession']=False
+        gdfGeoloc['type_poste']='ponctuel'
+        gdfGeoloc['src_geo']='adresse'
+        gdfGeoloc['obs_geo']=gdfGeoloc.apply(
+            lambda x : f"geocodé avec 'mon géocodeur' de l'IGN ; qualite : {x.qualite} ; precision geocodage : {x['precision geocodage']} ; ID adresse : {x['ID adresse']}; adresse geocodee : {x['adresse geocodee']}", axis=1)
+        gdfGeoloc['x_l93']=round(gdfGeoloc.geometry.x,3)
+        gdfGeoloc['y_l93']=round(gdfGeoloc.geometry.y,3)
+        gdfGeoloc['fictif']=False
+        gdfGeoloc['src_cpt']='gestionnaire'
+        gdfGeoloc['convention']=False
+        self.gdfGeoloc=gdfGeoloc
+        return
+     
+    def indicsTousFichiers(self):
+        """
+        a partir de la gdfGeoloc, pour chaque fihcier on va recuperer les donnees horaire et calculer les agrege
+        """
+        listDfHoraires=[]
+        for row in self.gdfGeoloc.itertuples(index=False) : 
+            print(row.fichier)
+            try :
+                mhc=MHCorbin(row.fichier)
+            except DataSensError : 
+                print(f'Erreur de sens sur le fichier {self.row.fichier}')
+                continue
+            listDfHoraires.append(mhc.formaterDonneesHoraires(mhc.formaterDonneesIndiv(mhc.dfAgreg2Sens)).reset_index().assign(
+                id_comptag=row.id_comptag,
+                fichier=mhc.fichierCourt,
+                obs_supl=f"{mhc.dfAgreg2Sens.obs_supl.values[0]} ; {mhc.dfAgreg2Sens.sensTxt.values[0]}",
+                sens_cpt=mhc.dfAgreg2Sens.nb_sens.values[0],
+                note_manuelle_qualite=mhc.indicQualite,
+                obs_qualite=mhc.comQualite))
+        #calcul des dF d'indicateurs
+        self.dfHoraire=pd.concat(listDfHoraires)
+        self.dfIndicAgrege=tmjaDepuisHoraire(self.dfHoraire.assign(annee=self.annee)).merge(self.dfHoraire[['id_comptag','obs_supl','sens_cpt', 
+                                                    'note_manuelle_qualite', 'obs_qualite', 'fichier']].drop_duplicates(), on='id_comptag', how='left')
+        return
+           
+    def plusProcheVoisinBddRegroupe(self, tableLinauto, bdd='local_otv_boulot'):
+        """
+        passer la df dans la bdd pour trouver le plus proche voisin selon le regroupement du schema linauto
+        in : 
+            tableLinauto : string : nom de la table dans le chema linauto a uinterroger
+        out : 
+            dfPPV : dataframe du plud proche voisin, sur la base de gdfGeoloc
+        """  
+        self.insert_bdd('local_otv_boulot', 'public', f'cpt_anglet_{self.annee}',self.gdfGeoloc.drop('fichier', axis=1), if_exists='replace' )  
+        rqt=f"""WITH 
+                cpteur_base AS (
+                SELECT DISTINCT ON (c.id_comptag) c.id_comptag id_comptag_bdd, t.gid, st_distance(c.geom, t.geom)
+                 FROM comptage.compteur c left JOIN linauto.{tableLinauto} t ON st_dwithin(c.geom, t.geom, 20)
+                 ORDER BY c.id_comptag, st_distance(c.geom, t.geom))
+                SELECT DISTINCT ON (c.field_1) 
+                                    c.*, t.gid, st_distance(c.geom, t.geom),
+                                    c2.id_comptag_bdd
+                 FROM public.cpt_anglet_{self.annee} c left JOIN linauto.{tableLinauto} t ON st_dwithin(c.geom, t.geom, 20)
+                                               LEFT JOIN cpteur_base c2 ON t.gid=c2.gid
+                 ORDER BY c.field_1, st_distance(c.geom, t.geom)"""
+        with ct.ConnexionBdd(bdd) as c : 
+            dfPPV=gp.read_postgis(rqt, c.sqlAlchemyConn, crs='epsg:2154').merge(self.dfIndicAgrege, on='id_comptag', how='left'
+                            ).merge(periodeDepuisHoraire(self.dfHoraire.assign(annee=self.annee)), how='left', on='id_comptag')
+            dfPPV=O.gp_changer_nom_geom(dfPPV, 'geometrie')
+        return dfPPV
+    
+    def isolerComptagesDoublons(self,dfPPV ):
+        """
+        obtenir la liste des comptages situes sur un mm troncon homogene de trafic
+        in : 
+            dfPPV : donnees des compteurs, avec info supp, issue de plusProcheVoisinBddRegroupe
+        out : 
+            numpy array avec les id_comptages situes sur des troncon homogene equivalent
+        """
+        return dfPPV.loc[(dfPPV.duplicated(['gid', 'indicateur'], keep=False)) & (~dfPPV.gid.isna())].id_comptag.unique()
+    
+    def cptSsDblEtSsGeom(self, dfPPV, cptAConserver):
+        """
+        récupérer la df des comptages sans doublons, mais avec les geometries
+        in : 
+            dfPPV : donnees des compteurs, avec info supp, issue de plusProcheVoisinBddRegroupe
+            cptAConserver : list des comptages étant sorti dans la liste des doublons mais que l'on souhaite qd mm conserver
+        """
+        dfPPVFiltre=dfPPV.loc[~dfPPV.id_comptag.isin(cptAConserver) & (dfPPV.indicateur=='tmja') & (~dfPPV.gid.isna())]
+        listIdCptFinale=list(dfPPVFiltre.loc[(dfPPVFiltre.valeur==dfPPVFiltre.groupby('gid').valeur.transform(max))].id_comptag.unique())+cptAConserver
+        dfPPVSsDbl=dfPPV.loc[(dfPPV.id_comptag.isin(listIdCptFinale) )| (~dfPPV.gid.isna())]
+        #attentyion aux doublons sur id_comptag_bdd
+        dfPPVSsDbl=dfPPVSsDbl.loc[(dfPPVSsDbl.id_comptag.isin(dfPPVSsDbl.loc[(dfPPVSsDbl.indicateur=='tmja') & (dfPPVSsDbl.valeur==dfPPVSsDbl.groupby('id_comptag_bdd').valeur.transform(max))].id_comptag.tolist())) | 
+              (dfPPVSsDbl.id_comptag_bdd.isna())].copy()
+        return dfPPVSsDbl
+    
+    def insererCompteur(self, dfPPVSsDbl, bdd='local_otv_boulot', schema='comptage', table='compteur'):
+        """
+        Preparer les donnes liees au compteur et les inserer (si besoin) dans la bdd
+        in : 
+            dfPPVSsDbl : donnees issues de cptSsDblEtSsGeom()
+        """
+        #creer les compteurs a inserer dans la bdd
+        dfCptAcreer=dfPPVSsDbl.loc[dfPPVSsDbl.id_comptag_bdd.isna()]
+        if not dfCptAcreer.empty :
+            compteur=dfCptAcreer[['geometrie', 'id_comptag', 'route', 'reseau', 'dep', 'gestionnai','concession', 'type_poste', 'src_geo', 'obs_geo', 'x_l93', 'y_l93',
+                   'fictif', 'src_cpt', 'convention','obs_supl','sens_cpt']].drop_duplicates().copy()
+            #inserer
+            self.insert_bdd(bdd, schema, table, compteur)
+        else : 
+            print('pas de nouveau compteur a inserer')
+            return
+        
+    def insererComptage(self, dfPPVSsDbl, bdd='local_otv_boulot', schema='comptage', table='comptage'):
+        """
+        Preparer les donnes liees au comptages et les inserer dans la bdd
+        in : 
+            dfPPVSsDbl : donnees issues de cptSsDblEtSsGeom()
+        """
+        dfPPVSsDblTemp=dfPPVSsDbl.copy()
+        dfPPVSsDblTemp['id_comptag_final']=dfPPVSsDblTemp.apply(lambda x : x.id_comptag_bdd if not pd.isnull(x.id_comptag_bdd) else x.id_comptag, axis=1)
+        comptage=dfPPVSsDblTemp[['id_comptag_final', 'annee', 'periode']].assign(src='gestionnaire', type_veh='tv/pl').rename(columns={'id_comptag_final':'id_comptag'}).drop_duplicates()
+        #inserer
+        self.insert_bdd(bdd, schema, table,comptage)
+        return
+        
+    def insererIndics(self, dfPPVSsDbl, bdd='local_otv_boulot', schema='comptage', tableAgrege='indic_agrege', tableHoraire='indic_agrege'):
+        """
+        Preparer les donnes liees au indicateurs(horaires, agrege) et les inserer dans la bdd
+        in : 
+            dfPPVSsDbl : donnees issues de cptSsDblEtSsGeom()
+        """
+        dfPPVSsDblTemp=dfPPVSsDbl.copy()
+        dfPPVSsDbl['id_comptag_final']=dfPPVSsDblTemp.apply(lambda x : x.id_comptag_bdd if not pd.isnull(x.id_comptag_bdd) else x.id_comptag, axis=1)
+        indicAgrege=dfPPVSsDblTemp.merge(self.recupererIdUniqComptage(dfPPVSsDblTemp.id_comptag_final.tolist(), self.annee).rename(columns={'id_comptag_final':'id_comptag'})
+                             , on=['id_comptag', 'annee'])[['id_comptag_uniq', 'indicateur', 'valeur', 'fichier']]
+        dfHoraireSsDbl=self.dfHoraire.merge(dfPPVSsDblTemp[['id_comptag', 'id_comptag_final']], on='id_comptag')
+        indicHoraire=dfHoraireSsDbl.assign(annee=self.annee, 
+            indicateur=dfHoraireSsDbl.indicateur.str.upper()).merge(self.recupererIdUniqComptage(
+            dfHoraireSsDbl.id_comptag_final.tolist(), self.annee).rename(columns={'id_comptag':'id_comptag_final'}), on=['id_comptag_final', 'annee']).drop([
+            'sens_cpt', 'note_manuelle_qualite', 'obs_qualite', 'annee', 'id_comptag','id_comptag_final', 'obs_supl'], axis=1)
+        self.insert_bdd(bdd, schema, tableAgrege,indicAgrege)
+        self.insert_bdd(bdd, schema, tableHoraire,indicHoraire)
+        return
+        
+    def insererDatas(self, dfPPVSsDbl, bdd='local_otv_boulot', schema='comptage', tableComptag='comptage',
+                     tableCpteur='compteur', tableAgrege='indic_agrege', tableHoraire='indic_agrege'):
+        """
+        preparer et inserere les donnees de compteurs, comptages et indicateurs
+        in : 
+            dfPPVSsDbl : donnees issues de cptSsDblEtSsGeom()
+        """
+        self.insererCompteur(dfPPVSsDbl, bdd, schema, tableCpteur)
+        self.insererComptage(dfPPVSsDbl, bdd, schema, tableComptag)
+        self.insererIndics(dfPPVSsDbl, bdd, schema, tableAgrege, tableHoraire)
+        
         
 class Comptage_Dira(Comptage):
     """
