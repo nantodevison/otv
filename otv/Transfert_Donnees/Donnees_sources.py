@@ -74,13 +74,24 @@ def NettoyageTemps(dfVehiculesValides):
             dfValide=dfVehiculesValides.loc[dfVehiculesValides.date_heure>datetime.combine(timstampMin.date(),timstampMax.time())].copy()
             #puis on triche et on modifie la date du dernier jour pour le mettre sur celle du 1er, en conservant l'heure
             dfValide.loc[dfValide.date_heure.dt.dayofyear==timstampMax.dayofyear,'date_heure']=dfValide.loc[dfValide.date_heure.
-               dt.dayofyear==timstampMax.dayofyear].apply(lambda x : datetime.combine(timstampMin.date(),x['date_heure'].time()),axis=1)    
+               dt.dayofyear==timstampMax.dayofyear].apply(lambda x : datetime.combine(timstampMin.date(),x['date_heure'].time()),axis=1) 
+        elif timstampMin.time().hour==timstampMax.time().hour+1: # ou que les heures sont complémentaires 
+            # on triche et on modifie la date du 1er jour pour le mettre sur celle du dernier, en conservant l'heure
+            dfValide=dfVehiculesValides.copy()
+            dfValide.loc[dfValide.date_heure.dt.dayofyear==timstampMin.dayofyear,'date_heure']=dfValide.loc[dfValide.date_heure.
+               dt.dayofyear==timstampMin.dayofyear].apply(lambda x : datetime.combine(timstampMax.date(),x['date_heure'].time()),axis=1)
         else : 
             dfValide=dfVehiculesValides.copy()
     elif nbJours>8 :#si nb jour >8 on enleve les premier ete dernier jours
         dfValide=dfVehiculesValides.loc[~dfVehiculesValides.date_heure.dt.dayofyear.isin((timstampMin.dayofyear,timstampMax.dayofyear))].copy()
-    else : 
-        dfValide=dfVehiculesValides.copy()
+    else : # si le nombre de est inférieur à 8
+        if timstampMin.time().hour==timstampMax.time().hour+1: # et que les heures sont complémentaires
+            # on triche et on modifie la date du 1er jour pour le mettre sur celle du dernier, en conservant l'heure
+            dfValide=dfVehiculesValides.copy()
+            dfValide.loc[dfValide.date_heure.dt.dayofyear==timstampMin.dayofyear,'date_heure']=dfValide.loc[dfValide.date_heure.
+               dt.dayofyear==timstampMin.dayofyear].apply(lambda x : datetime.combine(timstampMax.date(),x['date_heure'].time()),axis=1)
+        else : 
+            dfValide=dfVehiculesValides.copy()
     return dfValide
 
 def GroupeCompletude(dfValide, vitesse=False):
@@ -98,7 +109,7 @@ def GroupeCompletude(dfValide, vitesse=False):
         O.checkAttributsinDf(dfValide, 'vitesse')
         
     O.checkAttributValues(dfValide, 'sens', 'sens1', 'sens2')
-    O.checkAttributValues(dfValide, 'type_veh', 'tv', 'vl', 'pl', '2r')
+    O.checkAttributValues(dfValide, 'type_veh', 'TV', 'VL', 'PL', '2R')
         
     dfGroupTypeHeure=dfValide.set_index('date_heure').groupby([pd.Grouper(freq='1H'),'type_veh','sens'])['nbVeh'].count().reset_index().sort_values('date_heure')
     #completude des données
@@ -142,10 +153,10 @@ def donneesIndiv2HoraireBdd(dfHeureTypeSens):
     """
     O.checkAttributsinDf(dfHeureTypeSens, ['date', 'heure', 'nbVeh'])
     dfHoraireTmja=dfHeureTypeSens.loc[dfHeureTypeSens.type_veh.str.lower()!='tv'].groupby(['date', 'heure']).nbVeh.sum().reset_index().rename(
-        columns={'date':'jour','nbVeh':'valeur'}).assign(indicateur='tv').pivot(index=['jour', 'indicateur'], columns='heure', values='valeur'
+        columns={'date':'jour','nbVeh':'valeur'}).assign(indicateur='TV').pivot(index=['jour', 'indicateur'], columns='heure', values='valeur'
                                                                                ).rename(columns={n:f'h{n}_{n+1}' for n in range(24)})
     dfHorairePl=dfHeureTypeSens.loc[dfHeureTypeSens.type_veh.str.lower()=='pl'].groupby(['date', 'heure']).nbVeh.sum().reset_index().rename(
-        columns={'date':'jour','nbVeh':'valeur'}).assign(indicateur='pl').pivot(index=['jour', 'indicateur'], columns='heure', values='valeur'
+        columns={'date':'jour','nbVeh':'valeur'}).assign(indicateur='PL').pivot(index=['jour', 'indicateur'], columns='heure', values='valeur'
                                                                                ).rename(columns={n:f'h{n}_{n+1}' for n in range(24)})
     return pd.concat([dfHoraireTmja, dfHorairePl])
     
@@ -1095,8 +1106,8 @@ class MHCorbin(object):
             df2sensFormatIndiv : modificarion de format (nom de champ, ajout de champ, valeurs)
         """
         df2sensFormatIndiv=self.dfAgreg2Sens.copy()
-        df2sensFormatIndiv.loc[(df2sensFormatIndiv.Length_calc<6) | (df2sensFormatIndiv.Length_calc.isna()), 'type_veh']='vl'
-        df2sensFormatIndiv.loc[df2sensFormatIndiv.Length_calc>=6, 'type_veh']='pl'
+        df2sensFormatIndiv.loc[(df2sensFormatIndiv.Length_calc<6) | (df2sensFormatIndiv.Length_calc.isna()), 'type_veh']='VL'
+        df2sensFormatIndiv.loc[df2sensFormatIndiv.Length_calc>=6, 'type_veh']='PL'
         df2sensFormatIndiv.rename(columns={'ATime':'date_heure'}, inplace=True)
         df2sensFormatIndiv['nbVeh']=1
         df2sensFormatIndiv.sens.replace([1,2], ['sens1', 'sens2'], inplace=True)

@@ -11,6 +11,7 @@ import pandas as pd
 import geopandas as gp
 import numpy as np
 import os, re, csv,statistics,filecmp
+from pathlib import PureWindowsPath
 from unidecode import unidecode
 import datetime as dt
 from geoalchemy2 import Geometry,WKTElement
@@ -19,14 +20,12 @@ from shapely.ops import transform
 from collections import Counter
 
 import Connexion_Transfert as ct
-from Donnees_horaires import comparer2Sens,verifValiditeFichier,concatIndicateurFichierHoraire,SensAssymetriqueError,verifNbJoursValidDispo, tmjaDepuisHoraire, periodeDepuisHoraire
+from Donnees_horaires import (comparer2Sens,verifValiditeFichier,concatIndicateurFichierHoraire,SensAssymetriqueError,
+                              verifNbJoursValidDispo, tmjaDepuisHoraire, periodeDepuisHoraire, attributsHoraire)
 from Donnees_sources import FIM, MHCorbin, DataSensError
 import Outils as O
-
-dico_mois={'janv':[1,'Janv','Janvier'], 'fevr':[2,'Fév','Février','févr','Fevrier'], 'mars':[3,'Mars','Mars'], 'avri':[4,'Avril','Avril'], 'mai':[5,'Mai','Mai'], 'juin':[6,'Juin','Juin'], 
-           'juil':[7,'Juill','Juillet', 'juil'], 'aout':[8,'Août','Aout'], 'sept':[9,'Sept','Septembre'], 'octo':[10,'Oct','Octobre'], 'nove':[11,'Nov','Novembre'], 'dece':[12,'Déc','Décembre','Decembre']}
-
-
+from Params.Mensuel import dico_mois
+from Tools.scripts.objgraph import ignore
               
 class Comptage():
     """
@@ -58,10 +57,14 @@ class Comptage():
         en sortie : 
             existant : df selon la structure de la table interrogée
         """
-        if not dep and not type_poste and not gest: rqt=f"select * from {schema}.{table}"
-        elif not dep and not type_poste and gest: rqt=f"select * from {schema}.{table} where gestionnai='{gest}'"
-        elif dep and not type_poste and not gest: rqt=f"select * from {schema}.{table} where dep='{dep}'"
-        elif dep and not type_poste and gest : rqt=f"select * from {schema}.{table} where dep='{dep}' and gestionnai='{gest}'"
+        if not dep and not type_poste and not gest:
+            rqt = f"select * from {schema}.{table}"
+        elif not dep and not type_poste and gest:
+            rqt = f"select * from {schema}.{table} where gestionnai='{gest}'"
+        elif dep and not type_poste and not gest:
+            rqt = f"select * from {schema}.{table} where dep='{dep}'"
+        elif dep and not type_poste and gest:
+            rqt = f"select * from {schema}.{table} where dep='{dep}' and gestionnai='{gest}'"
         elif dep and isinstance(type_poste, str) and not gest : rqt=f"select * from {schema}.{table} where dep='{dep}' and type_poste='{type_poste}'"
         elif dep and isinstance(type_poste, str) and gest : rqt=f"select * from {schema}.{table} where dep='{dep}' and type_poste='{type_poste}' and gestionnai='{gest}' "
         elif dep and isinstance(type_poste, list) and not gest : 
@@ -176,6 +179,19 @@ class Comptage():
         with ct.ConnexionBdd(bdd) as c  :
             dfIdCptUniqs=pd.read_sql(f'select id id_comptag_uniq, id_comptag, annee from comptage.comptage where id_comptag=ANY(ARRAY{listIdComptag}) and annee=\'{annee}\'', c.sqlAlchemyConn)
         return  dfIdCptUniqs 
+    
+    def recupererIdUniqComptageAssoc(self,listIdComptag, bdd='local_otv_boulot' ):
+        """
+        a partir d'une liste d'id_comptag ede reference, recuperer les identifiant unique dans la table comptage du schema comptage_assoc
+        in : 
+            listIdComptag : list des id_comptage a chercher
+            bdd : string de connexion a la bdd
+        out : 
+            dfIdCptUniqs df avec id_comptag_uniq, id_comptag, annee
+        """
+        with ct.ConnexionBdd(bdd) as c  :
+            dfIdCptUniqsAssoc=pd.read_sql(f'select id id_comptag_uniq, id_cptag_ref from comptage_assoc.comptage where id_cptag_ref=ANY(ARRAY{listIdComptag})', c.sqlAlchemyConn)
+        return  dfIdCptUniqsAssoc
     
     def structureBddOld2NewForm(self,dfAConvertir, annee, listAttrFixe,listAttrIndics,typeIndic, bdd='local_otv_boulot'):
         """
@@ -399,6 +415,34 @@ class Comptage():
         elif isinstance(df, pd.DataFrame) : 
             with ct.ConnexionBdd(bdd) as c:
                 df.to_sql(table,c.sqlAlchemyConn,schema=schema,if_exists=if_exists, index=False )
+                
+    def insererComptage(self, df):
+        """
+        spécialisation de la fonction insert_bdd pour le cas des comptages
+        """
+        self.insert_bdd('local_otv_boulot', 'comptage', 'comptage',
+                        df, 'append', 'POINT')
+        
+    def insererAgrege(self, df):
+        """
+        spécialisation de la fonction insert_bdd pour le cas des indicateurs agrege
+        """
+        self.insert_bdd('local_otv_boulot', 'comptage', 'indic_agrege',
+                        df, 'append', 'POINT')
+        
+    def insererMensuel(self, df):
+        """
+        spécialisation de la fonction insert_bdd pour le cas des indicateurs mensuel
+        """
+        self.insert_bdd('local_otv_boulot', 'comptage', 'indic_mensuel',
+                        df, 'append', 'POINT')
+        
+    def insererHoraire(self, df):
+        """
+        spécialisation de la fonction insert_bdd pour le cas des indicateurs horaire
+        """
+        self.insert_bdd('local_otv_boulot', 'comptage', 'indic_horaire',
+                        df, 'append', 'POINT')
                 
 class Comptage_cd64(Comptage):
     """
@@ -1609,12 +1653,16 @@ class Comptage_cd16(Comptage):
         fichier_b15_perm : nom complet du fichier des comptages permanents
         fichier_cpt_lgn : nom complet du fihcier de ligne contenant tous les comptages issu de pigma
         fichier_station_cpt : nom complet du fihcier de points contenant tous les points comptages issu de pigma
+        dossierIrisTv : dossier contenant les csv au format IRIS pour les donnees horaires
+        dossierIrisPl : dossier contenant les csv au format IRIS pour les PL
     """
-    def __init__(self,fichier_b15_perm,fichier_cpt_lgn,fichier_station_cpt,annee):
+    def __init__(self,fichier_b15_perm,fichier_cpt_lgn,fichier_station_cpt,annee, dossierIrisTv, dossierIrisPl):
         self.fichier_b15_perm=fichier_b15_perm
         self.fichier_cpt_lgn=fichier_cpt_lgn
         self.fichier_station_cpt=fichier_station_cpt
         self.annee=annee
+        self.dossierIrisTv=dossierIrisTv
+        self.dossierIrisPl=dossierIrisPl
         
     def cpt_perm_xls(self, skiprows, cpt_a_ignorer=()):
         """
@@ -1725,6 +1773,61 @@ class Comptage_cd16(Comptage):
         self.df_attr=pd.concat([df_compt_perm,donnees_tmp_filtrees],sort=False, axis=0)
         self.df_attr_mens=donnees_mens
         self.df_attr_horaire=self.donnees_horaires(donnees_tmp_filtrees, dossier_cpt_fim)
+        
+    def extraireEnteteIRIS(self, fichier) : 
+        """
+        depuis un fichier IRIS, en extraire une df d'entete et l'id_comptag
+        in : 
+            fichier : raw string de chemin complet
+        out : 
+            entete : dataframe de l'entete brut
+            id_comptag : id_comptag du point de mesure
+            sens : string en sens1 ou sens2
+        """
+        entete=pd.read_csv(fichier, sep=';', nrows=9, header=None, encoding='LATIN1')
+        id_comptag=f'16-D{entete.loc[4,16]}-{entete.loc[5,16]}'
+        sens=f'sens {entete.loc[2,22][-1:]}'
+        return entete, id_comptag, sens
+    
+    def creerDataIris(self, fichier, indicateur) : 
+        """
+        a partir d'un fichier format IRIS, creer les donnees selon le type de fichier PL ou TV
+        in : 
+            fichier : rawstring : chemin completdu fichier
+            indicateur : TV ou PL
+        """
+        O.checkParamValues(indicateur, ('TV', 'PL'))
+        dateparser=lambda x : dt.datetime.strptime(x,'%d/%m/%Y')
+        data=pd.read_csv(fichier, sep=';', skiprows=10,skipfooter=11,  encoding='LATIN1', engine='python', parse_dates=['Jours'], date_parser=dateparser, usecols=[f'H{i}' for i in range(1,25)]+['Jours'])
+        data.columns=['jour']+[f"h{int(c.split('H')[1])-1}_{c.split('H')[1]}" for c in data.columns if 'H' in c]
+        data['annee']=self.annee
+        data['indicateur']=indicateur
+        data['fichier']=os.path.basename(fichier)
+        return data
+    
+    def creerDfTtJoursIris(self, dossier, indicateur):
+        """
+        creer la df contenanttoute les données horaires TV
+        in : 
+            dossier : rawstrin du dossier PL ou TV
+            indicateur : 'TV' ou 'PL' selon le dossier
+        """
+        listeDf=[]
+        for files in os.listdir(dossier) : 
+            fichier=os.path.join(dossier, files)
+            if os.path.isfile(fichier) and fichier.endswith('.csv') and '_Voie' not in fichier: 
+                id_comptag, sens=self.extraireEnteteIRIS(fichier)[1:]
+                data=self.creerDataIris(fichier, indicateur)
+                data['id_comptag']=id_comptag
+                data['sens']=sens
+                listeDf.append(data)
+        return pd.concat(listeDf)
+    
+    def creerDTtjoursttIndicIris(self):
+        """
+        creer la df contenant tout les jours et tout les indicateurs des données IRIS
+        """
+        return pd.concat([self.creerDfTtJoursIris(self.dossierIrisTv, 'TV'), self.creerDfTtJoursIris(self.dossierIrisPl, 'PL')])
 
     def classer_comptage_update_insert(self,bdd,table_cpt):
         """
@@ -3125,11 +3228,12 @@ class Comptage_Anglet(Comptage):
                                                     'note_manuelle_qualite', 'obs_qualite', 'fichier']].drop_duplicates(), on='id_comptag', how='left')
         return
            
-    def plusProcheVoisinBddRegroupe(self, tableLinauto, bdd='local_otv_boulot'):
+    def plusProcheVoisinBddRegroupe(self, tableLinauto, bdd='local_otv_boulot', distance=15):
         """
         passer la df dans la bdd pour trouver le plus proche voisin selon le regroupement du schema linauto
         in : 
             tableLinauto : string : nom de la table dans le chema linauto a uinterroger
+            distance : integer : distance au dela de laquelle on en echerche plus de voisin
         out : 
             dfPPV : dataframe du plud proche voisin, sur la base de gdfGeoloc
         """  
@@ -3137,12 +3241,12 @@ class Comptage_Anglet(Comptage):
         rqt=f"""WITH 
                 cpteur_base AS (
                 SELECT DISTINCT ON (c.id_comptag) c.id_comptag id_comptag_bdd, t.gid, st_distance(c.geom, t.geom)
-                 FROM comptage.compteur c left JOIN linauto.{tableLinauto} t ON st_dwithin(c.geom, t.geom, 20)
+                 FROM comptage.compteur c left JOIN linauto.{tableLinauto} t ON st_dwithin(c.geom, t.geom, {distance})
                  ORDER BY c.id_comptag, st_distance(c.geom, t.geom))
                 SELECT DISTINCT ON (c.field_1) 
                                     c.*, t.gid, st_distance(c.geom, t.geom),
                                     c2.id_comptag_bdd
-                 FROM public.cpt_anglet_{self.annee} c left JOIN linauto.{tableLinauto} t ON st_dwithin(c.geom, t.geom, 20)
+                 FROM public.cpt_anglet_{self.annee} c left JOIN linauto.{tableLinauto} t ON st_dwithin(c.geom, t.geom, {distance})
                                                LEFT JOIN cpteur_base c2 ON t.gid=c2.gid
                  ORDER BY c.field_1, st_distance(c.geom, t.geom)"""
         with ct.ConnexionBdd(bdd) as c : 
@@ -3157,24 +3261,30 @@ class Comptage_Anglet(Comptage):
         in : 
             dfPPV : donnees des compteurs, avec info supp, issue de plusProcheVoisinBddRegroupe
         out : 
-            numpy array avec les id_comptages situes sur des troncon homogene equivalent
+            numpy array avec les id_comptages (cree automatiquementdans le cadre des donnees, pas ceux de la bdd) situes sur des troncon homogene equivalent
         """
-        return dfPPV.loc[(dfPPV.duplicated(['gid', 'indicateur'], keep=False)) & (~dfPPV.gid.isna())].id_comptag.unique()
+        return dfPPV.loc[(dfPPV.duplicated(['gid', 'indicateur'], keep=False)) & (~dfPPV.gid.isna())]
     
-    def cptSsDblEtSsGeom(self, dfPPV, cptAConserver):
+    def cptSsDblEtSsGeom(self, dfPPV, dicoAssoc):
         """
         récupérer la df des comptages sans doublons, mais avec les geometries
         in : 
             dfPPV : donnees des compteurs, avec info supp, issue de plusProcheVoisinBddRegroupe
-            cptAConserver : list des comptages étant sorti dans la liste des doublons mais que l'on souhaite qd mm conserver
+            DicoAssoc : dico des id_comptag creer a partir des donnees, enclé: les id_comptag des cpt ref, en value une liste des id_comptag des cpt assoc
+        out : 
+            dfPPVCptRef : df des comptages sans doublon pour insertion dans bdd
+            dfPPVCptAssoc : df des comptages associes a retravailler avant insertion
         """
-        dfPPVFiltre=dfPPV.loc[~dfPPV.id_comptag.isin(cptAConserver) & (dfPPV.indicateur=='tmja') & (~dfPPV.gid.isna())]
-        listIdCptFinale=list(dfPPVFiltre.loc[(dfPPVFiltre.valeur==dfPPVFiltre.groupby('gid').valeur.transform(max))].id_comptag.unique())+cptAConserver
-        dfPPVSsDbl=dfPPV.loc[(dfPPV.id_comptag.isin(listIdCptFinale) )| (~dfPPV.gid.isna())]
-        #attentyion aux doublons sur id_comptag_bdd
-        dfPPVSsDbl=dfPPVSsDbl.loc[(dfPPVSsDbl.id_comptag.isin(dfPPVSsDbl.loc[(dfPPVSsDbl.indicateur=='tmja') & (dfPPVSsDbl.valeur==dfPPVSsDbl.groupby('id_comptag_bdd').valeur.transform(max))].id_comptag.tolist())) | 
-              (dfPPVSsDbl.id_comptag_bdd.isna())].copy()
-        return dfPPVSsDbl
+        dfPPVFiltreAconserver=dfPPV.loc[~dfPPV.id_comptag.isin([v for e in dicoAssoc.values() for v in e]) & (dfPPV.indicateur=='tmja') & (~dfPPV.gid.isna())]
+        if not (dfPPVFiltreAconserver.gid.value_counts()==1).all() : 
+            raise ComptageMultipleSurTronconHomogeneError(list(dfPPVFiltreAconserver.loc[dfPPVFiltreAconserver.gid.isin(dfPPVFiltreAconserver.gid.value_counts()!=1)].gid.unique()))
+        dfPPVCptRef=dfPPV.loc[dfPPV.id_comptag.isin(dfPPVFiltreAconserver.id_comptag.tolist()+dfPPV.loc[dfPPV.gid.isna()].id_comptag.tolist())].copy()
+        dfPPVCptAssoc=dfPPV.loc[dfPPV.id_comptag.isin([v for e in dicoAssoc.values() for v in e])].merge(
+                pd.DataFrame.from_dict(dicoAssoc, orient='index').reset_index().rename(columns={'index':'cpt_ref', 0:'cpt_assoc'}), left_on='id_comptag', right_on='cpt_assoc')
+        #attentionaux doublons dus aux fichiers en double
+        dfPPVCptRef.drop_duplicates(['indicateur','valeur', 'periode'], inplace=True)
+        dfPPVCptAssoc.drop_duplicates(['indicateur','valeur', 'periode'], inplace=True)
+        return dfPPVCptRef, dfPPVCptAssoc
     
     def insererCompteur(self, dfPPVSsDbl, bdd='local_otv_boulot', schema='comptage', table='compteur'):
         """
@@ -3206,16 +3316,16 @@ class Comptage_Anglet(Comptage):
         self.insert_bdd(bdd, schema, table,comptage)
         return
         
-    def insererIndics(self, dfPPVSsDbl, bdd='local_otv_boulot', schema='comptage', tableAgrege='indic_agrege', tableHoraire='indic_agrege'):
+    def insererIndics(self, dfPPVSsDbl, bdd='local_otv_boulot', schema='comptage', tableAgrege='indic_agrege', tableHoraire='indic_horaire'):
         """
         Preparer les donnes liees au indicateurs(horaires, agrege) et les inserer dans la bdd
         in : 
             dfPPVSsDbl : donnees issues de cptSsDblEtSsGeom()
         """
         dfPPVSsDblTemp=dfPPVSsDbl.copy()
-        dfPPVSsDbl['id_comptag_final']=dfPPVSsDblTemp.apply(lambda x : x.id_comptag_bdd if not pd.isnull(x.id_comptag_bdd) else x.id_comptag, axis=1)
-        indicAgrege=dfPPVSsDblTemp.merge(self.recupererIdUniqComptage(dfPPVSsDblTemp.id_comptag_final.tolist(), self.annee).rename(columns={'id_comptag_final':'id_comptag'})
-                             , on=['id_comptag', 'annee'])[['id_comptag_uniq', 'indicateur', 'valeur', 'fichier']]
+        dfPPVSsDblTemp['id_comptag_final']=dfPPVSsDblTemp.apply(lambda x : x.id_comptag_bdd if not pd.isnull(x.id_comptag_bdd) else x.id_comptag, axis=1)
+        indicAgrege=dfPPVSsDblTemp.merge(self.recupererIdUniqComptage(dfPPVSsDblTemp.id_comptag_final.tolist(), self.annee)
+                             , left_on=['id_comptag_final', 'annee'], right_on=['id_comptag', 'annee'])[['id_comptag_uniq', 'indicateur', 'valeur', 'fichier']]
         dfHoraireSsDbl=self.dfHoraire.merge(dfPPVSsDblTemp[['id_comptag', 'id_comptag_final']], on='id_comptag')
         indicHoraire=dfHoraireSsDbl.assign(annee=self.annee, 
             indicateur=dfHoraireSsDbl.indicateur.str.upper()).merge(self.recupererIdUniqComptage(
@@ -3226,7 +3336,7 @@ class Comptage_Anglet(Comptage):
         return
         
     def insererDatas(self, dfPPVSsDbl, bdd='local_otv_boulot', schema='comptage', tableComptag='comptage',
-                     tableCpteur='compteur', tableAgrege='indic_agrege', tableHoraire='indic_agrege'):
+                     tableCpteur='compteur', tableAgrege='indic_agrege', tableHoraire='indic_horaire'):
         """
         preparer et inserere les donnees de compteurs, comptages et indicateurs
         in : 
@@ -3237,6 +3347,427 @@ class Comptage_Anglet(Comptage):
         self.insererIndics(dfPPVSsDbl, bdd, schema, tableAgrege, tableHoraire)
         
         
+    def insererQualiteFaible(self, dfPPVCptRef, bdd='local_otv_boulot', schema='qualite', table='qualite_manuelle_cptag'):
+        """
+        inserer les elements de qualite faible des comptages precedemment inseres dans la bdd
+        in : 
+            dfPPVCptRef : df des comptages de references inseres dans la bdd
+        """  
+        O.checkAttributsinDf(dfPPVCptRef, ['id_comptag_bdd', 'id_comptag','note_manuelle', 'obs'])
+        dfQualiteFaible=dfPPVCptRef.loc[dfPPVCptRef.note_manuelle==1].copy()
+        #y associer un id_comptage_final
+        dfQualiteFaible['id_comptag_final']=dfQualiteFaible.apply(lambda x : x.id_comptag_bdd if not pd.isnull(x.id_comptag_bdd) else x.id_comptag, axis=1)
+        #joindre avec les comptages existant
+        dfQualiteFaibleAInsere=dfQualiteFaible.merge(self.recupererIdUniqComptage(dfQualiteFaible.id_comptag_final.tolist(), self.annee), 
+                              left_on='id_comptag_final', right_on='id_comptag')[['id_comptag_uniq','note_manuelle','obs'
+                                ]].drop_duplicates(['id_comptag_uniq','note_manuelle','obs'])
+        self.insert_bdd(bdd, schema, table,dfQualiteFaibleAInsere)
+        return                        
+    
+    def creerComptageAssoc(self, dfPPVCptAssoc, bdd='local_otv_boulot', schema='comptage_assoc', tableAssoc='comptage'):    
+        """
+        creer la table des comptage du schema comptage_assoc
+        in  : 
+            dfPPVCptAssoc : df des comptages associes issu de cptSsDblEtSsGeom
+        out : 
+            dfAssoc : df au format de la table en bdd
+        """
+        dfPPVCptAssocInterne=dfPPVCptAssoc.copy()
+        dfPPVCptAssocInterne['id_comptag_final']=dfPPVCptAssocInterne.apply(lambda x : x.id_comptag_bdd if not pd.isnull(x.id_comptag_bdd) else x.cpt_ref, axis=1)
+        #trouver son id_comptag_uniq
+        dfAssoc=dfPPVCptAssocInterne.merge(self.recupererIdUniqComptage(dfPPVCptAssocInterne.id_comptag_final.tolist(), self.annee), 
+                                      left_on='id_comptag_final', right_on='id_comptag')
+        #ajouter les colonnes manquantes
+        dfAssocInsert=dfAssoc.assign(src='gestionnaire', type_veh='tv/pl', obs=None).drop_duplicates(['id_comptag_uniq', 'periode'])
+        dfAssocInsert['rang']=dfAssocInsert.assign(toto=1).groupby('id_comptag_uniq').toto.rank(method='first')
+        #inserer les comptages
+        self.insert_bdd(bdd, schema, tableAssoc, dfAssocInsert[['id_comptag_uniq', 'periode', 'src', 'type_veh', 'rang', 'obs']].rename(columns={'id_comptag_uniq':'id_cptag_ref'}))
+        return dfAssoc
+    
+    def creerIndicsAssoc(self, dfAssoc, bdd='local_otv_boulot', schema='comptage_assoc', tableAgreg='indic_agrege', tableHoraire='indic_horaire'):
+        """
+        creer les tables en bdd des indcis_agreges et indic_horaires pour les comptages associes
+        in : 
+            dfAssoc : df issu de creerComptageAssoc
+        out : 
+            dfIndicAgregeAssoc : df integree a la bdd et sortie pour ifo
+            dfHoraireassoc : df integree a la bdd et sortie pour ifo
+        """
+        dfIndicAgregeAssoc=dfAssoc.merge(self.recupererIdUniqComptageAssoc(dfAssoc.id_comptag_uniq.tolist()).rename(
+            columns={'id_comptag_uniq':'id_comptag_uniq_assoc'}), left_on='id_comptag_uniq', right_on='id_cptag_ref')[['id_comptag_uniq_assoc', 'indicateur', 'valeur', 'fichier']]
+        dfHoraireassoc=self.dfHoraire.loc[self.dfHoraire.fichier.isin(dfIndicAgregeAssoc.fichier.tolist())].merge(dfIndicAgregeAssoc[['id_comptag_uniq_assoc', 'fichier']], on='fichier').drop(
+            ['id_comptag','obs_supl','sens_cpt', 'note_manuelle_qualite', 'obs_qualite'], axis=1).rename(columns={'id_comptag_uniq_assoc':'id_comptag_uniq'})
+        dfHoraireassoc['indicateur']=dfHoraireassoc.indicateur.str.upper()    
+        self.insert_bdd(bdd, schema, tableAgreg,dfIndicAgregeAssoc.rename(columns={'id_comptag_uniq_assoc':'id_comptag_uniq'}))
+        self.insert_bdd(bdd, schema, tableHoraire,dfHoraireassoc)
+        return dfIndicAgregeAssoc, dfHoraireassoc
+        
+class Comptag_Angouleme(Comptage):
+    """
+    constrcution en 2021 pour traiter des données 2020 au format MHCorbin (.mdb). Souvent 1 fichier par sens
+    """
+    def __init__(self, annee, dossierSource):
+        """
+        attributs : 
+            annee : string 4 caractères
+            dossierSource rw string du dossier pointant vers le repertoir "en_cours" du dossier partagé OTV dédié à Angouleme
+            gdfGeoloc : df de geolocalisatiopn avec donnees de la table compteur
+            dfHoraire : dataframe correspondant à la table indic_horaire
+            dfIndicAgrege : dataframe correspondant à la table indic_agrege
+        """
+        self.annee = annee
+        self.dossierSource = dossierSource
+        
+    def extraireDonneesBrutes(self):
+        """
+        à partir du dossier source, parcourir tous les fichiers et en extraire les données
+        out : 
+            dFDataBrutes : df horaire avec attributs bdd (sauf id_comptag)
+            dfHshdr : concatenation des donnees de la tale hshdr des fichier MHCorbin
+        """
+        listHshdr=[]
+        listDfDataBrutes=[]
+        for root, dirs, files in os.walk(self.dossierSource) : 
+            for f in files : 
+                fichier=os.path.join(root, f)
+                if f.endswith('.mdb') : 
+                    try : 
+                        cpt=MHCorbin(fichier)
+                        listHshdr.append(cpt.dicoTables['hshdr'].assign(fichier=fichier))
+                        listDfDataBrutes.append(cpt.formaterDonneesHoraires(cpt.formaterDonneesIndiv(cpt.dfAgreg2Sens)).assign(fichier=fichier))
+                    except ValueError : 
+                        print(f'pb sur fichier {fichier}')
+                        continue
+        dFDataBrutes=pd.concat(listDfDataBrutes)
+        dfHshdr=pd.concat(listHshdr)
+        return dFDataBrutes, dfHshdr
+    
+    def assignerDossierRefEtAdresse(self, dFDataBrutes, dfHshdr):
+        """
+        ajouter aux données brutes les attributs de descriptions du dossier de réference, pour regroupement des différents sens
+        ajouter l'adresse aux données HsHdr
+        lève une érreur si un comptage n'as pas de repertoir de référence
+        in : 
+            dFDataBrutes : df horaire avec attributs bdd (sauf id_comptag), issu de extraireDonneesBrutes()
+            dfHshdr : concatenation des donnees de la tale hshdr des fichier MHCorbin, issu de extraireDonneesBrutes()
+        """
+                
+        # isoler les donnes fournies par la commune dans le path
+        dFDataBrutes['spliPath']=dFDataBrutes.fichier.str.split('en_cours')
+        dfHshdr['spliPath']=dfHshdr.fichier.str.split('en_cours')
+        # trouver le nb de sous-dossier
+        dFDataBrutes['nb_niv_dir']=dFDataBrutes.spliPath.apply(lambda x : len(PureWindowsPath(x[1]).parents))
+        dfHshdr['nb_niv_dir']=dfHshdr.spliPath.apply(lambda x : len(PureWindowsPath(x[1]).parents))
+        # trouver le dossier parent représentatif des deux sens A MODIFIER : SI " VERS " dans un dossier parent, alors on prend celui d'avant
+        dFDataBrutes.loc[dFDataBrutes.nb_niv_dir==4, 'dir_ref']=dFDataBrutes.loc[dFDataBrutes.nb_niv_dir==4].spliPath.apply(lambda x : PureWindowsPath(x[1]).parents[1].name)
+        dFDataBrutes.loc[dFDataBrutes.nb_niv_dir.isin((2,3)), 'dir_ref']=dFDataBrutes.loc[dFDataBrutes.nb_niv_dir.isin((2,3))
+                                                                                         ].spliPath.apply(lambda x : PureWindowsPath(x[1]).parents[0].name if not 'vers ' in PureWindowsPath(x[1]).parts[-2]
+                                                                                                         else PureWindowsPath(x[1]).parents[1].name)
+        dfHshdr.loc[dfHshdr.nb_niv_dir==4, 'dir_ref']=dfHshdr.loc[dfHshdr.nb_niv_dir==4].spliPath.apply(lambda x : PureWindowsPath(x[1]).parents[1].name)
+        dfHshdr.loc[dfHshdr.nb_niv_dir.isin((2,3)), 'dir_ref']=dfHshdr.loc[dfHshdr.nb_niv_dir.isin((2,3))
+                                                                                         ].spliPath.apply(lambda x : PureWindowsPath(x[1]).parents[0].name if not 'vers ' in PureWindowsPath(x[1]).parts[-2]
+                                                                                                         else PureWindowsPath(x[1]).parents[1].name)
+        # verif que tout le monde a un dossier parent
+        if dFDataBrutes.dir_ref.isna().any() or dfHshdr.dir_ref.isna().any():
+            raise ValueError('il y a un comptage sans repertoire de référence') 
+        # creation de l'adresse si possible
+        dfHshdr['adresse']=dfHshdr.apply(lambda x : re.sub('(numero|n°)', '', re.search('(numero *[0-9]+|n° *[0-9]+)', re.sub('é|è|ê', 'e', x.Location.lower()))[0]) + f' {x.Street}' if re.search('(numero|n°)', 
+                        re.sub('é|è|ê', 'e', x.Location.lower())) else np.NaN, axis=1)
+        
+    def adresseUniques(self,dfHshdr ):
+        """
+        à partir du fichier dfHshdr, creer une df avec un adresse unique par repetroire de référence
+        in : 
+            dfHshdr : concatenation des donnees de la tale hshdr des fichier MHCorbin, avec Adresse, issu de assignerDossierRefEtAdresse()
+        """
+        def uniformiserAdresse(groupe) : 
+            """Fonction interne pour repercuter l'adresse d'un fihcier vers tous ceux associé au même dossier"""
+            if len(set(groupe))==1 and not any([pd.isnull(e) for e in groupe]) : 
+                return list(groupe)[0]
+            elif len(set(groupe))>1 and not all([pd.isnull(e) for e in groupe]) :
+                return [e for e in groupe if not pd.isnull(e)][0]
+            else : 
+                return None
+        # uniformiser les adressses d'un même dossier
+        dfAdresse=dfHshdr[['fichier','dir_ref', 'adresse']].groupby('dir_ref').agg({'adresse': lambda x : uniformiserAdresse(x)}).reset_index()
+        return dfAdresse
+    
+    def assignerAdressesManuelles(self, dfAdresse, dicoAdresseMano):
+        """
+        ajouter des adresses manuelles aux dir_ref ne présentant pas une adresse complete en numero, type de rue et nom de rue
+        in : 
+            dfAdresse : df des adresses, issus de adresseUniques()
+            dicoAdresseMano : dico cree manuellement avec en clé le dir_ref de dfAdresse et en value une adresse en numero et 
+                              type de et nom de rue. peux contenir des coordonnées WGS84 en '46.789654, 0.145863' par exemple (au moins 4 chiffres apres le '.'
+        out : 
+            dfAdresse2 : df adresse sans valeur Na dans le champs adresse (car complete par le dico)
+        """
+        # vrerif
+        if not len(dicoAdresseMano)==len(dfAdresse.loc[dfAdresse['adresse'].isna()].dir_ref.unique()) : 
+            raise ValueError('le nombre d\'adresse inconnue et d\'adresse fournie par dico doit etre le mm')
+        # assignation des nouvelles adresses
+        dfAdresse2=dfAdresse.merge(
+            pd.DataFrame.from_dict(dicoAdresseMano, orient='index', columns=['adresse']).reset_index().rename(columns={'index':'dir_ref'}), on='dir_ref', how='left')
+        #verif finale
+        dfAdresse2['adresse']=dfAdresse2.apply(lambda x: x.adresse_x if not pd.isnull(x.adresse_x) else x.adresse_y, axis=1)
+        dfAdresse2.drop(['adresse_x', 'adresse_y'], axis=1, inplace=True)
+        if not dfAdresse2.adresse.notna().all() :
+            raise ValueError 
+        return dfAdresse2
+    
+    def exporterCsvAGeocoder(self, dfAdresse2):
+        """
+        à partir du fichier des adresse, on exporte toute celles qu ne sont pas relatives à des coordonnées WGS84
+        in : 
+            dfAdresse2 : df adresse sans valeur Na dans le champs adresse (car complete par le dico) issu de assignerAdressesManuelles()
+        """
+        dfAdresse2.loc[dfAdresse2.adresse.apply(lambda x : False if re.search('[0-9]{2}\.[0-9]{4,9}', x) else True)].assign(
+            codepostal='16000', commune='Angoulême').to_csv(os.path.join(self.dossierSource,f'Comptage{self.annee}.csv'))
+            
+    def creerDfGeoloc(self, dfAdresse2):
+        """
+        creer la df geolocalise avec tous les atrributs de la table compteur, en associant la geoloc par IGN et les adresse en coordonnees
+        wgs84
+        in : 
+            dfAdresse2 : df adresse sans valeur Na dans le champs adresse (car complete par le dico) issu de assignerAdressesManuelles()
+        """
+        gdfGeoloc=gp.read_file(os.path.join(self.dossierSource,f'Comptage{self.annee}_geoloc.csv'), encoding='utf-8')#C:\Users\martin.schoreisz\Documents\temp\OTV\Anglet\Comptage2019_geoloc.csv
+        gdfGeoloc.geometry=gp.points_from_xy(x=gdfGeoloc['longitude'], y=gdfGeoloc['latitude'], crs=4326)
+        gdfPoints=gp.GeoDataFrame(dfAdresse2.loc[dfAdresse2.adresse.apply(lambda x : True if re.search('[0-9]{2}\.[0-9]{4,9}', x) else False)],
+            geometry=gp.points_from_xy(
+                dfAdresse2.loc[dfAdresse2.adresse.apply(lambda x : True if re.search('[0-9]{2}\.[0-9]{4,9}', x) else False)].adresse.apply(
+                lambda x : float(x.split(', ')[1])),
+                dfAdresse2.loc[dfAdresse2.adresse.apply(lambda x : True if re.search('[0-9]{2}\.[0-9]{4,9}', x) else False)].adresse.apply(
+                lambda x : float(x.split(', ')[0])), crs='epsg:4326'))
+        gdfPoints['longitude']=gdfPoints.adresse.apply(lambda x : x.split(', ')[1])
+        gdfPoints['latitude']=gdfPoints.adresse.apply(lambda x : x.split(', ')[0])
+        gdfGeoloc=pd.concat([gdfPoints,gdfGeoloc])
+        gdfGeoloc=gdfGeoloc.to_crs('epsg:2154')
+        gdfGeoloc['id_comptag'] = gdfGeoloc.apply(lambda x : 'Angouleme-'+re.sub('_{2,50}', '_',re.sub('(,|\.|\'| +)', '_', x['adresse'].strip()))+f"-{round(float(x['longitude']), 4)};{round(float(x['latitude']),4)}" 
+                                                  if not pd.isnull(x.codepostal) else
+                                                  'Angouleme-'+f"-{round(float(x['longitude']), 4)};{round(float(x['latitude']),4)}", axis=1)
+        gdfGeoloc['route'] = gdfGeoloc.apply(lambda x : re.sub('^([1-9]{1,3},)+','', x.adresse) if not pd.isnull(x.codepostal) else np.NaN, axis=1)
+        gdfGeoloc['reseau'] = 'VC'
+        gdfGeoloc['dep']  ='16'
+        gdfGeoloc['gestionnai'] = 'Angouleme'
+        gdfGeoloc['concession'] = False
+        gdfGeoloc['type_poste'] = 'ponctuel'
+        gdfGeoloc['src_geo'] = gdfGeoloc.apply(lambda x : 'adresse' if not pd.isnull(x.codepostal) else 'manuelle', axis=1)
+        gdfGeoloc['obs_geo'] = gdfGeoloc.apply(
+            lambda x : f"geocodé avec 'mon géocodeur' de l'IGN ; qualite : {x.qualite} ; precision geocodage : {x['precision geocodage']} ; ID adresse : {x['ID adresse']}; adresse geocodee : {x['adresse geocodee']}"
+                        if not pd.isnull(x.codepostal) else "pas d'adressee à proximite", axis=1)
+        gdfGeoloc['x_l93'] = round(gdfGeoloc.geometry.x,3)
+        gdfGeoloc['y_l93'] = round(gdfGeoloc.geometry.y,3)
+        gdfGeoloc['fictif'] = False
+        gdfGeoloc['src_cpt'] = 'gestionnaire'
+        gdfGeoloc['convention'] = False
+        self.gdfGeoloc=gdfGeoloc
+    
+    def creerIndicsTousFichiers(self, dFDataBrutes):
+        """
+        ajouter l'id_comptag à la dFDataBrutes pour créer le dfHoraire et le dfIndicAgrege
+        """
+        #r apatriement de l'id_comptag
+        dfDataBrutesIdcomptag = dFDataBrutes.reset_index().merge(self.gdfGeoloc[['dir_ref', 'id_comptag']], how='left')
+        # verif
+        if dfDataBrutesIdcomptag.id_comptag.isna().any() : 
+            raise ValueError('il manque un id_comptag sur une valeur')
+        O.checkAttributsinDf(dfDataBrutesIdcomptag, attributsHoraire+['jour', 'id_comptag', 'fichier', 'indicateur'])
+        dfDataBrutesIdcomptag['indicateur'] = dfDataBrutesIdcomptag.indicateur.str.upper()
+        self.dfHoraire=dfDataBrutesIdcomptag[attributsHoraire+['jour', 'id_comptag', 'fichier', 'indicateur']]
+        self.dfIndicAgrege=tmjaDepuisHoraire(self.dfHoraire.assign(annee=self.annee))
+        
+    def plusProcheVoisinBddRegroupe(self, tableLinauto, bdd='local_otv_boulot', distance=15):
+        """
+        passer la df dans la bdd pour trouver le plus proche voisin selon le regroupement du schema linauto
+        in : 
+            tableLinauto : string : nom de la table dans le chema linauto a uinterroger
+            distance : integer : distance au dela de laquelle on en echerche plus de voisin
+        out : 
+            dfPPV : dataframe du plud proche voisin, sur la base de gdfGeoloc
+        """  
+        self.insert_bdd('local_otv_boulot', 'public', f'cpt_angouleme_{self.annee}',self.gdfGeoloc, if_exists='replace' )  
+        rqt=f"""WITH 
+                cpteur_base AS (
+                SELECT DISTINCT ON (c.id_comptag) c.id_comptag id_comptag_bdd, t.gid, st_distance(c.geom, t.geom)
+                 FROM comptage.compteur c left JOIN linauto.{tableLinauto} t ON st_dwithin(c.geom, t.geom, {distance})
+                 ORDER BY c.id_comptag, st_distance(c.geom, t.geom))
+                SELECT DISTINCT ON (c.id_comptag) 
+                                    c.*, t.gid, st_distance(c.geom, t.geom),
+                                    c2.id_comptag_bdd
+                 FROM public.cpt_angouleme_{self.annee} c left JOIN linauto.{tableLinauto} t ON st_dwithin(c.geom, t.geom, {distance})
+                                               LEFT JOIN cpteur_base c2 ON t.gid=c2.gid
+                 ORDER BY c.id_comptag, st_distance(c.geom, t.geom)"""
+        with ct.ConnexionBdd(bdd) as c : 
+            dfPPV=gp.read_postgis(rqt, c.sqlAlchemyConn, crs='epsg:2154').merge(self.dfIndicAgrege, on='id_comptag', how='left'
+                            ).merge(periodeDepuisHoraire(self.dfHoraire.assign(annee=self.annee)), how='left', on='id_comptag')
+            dfPPV=O.gp_changer_nom_geom(dfPPV, 'geometrie')
+        return dfPPV
+    
+    def ajouterFichierConcatener(self):
+        """
+        remplacer la reference au fichier de base par la ref aux deux fichier pour chaque sens 
+        et ajouter le nombre de sens qui en découle
+        """
+        dfFichiersConcat=self.dfHoraire.groupby('id_comptag').fichier.apply( lambda x : ', '.join([os.path.basename(e) for e in set(x)]))
+        self.dfHoraire=self.dfHoraire.drop('fichier', axis=1, errors='ignore').merge(dfFichiersConcat.reset_index(), on='id_comptag')
+        self.dfIndicAgrege=self.dfIndicAgrege.drop('fichier', axis=1, errors='ignore').merge(dfFichiersConcat.reset_index(), on='id_comptag')
+        self.dfIndicAgrege['sens_cpt']=self.dfIndicAgrege.fichier.apply(lambda x: 'double sens' if len(x.split(',')) > 1 else 'sens unique')
+
+    def isolerComptagesDoublons(self,dfPPV ):
+        """
+        obtenir la liste des comptages situes sur un mm troncon homogene de trafic
+        in : 
+            dfPPV : donnees des compteurs, avec info supp, issue de plusProcheVoisinBddRegroupe
+        out : 
+            numpy array avec les id_comptages (cree automatiquementdans le cadre des donnees, pas ceux de la bdd) situes sur des troncon homogene equivalent
+        """
+        return dfPPV.loc[(dfPPV.duplicated(['gid', 'indicateur'], keep=False)) & (~dfPPV.gid.isna())]   
+    
+    def cptSsDblEtSsGeom(self, dfPPV, dicoAssoc, gererErreur=False):
+        """
+        récupérer la df des comptages sans doublons, mais avec les geometries
+        in : 
+            dfPPV : donnees des compteurs, avec info supp, issue de plusProcheVoisinBddRegroupe
+            gererErreur : booleen pour prendre en compte ou non l'erreur qui bloque si pluseiurs pt sur une section homogene de trafic. pour la premeire passe laisse sur False
+                          si erreur sur les sections gomgene passer à true
+            DicoAssoc : dico des id_comptag creer a partir des donnees, enclé: les id_comptag des cpt ref, en value une liste des id_comptag des cpt assoc
+        out : 
+            dfPPVCptRef : df des comptages sans doublon pour insertion dans bdd
+            dfPPVCptAssoc : df des comptages associes a retravailler avant insertion
+        """
+        dfPPVFiltreAconserver=dfPPV.loc[~dfPPV.id_comptag.isin([v for e in dicoAssoc.values() for v in e]) & (dfPPV.indicateur=='tmja') & (~dfPPV.gid.isna())]
+        if not gererErreur : 
+            if not (dfPPVFiltreAconserver.gid.value_counts()==1).all() : 
+                raise ComptageMultipleSurTronconHomogeneError(list(dfPPVFiltreAconserver.loc[dfPPVFiltreAconserver.gid.isin(dfPPVFiltreAconserver.gid.value_counts()!=1)].gid.unique()))
+        dfPPVCptRef=dfPPV.loc[dfPPV.id_comptag.isin(dfPPVFiltreAconserver.id_comptag.tolist()+dfPPV.loc[dfPPV.gid.isna()].id_comptag.tolist())].copy()
+        dfPPVCptAssoc=dfPPV.loc[dfPPV.id_comptag.isin([v for e in dicoAssoc.values() for v in e])].merge(
+                pd.DataFrame.from_dict(dicoAssoc, orient='index').reset_index().rename(columns={'index':'cpt_ref', 0:'cpt_assoc'}), left_on='id_comptag', right_on='cpt_assoc')
+        #attentionaux doublons dus aux fichiers en double
+        dfPPVCptRef.drop_duplicates(['indicateur','valeur', 'periode'], inplace=True)
+        dfPPVCptAssoc.drop_duplicates(['indicateur','valeur', 'periode'], inplace=True)
+        return dfPPVCptRef, dfPPVCptAssoc 
+    
+    def transfererAssocSupp(self, dfPPVCptRef, dfPPVCptAssoc, listCptAssoc):
+        """
+        fonction de transfert de donées entre la table de référence e la table des comptages Assoc, pour des transfert a posteriori de la 
+        fonction cptSsDblEtSsGeom
+        in : 
+            listCptAssoc : list d'id_comptag a transférer
+            dfPPVCptAssoc : df Des comptages associé issue de cptSsDblEtSsGeom()
+            dfPPVCptRef : df des comptage sde références, issue de cptSsDblEtSsGeom()
+        out : 
+            dfPPVCptAssoc : df d'entrée avec les cpt a asocier en plus
+            dfPPVCptRef : df d'entrée sans les cpt a ssocier
+        """
+        dfPPVCptAssoc=pd.concat([dfPPVCptAssoc, dfPPVCptRef.loc[dfPPVCptRef.id_comptag.isin(listCptAssoc)]])
+        dfPPVCptRef=dfPPVCptRef.drop(dfPPVCptRef.loc[dfPPVCptRef.id_comptag.isin(listCptAssoc)].index)
+        return dfPPVCptRef, dfPPVCptAssoc
+        
+    
+    def insererCompteur(self, dfPPVSsDbl, CptAForcer=None, bdd='local_otv_boulot', schema='comptage', table='compteur'):
+        """
+        Preparer les donnes liees au compteur et les inserer (si besoin) dans la bdd
+        in : 
+            CptAForcer : list d'id_comptag que l'on veut inclure dans la Bdd, de force, mm si un autre id_comptag est proche
+            dfPPVSsDbl : donnees issues de cptSsDblEtSsGeom()
+        """
+        #creer les compteurs a inserer dans la bdd
+        dfCptAcreer=dfPPVSsDbl.loc[(dfPPVSsDbl.id_comptag_bdd.isna()) | (dfPPVSsDbl.id_comptag.isin(CptAForcer))]
+        if not dfCptAcreer.empty :
+            compteur=dfCptAcreer[[e for e in dfCptAcreer.columns if e in  ('geometrie', 'id_comptag', 'route', 'reseau', 'dep', 'gestionnai','concession', 'type_poste', 'src_geo', 'obs_geo', 'x_l93', 'y_l93',
+                   'fictif', 'src_cpt', 'convention','obs_supl','sens_cpt')]].drop_duplicates().copy()
+            #inserer
+            self.insert_bdd(bdd, schema, table, compteur)
+        else : 
+            print('pas de nouveau compteur a inserer')
+            return
+        
+    def insererComptage(self, dfPPVSsDbl, CptAForcer=None, bdd='local_otv_boulot', schema='comptage', table='comptage'):
+        """
+        Preparer les donnes liees au comptages et les inserer dans la bdd
+        in : 
+            dfPPVSsDbl : donnees issues de cptSsDblEtSsGeom()
+        """
+        dfPPVSsDblTemp=dfPPVSsDbl.copy()
+        dfPPVSsDblTemp['id_comptag_final']=dfPPVSsDblTemp.apply(lambda x : x.id_comptag_bdd if not pd.isnull(x.id_comptag_bdd) 
+                                                                and x.id_comptag not in CptAForcer  else x.id_comptag, axis=1)
+        comptage=dfPPVSsDblTemp[['id_comptag_final', 'annee', 'periode']].assign(src='gestionnaire', type_veh='tv/pl').rename(columns={'id_comptag_final':'id_comptag'}).drop_duplicates()
+        #inserer
+        self.insert_bdd(bdd, schema, table,comptage)
+        return
+        
+    def insererIndics(self, dfPPVSsDbl,CptAForcer=None,  bdd='local_otv_boulot', schema='comptage', tableAgrege='indic_agrege', tableHoraire='indic_horaire'):
+        """
+        Preparer les donnes liees au indicateurs(horaires, agrege) et les inserer dans la bdd
+        in : 
+            dfPPVSsDbl : donnees issues de cptSsDblEtSsGeom()
+        """
+        dfPPVSsDblTemp=dfPPVSsDbl.copy()
+        dfPPVSsDblTemp['id_comptag_final']=dfPPVSsDblTemp.apply(lambda x : x.id_comptag_bdd if not pd.isnull(x.id_comptag_bdd) and x.id_comptag not in CptAForcer
+                                                                else x.id_comptag, axis=1)
+        indicAgrege=dfPPVSsDblTemp.merge(self.recupererIdUniqComptage(dfPPVSsDblTemp.id_comptag_final.tolist(), self.annee)
+                             , left_on=['id_comptag_final', 'annee'], right_on=['id_comptag', 'annee'])[['id_comptag_uniq', 'indicateur', 'valeur', 'fichier']]
+        dfHoraireSsDbl=self.dfHoraire.merge(dfPPVSsDblTemp[['id_comptag', 'id_comptag_final']], on='id_comptag')
+        indicHoraire=dfHoraireSsDbl.assign(annee=self.annee, 
+            indicateur=dfHoraireSsDbl.indicateur.str.upper()).merge(self.recupererIdUniqComptage(
+            dfHoraireSsDbl.id_comptag_final.tolist(), self.annee).rename(columns={'id_comptag':'id_comptag_final'}), on=['id_comptag_final', 'annee']).drop([
+            'sens_cpt', 'note_manuelle_qualite', 'obs_qualite', 'annee', 'id_comptag','id_comptag_final', 'obs_supl'], axis=1, errors='ignore')
+        self.insert_bdd(bdd, schema, tableAgrege,indicAgrege)
+        self.insert_bdd(bdd, schema, tableHoraire,indicHoraire)
+        return
+    
+    def insererDatas(self, dfPPVSsDbl, CptAForcer=None, bdd='local_otv_boulot', schema='comptage', tableComptag='comptage',
+                     tableCpteur='compteur', tableAgrege='indic_agrege', tableHoraire='indic_horaire'):
+        """
+        preparer et inserere les donnees de compteurs, comptages et indicateurs
+        in : 
+            dfPPVSsDbl : donnees issues de cptSsDblEtSsGeom()
+            CptAForcer : list d'id_comptag que l'on veut inclure dans la Bdd, de force, mm si un autre id_comptag est proche. creation des compteurs
+        """
+        self.insererCompteur(dfPPVSsDbl, CptAForcer, bdd, schema, tableCpteur)
+        self.insererComptage(dfPPVSsDbl, CptAForcer, bdd, schema, tableComptag)
+        self.insererIndics(dfPPVSsDbl, CptAForcer, bdd, schema, tableAgrege, tableHoraire)
+        
+    def creerComptageAssoc(self, dfPPVCptAssoc, bdd='local_otv_boulot', schema='comptage_assoc', tableAssoc='comptage'):    
+        """
+        creer la table des comptage du schema comptage_assoc
+        in  : 
+            dfPPVCptAssoc : df des comptages associes issu de cptSsDblEtSsGeom
+        out : 
+            dfAssoc : df au format de la table en bdd
+        """
+        dfPPVCptAssocInterne=dfPPVCptAssoc.copy()
+        dfPPVCptAssocInterne['id_comptag_final']=dfPPVCptAssocInterne.apply(lambda x : x.id_comptag_bdd if not pd.isnull(x.id_comptag_bdd) else x.cpt_ref, axis=1)
+        #trouver son id_comptag_uniq
+        dfAssoc=dfPPVCptAssocInterne.merge(self.recupererIdUniqComptage(dfPPVCptAssocInterne.id_comptag_final.tolist(), self.annee), 
+                                      left_on='id_comptag_final', right_on='id_comptag')
+        #ajouter les colonnes manquantes
+        dfAssocInsert=dfAssoc.assign(src='gestionnaire', type_veh='tv/pl', obs=None).drop_duplicates(['id_comptag_uniq', 'periode'])
+        dfAssocInsert['rang']=dfAssocInsert.assign(toto=1).groupby('id_comptag_uniq').toto.rank(method='first')
+        #inserer les comptages
+        #self.insert_bdd(bdd, schema, tableAssoc, dfAssocInsert[['id_comptag_uniq', 'periode', 'src', 'type_veh', 'rang', 'obs']].rename(columns={'id_comptag_uniq':'id_cptag_ref'}))
+        return dfAssoc
+    
+    def creerIndicsAssoc(self, dfAssoc, bdd='local_otv_boulot', schema='comptage_assoc', tableAgreg='indic_agrege', tableHoraire='indic_horaire'):
+        """
+        ATTENTION : 
+        creer les tables en bdd des indcis_agreges et indic_horaires pour les comptages associes
+        in : 
+            dfAssoc : df issu de creerComptageAssoc
+        out : 
+            dfIndicAgregeAssoc : df integree a la bdd et sortie pour ifo
+            dfHoraireassoc : df integree a la bdd et sortie pour ifo
+        """
+        dfIndicAgregeAssoc=dfAssoc.merge(self.recupererIdUniqComptageAssoc(dfAssoc.id_comptag_uniq.tolist()).rename(
+            columns={'id_comptag_uniq':'id_comptag_uniq_assoc'}), left_on='id_comptag_uniq', right_on='id_cptag_ref')[['id_comptag_uniq_assoc', 'indicateur', 'valeur', 'fichier']]
+        dfHoraireassoc=self.dfHoraire.loc[self.dfHoraire.fichier.isin(dfIndicAgregeAssoc.fichier.tolist())].merge(dfIndicAgregeAssoc[['id_comptag_uniq_assoc', 'fichier']], on='fichier').drop(
+            ['id_comptag','obs_supl','sens_cpt', 'note_manuelle_qualite', 'obs_qualite'], axis=1, errors='ignore').rename(columns={'id_comptag_uniq_assoc':'id_comptag_uniq'})
+        dfHoraireassoc['indicateur']=dfHoraireassoc.indicateur.str.upper()    
+        self.insert_bdd(bdd, schema, tableAgreg,dfIndicAgregeAssoc.rename(columns={'id_comptag_uniq_assoc':'id_comptag_uniq'}))
+        self.insert_bdd(bdd, schema, tableHoraire,dfHoraireassoc)
+        return dfIndicAgregeAssoc, dfHoraireassoc
+ 
 class Comptage_Dira(Comptage):
     """
     pour la DIRA on a besoinde connaitre le nom du fichierde syntheses tmja par section, 
@@ -3244,11 +3775,11 @@ class Comptage_Dira(Comptage):
     on ajoute aussi le nom de table et de schema comptagede la Bdd pour pouvoir de suite se connecter et obtenir les infos des points existants
     """ 
     def __init__(self,fichierTmjaParSection, dossierAnneeComplete,fichierComptageCarto, annee,bdd, table):
-        self.fichierTmjaParSection=fichierTmjaParSection
-        self.fichierComptageCarto=fichierComptageCarto
-        self.dossierAnneeComplete=dossierAnneeComplete
-        self.annee=annee
-        self.dfCorrespExistant=self.correspIdsExistant(bdd, table)
+        self.fichierTmjaParSection = fichierTmjaParSection
+        self.fichierComptageCarto = fichierComptageCarto
+        self.dossierAnneeComplete = dossierAnneeComplete
+        self.annee = annee
+        self.dfCorrespExistant = self.correspIdsExistant(bdd, table)
         
     def ouvrirMiseEnFormeFichierTmja(self):
         """
@@ -3882,7 +4413,18 @@ class Comptage_Dirco(Comptage):
 class PasAssezMesureError(Exception):
     """
     Exception levee si le fichier comport emoins de 7 jours
+    attribut : 
+        nbjours : integer : nombrede jour de mesure
     """     
     def __init__(self, nbjours):
         Exception.__init__(self,f'le fichier comporte moins de 7 jours de mesures. Nb_jours: : {nbjours} ')   
+        
+class ComptageMultipleSurTronconHomogeneError(Exception):
+    """
+    Exception levee si sur un tronçon homogene 
+    attribut : 
+        refTroncHomo : list integer : identifiant unique du tronçn homogène
+    """
+    def __init__(self, refTroncHomo):
+        Exception.__init__(self,f"le troncon homogene {','.join(refTroncHomo)} supporte plus que 1 comptage de reference")
         
