@@ -14,6 +14,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from shapely.geometry import Point
+from shapely.ops import transform
+import pyproj
+
 from datetime import datetime
 from importlib import resources
 import os, re
@@ -27,6 +31,7 @@ from sklearn.metrics import mean_absolute_error
 from Params.DonneesSourcesParams import MHcorbinMaxLength, MHcorbinMaxSpeed, MHCorbinValue0, MHCorbinFailAdviceCode
 import Connexion_Transfert as ct
 import Outils as O
+from Donnees_horaires import attributsHoraire
 
 
 #tuple avec le type de jours, le nombre de jours associes et les jours (de 0à6)
@@ -596,6 +601,7 @@ class FIM():
     """
     classe dedié aux fichiers FIM de comptage brut
     attributs : 
+        verifQualite ; value parmi 'Bloque' ou 'Message : la verif de qualite fait remonter une erreur et bloque la fonction ou la verif qualite affiche un message seulement
         dico_corresp_type_veh : dico poutr determiner le type de vehicule selon en-tete
         dico_corresp_type_fichier : dico poutr determiner le mode de comptag selon en-tete
         pas_temporel : pas de concatenation des donnes, issu de en-tete (cf fonction params_fim())
@@ -611,20 +617,23 @@ class FIM():
         sens_uniq_nb_blocs : si sens_uniq : nb de bloc de donnees
         date_fin
         dfHeureTypeSens
-        dfHoraire2Sens
+        dfHoraire2Sens : df au format ancienne bdd
         dfSemaineMoyenne
     """
-    def __init__(self, fichier, gest=None):
+    def __init__(self, fichier, gest=None, verifQualite='Bloque'):
+        O.checkParamValues(verifQualite, ('Bloque', 'Message'))
+        self.verifQualite=verifQualite
         self.fichier_fim=fichier
         self.dico_corresp_type_veh={'TV':('1.T','2.','1.'),'VL':('2.V','4.V'),'PL':('3.P','2.P','4.P')}
         self.dico_corresp_type_fichier={'mode3' : ('1.T','3.P'), 'mode4' : ('2.V','2.P','4.V', '4.P'), 'mode2':('2.',), 'mode1' : ('1.',)}
         self.gest=gest
         self.lignes=self.ouvrir_fim()
-        self.pas_temporel,self.date_debut,self.mode=self.params_fim(self.lignes)
+        self.pas_temporel,self.date_debut,self.mode, self.geoloc, self.geom_l93=self.params_fim(self.lignes)
         self.liste_lign_titre,self.sens_uniq,self.sens_uniq_nb_blocs=self.liste_carac_fichiers(self.lignes)
         self.taille_donnees=self.taille_bloc_donnees()
         self.isoler_bloc(self.lignes, self.liste_lign_titre)
         self.dfHeureTypeSens,self.dfHoraire2Sens=self.traficsHoraires()
+        self.qualiteComptage()
         self.dfSemaineMoyenne,self.tmja,self.pc_pl, self.pl=self.calcul_indicateurs_agreges()
 
     def ouvrir_fim(self):
@@ -635,38 +644,56 @@ class FIM():
             lignes=[e.strip() for e in f.readlines()]
         return lignes
     
-    def corriger_mode(self,lignes, mode):
+    def corriger_mode(self,mode):
         """
         correction du fichier fim si mode = 4. dans le fichiers, pour pouvoir diiférencier VL et PL
         """
         i=0
-        for e,l in enumerate(lignes) :
+        for e,l in enumerate(self.lignes) :
             if mode=='4.' : #porte ouvert pour d'auter corrections si beoisn
                 if '   4.   ' in l : 
                     if i% 2==0 :
-                        lignes[e]=l.replace('   4.   ','   4.V   ')
+                        self.lignes[e]=l.replace('   4.   ','   4.V   ')
                         i+=1
                     else : 
-                        lignes[e]=l.replace('   4.   ','   4.P   ') 
+                        self.lignes[e]=l.replace('   4.   ','   4.P   ') 
                         i+=1
 
     def params_fim(self,lignes):
         """
-        obtenir les infos générales du fichier : date_debut(anne, mois, jour, heure, minute), mode
+        obtenir les infos générales du fichier : date_debut(anne, mois, jour, heure, minute), mode, geolocalisation
         """
-        annee,mois,jour,heure,minute,pas_temporel=(int(self.lignes[0].split('.')[i].strip()) for i in range(5,11))
+        lign0Splitpoint=self.lignes[0].split('.')
+        annee,mois,jour,heure,minute,pas_temporel=(int(lign0Splitpoint[i].strip()) for i in range(5,11))
         #particularite CD16 : l'identifiant route et section est present dans le FIM
         if self.gest=='CD16' : 
-            self.section_cp='_'.join([str(int(self.lignes[0].split('.')[a].strip())) for a in (2,3)])
+            self.section_cp='_'.join([str(int(lign0Splitpoint[a].strip())) for a in (2,3)])
         date_debut=pd.to_datetime(f'{jour}-{mois}-{annee} {heure}:{minute}', dayfirst=True)
         mode=self.lignes[0].split()[9]
         if mode in ['4.',] : #correction si le mode est de type 4. sans distinction exlpicite de VL TV PL. porte ouvert à d'autre cas si besoin 
-            self.corriger_mode(lignes, mode)
+            self.corriger_mode(mode)
             mode=self.lignes[0].split()[9]
         mode=[k for k,v in self.dico_corresp_type_fichier.items() if any([e == mode for e in v])][0]
         if not mode : 
             raise self.fim_TypeModeError
-        return pas_temporel,date_debut,mode
+        
+        geoloc=re.search('(?P<lat>(\-|\+)[0-9]{1,3}\.([0-9]{4}\.){2})(?P<long>(\-|\+)[0-9]{1,3}\.([0-9]{4}\.){2})', self.lignes[0].split()[-1])
+        wgs84Proj = pyproj.CRS('EPSG:4326')
+        l93Proj = pyproj.CRS('EPSG:2154')
+        project = pyproj.Transformer.from_crs(wgs84Proj, l93Proj, always_xy=True).transform
+        if geoloc: 
+            longitude = geoloc.group('long')
+            latitude = geoloc.group('lat')
+            x_wgs84=float(re.sub('(\+|-)(.*\.)(.*)(\.)(.*)(\.)', '\g<1>\g<2>\g<3>\g<5>', longitude))
+            y_wgs84=float(re.sub('(\+|-)(.*\.)(.*)(\.)(.*)(\.)', '\g<1>\g<2>\g<3>\g<5>', latitude))
+            geom_wgs84=Point(x_wgs84, y_wgs84)
+            geom_l93 = transform(project, geom_wgs84)
+            geoloc=True
+        else : 
+            geoloc=False 
+            geom_l93=None
+        
+        return pas_temporel,date_debut,mode, geoloc, geom_l93
         
 
     def fim_type_veh(self, ligne):
@@ -741,6 +768,10 @@ class FIM():
         dfHeureTypeSens['heure']=dfHeureTypeSens.date_heure.dt.hour
         dfHeureTypeSens['date']=pd.to_datetime(dfHeureTypeSens.date_heure.dt.date)
         dfHoraire2Sens=dfHeureTypeSens.groupby(['date_heure','type_veh','jour','jourAnnee','heure','date']).nbVeh.sum().reset_index()
+        dfHoraire2Sens['fichier']=os.path.basename(self.fichier_fim)
+        dfHoraire2Sens=dfHoraire2Sens.pivot(index=['date', 'type_veh', 'fichier'], columns='heure', values='nbVeh').reset_index().rename(
+            columns={k: v for k, v in zip(['date', 'type_veh']+[e for e in range(24)], ['jour', 'indicateur']+attributsHoraire)})
+        dfHoraire2Sens['indicateur']=dfHoraire2Sens.indicateur.str.upper()
         return dfHeureTypeSens,dfHoraire2Sens
 
     def calcul_indicateurs_agreges(self):
@@ -748,7 +779,7 @@ class FIM():
         calculer le tmjs, pl et pc_pl pour un fichier
         """
         #calcul d'une semaine moyenne
-        verifNbJour(self.dfHeureTypeSens)#verif nb jours ok
+        
         dfSemaineMoyenne=semaineMoyenne(NettoyageTemps(self.dfHeureTypeSens))
         #TMJA
         if 'tv' in dfSemaineMoyenne.type_veh.unique() : 
@@ -762,6 +793,21 @@ class FIM():
         else : 
             pl,pc_pl=np.NaN, np.NaN
         return dfSemaineMoyenne,tmja,pc_pl, pl
+    
+    def qualiteComptage(self):
+        """
+        selon le nombre de jours comptés, forcer une qualité faible ou non
+        """
+        if self.verifQualite=='Message' : 
+            try : 
+                verifNbJour(self.dfHeureTypeSens)#verif nb jours ok
+                self.qualite=None
+            except  PasAssezMesureError as e : 
+                print(e)
+                self.qualite=1
+        else : 
+            verifNbJour(self.dfHeureTypeSens)
+        return 
         
 class ComptageFim(object):
     """

@@ -1655,14 +1655,16 @@ class Comptage_cd16(Comptage):
         fichier_station_cpt : nom complet du fihcier de points contenant tous les points comptages issu de pigma
         dossierIrisTv : dossier contenant les csv au format IRIS pour les donnees horaires
         dossierIrisPl : dossier contenant les csv au format IRIS pour les PL
+        dossierCptTemp : dossier contenant les fichiers FIM des comptages temporaires
     """
-    def __init__(self,fichier_b15_perm,fichier_cpt_lgn,fichier_station_cpt,annee, dossierIrisTv, dossierIrisPl):
+    def __init__(self,fichier_b15_perm,fichier_cpt_lgn,fichier_station_cpt,annee, dossierIrisTv, dossierIrisPl, dossierCptTemp):
         self.fichier_b15_perm=fichier_b15_perm
         self.fichier_cpt_lgn=fichier_cpt_lgn
         self.fichier_station_cpt=fichier_station_cpt
         self.annee=annee
         self.dossierIrisTv=dossierIrisTv
         self.dossierIrisPl=dossierIrisPl
+        self.dossierCptTemp=dossierCptTemp
         
     def cpt_perm_xls(self, skiprows, cpt_a_ignorer=()):
         """
@@ -1716,18 +1718,18 @@ class Comptage_cd16(Comptage):
         
         donnees_brutes_tmp=donnees_brutes_tmp_pt[['AXE','PLOD','ABSD','SECTION']].merge(donnees_brutes_tmp_lgn[['AXE','TRAFIC_PL','TMJA','ANNEE_COMP', 'PRC','ABC','TYPE_COMPT','SECTION_CP']], 
                                                                                         left_on=['AXE','PLOD','ABSD'],right_on=['AXE','PRC','ABC'])
-        donnees_tmp_liees=donnees_brutes_tmp.loc[(donnees_brutes_tmp['ANNEE_COMP']==self.annee) & (donnees_brutes_tmp['TYPE_COMPT']!='Per')].copy()
+        donnees_tmp_liees=donnees_brutes_tmp.loc[donnees_brutes_tmp['TYPE_COMPT']!='Per'].copy()
         donnees_tmp_filtrees=donnees_tmp_liees.rename(columns={'AXE':'route','PRC':'pr','ABC':'absc','TMJA':'tmja','TRAFIC_PL':'pc_pl','TYPE_COMPT':'type_poste'}).drop(['PLOD','ABSD','SECTION','ANNEE_COMP'], axis=1)
         donnees_tmp_filtrees['id_comptag']=donnees_tmp_filtrees.apply(lambda x : f"16-{x['route']}-{x['pr']}+{x['absc']}", axis=1)
         donnees_tmp_filtrees['src']='sectionnement'
         return donnees_tmp_filtrees
     
-    def donnees_horaires(self, donnees_tmp_filtrees, dossier):
+    def donnees_horaires(self, donnees_tmp_filtrees):
         """
         A REPRENDRE SUITE A MODIF DE donnees_sources.FIM(object)
         à partir des FIM et du fichier geolocalise des comptages, creer le fichier horaire par pt de comptag
         in : 
-            dossier : dosssier contenant les fichers FIM de donnees hoarires
+            donnees_tmp_filtrees : donnees deconcatenation des comptages issu des fichier PIGMA.issu de cpt_tmp_pigma()
         """
         def mise_en_forme_fim_horaire(donnees, id_comptag):
             """
@@ -1744,14 +1746,9 @@ class Comptage_cd16(Comptage):
             donnees['id_comptag']=id_comptag
             return donnees
         
-        for e,fichier in enumerate(O.ListerFichierDossier(dossier,'')) : 
+        for e,fichier in enumerate(O.ListerFichierDossier(self.dossierCptTemp,'')) : 
             print(fichier)
-            fichier_fim=FIM(os.path.join(dossier, fichier), gest='CD16')
-            try : 
-                fichier_fim.resume_indicateurs()
-            except PasAssezMesureError as e : 
-                print(e, fichier)
-                continue
+            fichier_fim=FIM(os.path.join(self.dossierCptTemp, fichier), gest='CD16', verifQualite='Message')
             id_comptag=donnees_tmp_filtrees.loc[donnees_tmp_filtrees['SECTION_CP']==fichier_fim.section_cp].id_comptag.values[0]
             donnees=fichier_fim.df_tot_heure[['tv_tot','pl_tot']].rename(columns={'tv_tot':'tv','pl_tot':'pl'}).copy()
             donnees=mise_en_forme_fim_horaire(donnees,id_comptag)
