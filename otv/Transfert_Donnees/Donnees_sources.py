@@ -80,23 +80,17 @@ def NettoyageTemps(dfVehiculesValides):
             #puis on triche et on modifie la date du dernier jour pour le mettre sur celle du 1er, en conservant l'heure
             dfValide.loc[dfValide.date_heure.dt.dayofyear==timstampMax.dayofyear,'date_heure']=dfValide.loc[dfValide.date_heure.
                dt.dayofyear==timstampMax.dayofyear].apply(lambda x : datetime.combine(timstampMin.date(),x['date_heure'].time()),axis=1) 
-        elif timstampMin.time().hour==timstampMax.time().hour+1: # ou que les heures sont complémentaires 
+        else timstampMin.time().hour==timstampMax.time().hour+1: # ou que les heures sont complémentaires 
             # on triche et on modifie la date du 1er jour pour le mettre sur celle du dernier, en conservant l'heure
             dfValide=dfVehiculesValides.copy()
             dfValide.loc[dfValide.date_heure.dt.dayofyear==timstampMin.dayofyear,'date_heure']=dfValide.loc[dfValide.date_heure.
                dt.dayofyear==timstampMin.dayofyear].apply(lambda x : datetime.combine(timstampMax.date(),x['date_heure'].time()),axis=1)
-        else : 
-            dfValide=dfVehiculesValides.copy()
     elif nbJours>8 :#si nb jour >8 on enleve les premier ete dernier jours
         dfValide=dfVehiculesValides.loc[~dfVehiculesValides.date_heure.dt.dayofyear.isin((timstampMin.dayofyear,timstampMax.dayofyear))].copy()
     else : # si le nombre de est inférieur à 8
-        if timstampMin.time().hour==timstampMax.time().hour+1: # et que les heures sont complémentaires
-            # on triche et on modifie la date du 1er jour pour le mettre sur celle du dernier, en conservant l'heure
-            dfValide=dfVehiculesValides.copy()
+        dfValide=dfVehiculesValides.copy()
             dfValide.loc[dfValide.date_heure.dt.dayofyear==timstampMin.dayofyear,'date_heure']=dfValide.loc[dfValide.date_heure.
-               dt.dayofyear==timstampMin.dayofyear].apply(lambda x : datetime.combine(timstampMax.date(),x['date_heure'].time()),axis=1)
-        else : 
-            dfValide=dfVehiculesValides.copy()
+            dt.dayofyear==timstampMin.dayofyear].apply(lambda x : datetime.combine(timstampMax.date(),x['date_heure'].time()),axis=1)
     return dfValide
 
 def GroupeCompletude(dfValide, vitesse=False):

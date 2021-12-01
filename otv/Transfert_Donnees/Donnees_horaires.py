@@ -135,10 +135,11 @@ def concatIndicateurFichierHoraire(dfHoraireFichier, attributIndicateur='type_ve
     dicoAgg={'h0_1':'sum', 'h1_2':'sum', 'h2_3':'sum', 'h3_4':'sum', 'h4_5':'sum', 'h5_6':'sum', 'h6_7':'sum', 'h7_8':'sum', 'h8_9':'sum',
                    'h9_10':'sum', 'h10_11':'sum', 'h11_12':'sum', 'h12_13':'sum', 'h13_14':'sum', 'h14_15':'sum', 'h15_16':'sum', 'h16_17':'sum',
                    'h17_18':'sum', 'h18_19':'sum', 'h19_20':'sum', 'h20_21':'sum', 'h21_22':'sum', 'h22_23':'sum', 'h23_24':'sum',
-                   'fichier':lambda x : x if len(set(x))==1 else ', '.join(set(x))}
+                   'fichier':lambda x :list(x)[0] if len(set(x))==1 else ', '.join(set(x))}
     if all([e in dfHoraireFichier[attributIndicateur].unique() for e in ('VL', 'PL')]) and 'TV' not in dfHoraireFichier[attributIndicateur].unique() :
         dfTv=dfHoraireFichier[['jour','id_comptag', 'fichier']+
-             attributsHoraire].groupby(['jour','id_comptag']).agg(dicoAgg).assign(type_veh='TV').reset_index()
+             attributsHoraire].groupby(['jour','id_comptag']).agg(dicoAgg).reset_index()
+        dfTv[attributIndicateur] = 'TV'
     elif 'TV' in dfHoraireFichier[attributIndicateur].unique() and 'VL' not in dfHoraireFichier[attributIndicateur].unique() : 
         dfTv=dfHoraireFichier.loc[dfHoraireFichier[attributIndicateur]=='TV'].groupby(['jour','id_comptag']
             ).agg(dicoAgg).assign(type_veh='TV').reset_index().rename(columns={'type_veh':attributIndicateur})

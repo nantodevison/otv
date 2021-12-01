@@ -1731,33 +1731,19 @@ class Comptage_cd16(Comptage):
         in : 
             donnees_tmp_filtrees : donnees deconcatenation des comptages issu des fichier PIGMA.issu de cpt_tmp_pigma()
         """
-        def mise_en_forme_fim_horaire(donnees, id_comptag):
-            """
-            modifier la forme horaire des FIM pour le transfert dans la table des comptages horaires
-            """
-            donnees.reset_index(inplace=True)
-            donnees['jour']=donnees['date'].apply(lambda x : pd.to_datetime(x.strftime('%Y-%m-%d')))
-            donnees['heure']=donnees['date'].apply(lambda x : f"h{x.hour}_{x.hour+1 if x.hour!=24 else 24}")
-            donnees_tv=donnees[['jour', 'heure', 'tv']].pivot(index='jour',columns='heure', values='tv')
-            donnees_tv['type_veh']='TV'
-            donnees_pl=donnees[['jour', 'heure', 'pl']].pivot(index='jour',columns='heure', values='pl')
-            donnees_pl['type_veh']='PL'
-            donnees=pd.concat([donnees_tv,donnees_pl], axis=0, sort=False).reset_index()
-            donnees['id_comptag']=id_comptag
-            return donnees
-        
-        for e,fichier in enumerate(O.ListerFichierDossier(self.dossierCptTemp,'')) : 
-            print(fichier)
-            fichier_fim=FIM(os.path.join(self.dossierCptTemp, fichier), gest='CD16', verifQualite='Message')
-            id_comptag=donnees_tmp_filtrees.loc[donnees_tmp_filtrees['SECTION_CP']==fichier_fim.section_cp].id_comptag.values[0]
-            donnees=fichier_fim.df_tot_heure[['tv_tot','pl_tot']].rename(columns={'tv_tot':'tv','pl_tot':'pl'}).copy()
-            donnees=mise_en_forme_fim_horaire(donnees,id_comptag)
-            if e==0: 
-                fichier_tot=donnees.copy()
-            else : 
-                fichier_tot=pd.concat([fichier_tot,donnees.copy()], sort=False, axis=0)
-        
-        return fichier_tot
+        listDfHoraire=[]
+        with os.scandir(self.dossierCptTemp) as it:
+            for e in it:
+                if e.is_file() and e.name.lower().endswith('.fim'):
+                    print(e.name)
+                    cpt=FIM(e.path, gest='CD16', verifQualite='Message')
+                    listDfHoraire.append(cpt.dfHoraire2Sens.assign(section_cp=cpt.section_cp))
+        dfHoraire = pd.concat(listDfHoraire)        dfHoraireId = donnees_tmp_filtrees[['SECTION_CP', 'id_comptag']].merge(dfHoraire, left_on='SECTION_CP', right_on='section_cp')
+        # verif 
+        if dfHoraireId.id_comptag.isna().any() : 
+            raise ValueError('un comptage n\'a ps d\'id_comptag')
+        dfHoraireId.drop(['SECTION_CP','section_cp'], axis=1, errors='ignore', inplace=True)
+        self.df_attr_horaire = dfHoraireId
     
     def comptage_forme(self, skiprows, cpt_a_ignorer, dossier_cpt_fim):
         """
@@ -1769,7 +1755,7 @@ class Comptage_cd16(Comptage):
         donnees_tmp_filtrees=self.cpt_tmp_pigma()
         self.df_attr=pd.concat([df_compt_perm,donnees_tmp_filtrees],sort=False, axis=0)
         self.df_attr_mens=donnees_mens
-        self.df_attr_horaire=self.donnees_horaires(donnees_tmp_filtrees, dossier_cpt_fim)
+        self.donnees_horaires(donnees_tmp_filtrees)
         
     def extraireEnteteIRIS(self, fichier) : 
         """
