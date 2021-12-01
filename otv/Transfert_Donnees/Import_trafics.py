@@ -136,6 +136,9 @@ class Comptage():
         """
         with ct.ConnexionBdd(bdd) as c  :
             enumTypeVeh=pd.read_sql('select code from comptage.enum_type_veh', c.sqlAlchemyConn).code.tolist()
+            listIdcomptagBdd=pd.read_sql('select id_comptag from comptage.compteur', c.sqlAlchemyConn).id_comptag.tolist()
+        if any([e not in listIdcomptagBdd for e in listComptage]):
+            raise ValueError(f'les comptages {[e for e in listComptage if e not in listIdcomptagBdd]} ne sont pas dans la Bdd. Vérifier les correspondance de comptage ou creer les compteur en premier')
         if type_veh not in enumTypeVeh : 
             raise ValueError(f'type_veh doit etre parmi {enumTypeVeh}')
         if not (int(annee)<=dt.datetime.now().year and int(annee)>2000) or annee=='1900' :
@@ -166,19 +169,27 @@ class Comptage():
             dfCptSansTmja=pd.read_sql(f'select id, id_comptag, annee from comptage.vue_comptage_sans_tmja where id_comptag=ANY(ARRAY{listIdComptag}) and annee=\'{annee}\'', c.sqlAlchemyConn)
         return  dfCptSansTmja
     
-    def recupererIdUniqComptage(self,listIdComptag, annee, bdd='local_otv_boulot' ):
+    def recupererIdUniqComptage(self,dfSource, bdd='local_otv_boulot' ):
         """
         a partir d'une liste d'id_comptag et d'une annee, recuperer les identifiant unique associes à chaque couple dans l'OTV
         in : 
-            listIdComptag : list des id_comptage a chercher
+            dfSource : df contenat un champs id_comptag et annee (qui soit etre unique) que l'on va joindre pour obtenir l'id_comptaguniqu
             annee : texte : annee sur 4 caractere
             bdd : string de connexion a la bdd
         out : 
-            dfIdCptUniqs df avec id_comptag_uniq, id_comptag, annee
+            dfIdCptUniqs dfSource avec id_comptag_uniq, id_comptag, annee
         """
+        O.checkAttributsinDf(dfSource, ['id_comptag', 'annee'])
         with ct.ConnexionBdd(bdd) as c  :
-            dfIdCptUniqs=pd.read_sql(f'select id id_comptag_uniq, id_comptag, annee from comptage.comptage where id_comptag=ANY(ARRAY{listIdComptag}) and annee=\'{annee}\'', c.sqlAlchemyConn)
-        return  dfIdCptUniqs 
+            dfIdCptUniqs=pd.read_sql(f"""select ca.id id_comptag_uniq, ca.id_comptag, ca.annee 
+                                         from comptage.comptage ca JOIN (SELECT * from (VALUES  
+                                         {','.join([f'{a, b}' for a, b in zip(dfSource.id_comptag.tolist(), dfSource.annee.tolist())])}) 
+                                         AS t (id_cpt, ann)) t ON t.id_cpt=ca.id_comptag AND t.ann=ca.annee""", c.sqlAlchemyConn)
+        dfSourceIds=dfSource.merge(dfIdCptUniqs, on=['id_comptag', 'annee']).drop_duplicates()
+        #verif que tout le monde a un id_comptag_uniq
+        if dfSourceIds.id_comptag_uniq.isna().any():
+            raise ValueError("les id_comptag {} n'ont pas d'id_comptag_uniq. Creer un comptage avant ")
+        return  dfSourceIds 
     
     def recupererIdUniqComptageAssoc(self,listIdComptag, bdd='local_otv_boulot' ):
         """
@@ -1737,7 +1748,10 @@ class Comptage_cd16(Comptage):
                 if e.is_file() and e.name.lower().endswith('.fim'):
                     print(e.name)
                     cpt=FIM(e.path, gest='CD16', verifQualite='Message')
-                    listDfHoraire.append(cpt.dfHoraire2Sens.assign(section_cp=cpt.section_cp))
+                    listDfHoraire.append(cpt.dfHoraire2Sens.assign(section_cp=cpt.section_cp, 
+                                                                   qualite=cpt.qualite, 
+                                                                   periode=cpt.periode,
+                                                                   sens_cpt='sens unique' if cpt.sens_uniq else 'double sens'))
         dfHoraire = pd.concat(listDfHoraire)        dfHoraireId = donnees_tmp_filtrees[['SECTION_CP', 'id_comptag']].merge(dfHoraire, left_on='SECTION_CP', right_on='section_cp')
         # verif 
         if dfHoraireId.id_comptag.isna().any() : 

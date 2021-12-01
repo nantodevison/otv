@@ -124,10 +124,10 @@ def comparer2Sens(dfHoraireFichierFiltre,attributSens='voie', attributIndicateur
     
 def concatIndicateurFichierHoraire(dfHoraireFichier, attributIndicateur='type_veh'):
     """
-    Orientee DIRA
-    creer les données TV et PL à partir dela dfHOraire creee par miseEnFormeFichier()
+    creer les données TV et PL à partir d'une dfHOraire format bdd creee
     il y a un jeu entre les fillna() de la presente et de miseEnFormeFichier() pour garder les valeusr NaN malgé les sommes
     in: 
+        dfHoraireFichier : dfHoraire au foprmat bdd
         attributIndicateur : nom de l'attribut décrivant le type de vehicule
     """
     O.checkAttributsinDf(dfHoraireFichier, ['jour','id_comptag', 'fichier']+attributsHoraire)

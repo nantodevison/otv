@@ -68,6 +68,7 @@ def NettoyageTemps(dfVehiculesValides):
         dfValide : dataframe modifié en date selon conditions, sinon egale a l'entree
     """
     #analyse du nombre de jours mesurés 
+    O.checkAttributsinDf(dfVehiculesValides, ['date_heure'])
     nbJours=dfVehiculesValides.date_heure.dt.dayofyear.nunique()
     timstampMin=dfVehiculesValides.date_heure.min()
     timstampMax=dfVehiculesValides.date_heure.max()
@@ -80,7 +81,7 @@ def NettoyageTemps(dfVehiculesValides):
             #puis on triche et on modifie la date du dernier jour pour le mettre sur celle du 1er, en conservant l'heure
             dfValide.loc[dfValide.date_heure.dt.dayofyear==timstampMax.dayofyear,'date_heure']=dfValide.loc[dfValide.date_heure.
                dt.dayofyear==timstampMax.dayofyear].apply(lambda x : datetime.combine(timstampMin.date(),x['date_heure'].time()),axis=1) 
-        else timstampMin.time().hour==timstampMax.time().hour+1: # ou que les heures sont complémentaires 
+        else :
             # on triche et on modifie la date du 1er jour pour le mettre sur celle du dernier, en conservant l'heure
             dfValide=dfVehiculesValides.copy()
             dfValide.loc[dfValide.date_heure.dt.dayofyear==timstampMin.dayofyear,'date_heure']=dfValide.loc[dfValide.date_heure.
@@ -89,8 +90,8 @@ def NettoyageTemps(dfVehiculesValides):
         dfValide=dfVehiculesValides.loc[~dfVehiculesValides.date_heure.dt.dayofyear.isin((timstampMin.dayofyear,timstampMax.dayofyear))].copy()
     else : # si le nombre de est inférieur à 8
         dfValide=dfVehiculesValides.copy()
-            dfValide.loc[dfValide.date_heure.dt.dayofyear==timstampMin.dayofyear,'date_heure']=dfValide.loc[dfValide.date_heure.
-            dt.dayofyear==timstampMin.dayofyear].apply(lambda x : datetime.combine(timstampMax.date(),x['date_heure'].time()),axis=1)
+        dfValide.loc[dfValide.date_heure.dt.dayofyear==timstampMin.dayofyear,'date_heure']=dfValide.loc[dfValide.date_heure.
+        dt.dayofyear==timstampMin.dayofyear].apply(lambda x : datetime.combine(timstampMax.date(),x['date_heure'].time()),axis=1)
     return dfValide
 
 def GroupeCompletude(dfValide, vitesse=False):
@@ -609,10 +610,10 @@ class FIM():
         pc_pl
         sens_uniq : booleen
         sens_uniq_nb_blocs : si sens_uniq : nb de bloc de donnees
-        date_fin
         dfHeureTypeSens
         dfHoraire2Sens : df au format ancienne bdd
-        dfSemaineMoyenne
+        dfSemaineMoyenne : 
+        periode : de forme YYYY/MM/DD-YYYY/MM/DD
     """
     def __init__(self, fichier, gest=None, verifQualite='Bloque'):
         O.checkParamValues(verifQualite, ('Bloque', 'Message'))
@@ -626,9 +627,9 @@ class FIM():
         self.liste_lign_titre,self.sens_uniq,self.sens_uniq_nb_blocs=self.liste_carac_fichiers(self.lignes)
         self.taille_donnees=self.taille_bloc_donnees()
         self.isoler_bloc(self.lignes, self.liste_lign_titre)
-        self.dfHeureTypeSens,self.dfHoraire2Sens=self.traficsHoraires()
+        self.dfHeureTypeSens,self.dfHoraire2Sens, self.periode = self.traficsHoraires()
         self.qualiteComptage()
-        self.dfSemaineMoyenne,self.tmja,self.pc_pl, self.pl=self.calcul_indicateurs_agreges()
+        self.dfSemaineMoyenne,self.tmja,self.pc_pl, self.pl =self.calcul_indicateurs_agreges()
 
     def ouvrir_fim(self):
         """
@@ -766,7 +767,8 @@ class FIM():
         dfHoraire2Sens=dfHoraire2Sens.pivot(index=['date', 'type_veh', 'fichier'], columns='heure', values='nbVeh').reset_index().rename(
             columns={k: v for k, v in zip(['date', 'type_veh']+[e for e in range(24)], ['jour', 'indicateur']+attributsHoraire)})
         dfHoraire2Sens['indicateur']=dfHoraire2Sens.indicateur.str.upper()
-        return dfHeureTypeSens,dfHoraire2Sens
+        periode = f"{dfHoraire2Sens.jour.min().date().strftime('%Y/%m/%d')}-{dfHoraire2Sens.jour.max().date().strftime('%Y/%m/%d')}"
+        return dfHeureTypeSens,dfHoraire2Sens, periode
 
     def calcul_indicateurs_agreges(self):
         """
