@@ -94,13 +94,14 @@ def NettoyageTemps(dfVehiculesValides):
         dt.dayofyear==timstampMin.dayofyear].apply(lambda x : datetime.combine(timstampMax.date(),x['date_heure'].time()),axis=1)
     return dfValide
 
-def GroupeCompletude(dfValide, vitesse=False):
+def GroupeCompletude(dfValide, frequence='1H', vitesse=False):
     """
     Pour les donnees individuelles uniquement
     a partir des donnees nettoyees sur le temps, regouper les donnees par tranche horaire, type et sens 
     in : 
         dfValide : df nettoyees avec les attributs date_heure, nbVeh et sens, cf fonction NettoyageTemps()
         vitese : booelean : traduit si les donnees de vitesse doivent etre associees ou non
+        frequence : string de description du regroupement par durée. par défaut : '1H', cf https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases pour les alias
     out : 
         dfHeureTypeSens : df avec attribut date_heure, type_veh, sens, nbVeh et si vitesse : V10, V50, V85
     """
@@ -111,12 +112,12 @@ def GroupeCompletude(dfValide, vitesse=False):
     O.checkAttributValues(dfValide, 'sens', 'sens1', 'sens2')
     O.checkAttributValues(dfValide, 'type_veh', 'TV', 'VL', 'PL', '2R')
         
-    dfGroupTypeHeure=dfValide.set_index('date_heure').groupby([pd.Grouper(freq='1H'),'type_veh','sens'])['nbVeh'].count().reset_index().sort_values('date_heure')
+    dfGroupTypeHeure=dfValide.set_index('date_heure').groupby([pd.Grouper(freq=frequence),'type_veh','sens'])['nbVeh'].count().reset_index().sort_values('date_heure')
     #completude des données
     #ajout des données horaires à 0 si aucun type de vehicules mesures
-    date_range=pd.date_range(dfGroupTypeHeure.date_heure.min(),dfGroupTypeHeure.date_heure.max(),freq='1H')
+    date_range=pd.date_range(dfGroupTypeHeure.date_heure.min(),dfGroupTypeHeure.date_heure.max(),freq=frequence)
     #df de comparaison
-    dfComp=pd.DataFrame({'type_veh':['2r','pl','vl']}).assign(key=1).merge(pd.DataFrame({'date_heure':date_range}).assign(key=1), on='key').merge(
+    dfComp=pd.DataFrame({'type_veh':['2R','PL','VL']}).assign(key=1).merge(pd.DataFrame({'date_heure':date_range}).assign(key=1), on='key').merge(
     pd.DataFrame({'sens':['sens1','sens2']}).assign(key=1)).sort_values(['date_heure', 'type_veh','sens'])[['date_heure','type_veh','sens']]
     #df des données amnquantes
     dfManq=dfComp.loc[dfComp.apply(lambda x : (x['date_heure'],x['type_veh'],x['sens']) not in zip(dfGroupTypeHeure.date_heure.tolist(),dfGroupTypeHeure.type_veh.tolist(),
@@ -128,13 +129,17 @@ def GroupeCompletude(dfValide, vitesse=False):
     dfHeureTypeSens['date']=pd.to_datetime(dfHeureTypeSens.date_heure.dt.date)
     dfHeureTypeSens=pd.concat([dfHeureTypeSens.groupby(['date_heure','sens']).agg({'nbVeh':'sum','heure':lambda x : x.unique()[0], 
                         'jour':lambda x : x.unique()[0],'jourAnnee':lambda x : x.unique()[0],'date':lambda x : x.unique()[0]}
-                        ).assign(type_veh='tv').reset_index(),dfHeureTypeSens], axis=0, sort=False).sort_values(['date_heure', 'type_veh'])
+                        ).assign(type_veh='TV').reset_index(),dfHeureTypeSens], axis=0, sort=False).sort_values(['date_heure', 'type_veh'])
     if vitesse : 
-        dfGroupVtsHeure=dfValide.set_index('date_heure').groupby([pd.Grouper(freq='1H'),'sens']).agg(
+        dfGroupVtsHeure=pd.concat([dfValide.set_index('date_heure').groupby([pd.Grouper(freq=frequence),'sens']).agg(
             **{'v10': pd.NamedAgg(column='vitesse',aggfunc=lambda x : np.percentile(x,10)),
                'v50': pd.NamedAgg(column='vitesse',aggfunc=lambda x : np.percentile(x,50)),
-               'v85': pd.NamedAgg(column='vitesse',aggfunc=lambda x : np.percentile(x,85))}).reset_index().sort_values('date_heure')
-        dfHeureTypeSens=dfHeureTypeSens.merge(dfGroupVtsHeure, on=['date_heure','sens'],how='left')
+               'v85': pd.NamedAgg(column='vitesse',aggfunc=lambda x : np.percentile(x,85))}).reset_index().sort_values('date_heure').assign(type_veh='TV'),
+           dfValide.set_index('date_heure').groupby([pd.Grouper(freq=frequence),'sens', 'type_veh']).agg(
+            **{'v10': pd.NamedAgg(column='vitesse',aggfunc=lambda x : np.percentile(x,10)),
+               'v50': pd.NamedAgg(column='vitesse',aggfunc=lambda x : np.percentile(x,50)),
+               'v85': pd.NamedAgg(column='vitesse',aggfunc=lambda x : np.percentile(x,85))}).reset_index().sort_values('date_heure')])
+    dfHeureTypeSens=dfHeureTypeSens.merge(dfGroupVtsHeure, on=['date_heure','sens', 'type_veh'],how='left').sort_values(['date_heure', 'type_veh', 'sens'])
     
     #si un sens est completement à O on le vire
     dfTestSens=dfHeureTypeSens.groupby('sens').nbVeh.sum().reset_index()
@@ -455,9 +460,10 @@ class Viking(object):
             return pd.to_datetime(f'20{anneeDeb}-{moisDeb}-{jourMesure} {str(heureMin)[:2]}:{str(heureMin)[2:]}:{str(secCent)[:2]}.{str(secCent)[2:]}')
         self.dfFichier['date_heure']=self.dfFichier.apply(lambda x : creer_date(self.jourDeb,self.moisDeb,self.anneeDeb, 
                             x['jour'],x['heureMin'],x['secCent']), axis=1)
-        self.dfFichier['type_veh']=self.dfFichier['type_veh'].str.lower()
+        self.dfFichier['type_veh']=self.dfFichier['type_veh'].str.upper()
         self.dfFichier['nbVeh']=1
         self.dfFichier['vitesse']=self.dfFichier.vts.str[2:].astype(int)
+        self.dfFichier['sens']=self.dfFichier['sens'].apply(lambda x: f'sens{x}')
             
 class ComptageDonneesIndiv(object):
     """

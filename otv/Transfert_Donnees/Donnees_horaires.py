@@ -12,7 +12,7 @@ import re
 import Outils as O
 from Params.Mensuel import dico_mois
 
-
+# POUR LES VACANCES PENSER A BESCULER SUR LE MODULE VACANCES_SCOLAIRE_FRANCE !!!!!
 vacances_2019=[j for k in [pd.date_range('2019-01-01','2019-01-06'),pd.date_range('2019-02-16','2019-03-03'),
                             pd.date_range('2019-04-13','2019-04-28'),pd.date_range('2019-05-30','2019-06-02'),
                             pd.date_range('2019-07-06','2019-09-01'),pd.date_range('2019-10-19','2019-11-04'),
