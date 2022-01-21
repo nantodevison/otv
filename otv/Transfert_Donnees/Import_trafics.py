@@ -26,6 +26,9 @@ from Donnees_horaires import (comparer2Sens,verifValiditeFichier,concatIndicateu
 from Donnees_sources import FIM, MHCorbin, DataSensError
 import Outils as O
 from Params.Mensuel import dico_mois
+from Params.Bdd_OTV import (attBddCompteur, nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, 
+                            tableCompteur, tableIndicAgrege, tableIndicHoraire, tableIndicMensuel, tableCorrespIdComptag,
+                            tableEnumTypeVeh)
               
 class Comptage():
     """
@@ -45,11 +48,10 @@ class Comptage():
             df.replace('', np.NaN, inplace=True)
         return  df
    
-    def comptag_existant_bdd(self, table='compteur', bdd='local_otv_boulot', schema='comptage',dep=False, type_poste=False, gest=False):
+    def comptag_existant_bdd(self, table=tableCompteur, schema=schemaComptage,dep=False, type_poste=False, gest=False):
         """
         recupérer les comptages existants dans une df
         en entree : 
-            bdd : string selon le fichier 'Id_connexions' du Projet Outils
             table : string : nom de la table
             schema : string : nom du schema
             dep : string, code du deprtament sur 2 lettres
@@ -73,13 +75,13 @@ class Comptage():
         elif dep and isinstance(type_poste, list) and gest : 
             list_type_poste='\',\''.join(type_poste)
             rqt=f"""select * from {schema}.{table} where dep='{dep}' and type_poste in ('{list_type_poste}') and gestionnai='{gest}'"""
-        with ct.ConnexionBdd(bdd) as c:
-            if table=='compteur' :
+        with ct.ConnexionBdd(nomConnBddOtv) as c:
+            if table==tableCompteur :
                 self.existant=gp.GeoDataFrame.from_postgis(rqt, c.sqlAlchemyConn, geom_col='geom',crs='epsg:2154')
             else :
                 self.existant=pd.read_sql(rqt, c.sqlAlchemyConn)
             
-    def scinderComptagExistant(self, dfATester, annee, table='compteur', bdd='local_otv_boulot', schema='comptage', dep=False, type_poste=False, gest=False):
+    def scinderComptagExistant(self, dfATester, annee, table=tableCompteur, schema=schemaComptage, dep=False, type_poste=False, gest=False):
         """
         utiliser la fonction comptag_existant_bdd pour comparer une df avec les donnees de comptage dans la base
         si la table utilisée est compteur, on compare avec id_comptag, si c'est comptag on recherche les id null
@@ -95,34 +97,33 @@ class Comptage():
         O.checkAttributsinDf(dfATester, 'id_comptag')
         dfATester['annee']=annee
         self.corresp_nom_id_comptag(dfATester)
-        self.comptag_existant_bdd('compteur', bdd, schema,dep, type_poste, gest)
-        dfIdCptUniqs=self.recupererIdUniqComptage(dfATester.id_comptag.tolist(), annee, 'local_otv_boulot')
+        self.comptag_existant_bdd(tableCompteur, nomConnBddOtv, schema,dep, type_poste, gest)
+        dfIdCptUniqs=self.recupererIdUniqComptage(dfATester.id_comptag.tolist(), annee)
         dfTest=dfATester.merge(dfIdCptUniqs, on=['id_comptag', 'annee'], how='left').rename(columns={'id':'id_comptag_uniq'})
 
-        if table=='compteur' :
+        if table==tableCompteur :
             dfIdsConnus=dfATester.loc[dfATester.id_comptag.isin(self.existant.id_comptag)].copy()
             dfIdsInconnus=dfATester.loc[~dfATester.id_comptag.isin(self.existant.id_comptag)].copy()
-        elif table=='comptage' : 
+        elif table==tableComptage : 
             dfIdsConnus=dfTest.loc[~dfTest.id_comptag_uniq.isna()].copy()
             dfIdsInconnus=dfTest.loc[dfTest.id_comptag_uniq.isna()].copy()
         return dfIdsConnus, dfIdsInconnus
         
     
-    def corresp_nom_id_comptag(self,df, bdd='local_otv_boulot'):
+    def corresp_nom_id_comptag(self,df):
         """
         pour les id_comptag dont on sait que les noms gti et gestionnaire diffèrent mais que ce sont les memes (cf table comptage.corresp_id_comptag), 
         on remplace le nom gest par le nom_gti, pour pouvoir faire des jointure ensuite
         in : 
-            bdd :  string : l'identifiant de la Bdd pour recuperer la table de correspondance
             df : dataframe des comptage du gest. attention doit contenir l'attribut 'id_comptag', ene général prendre df_attr
         """
-        rqt_corresp_comptg='select * from comptage.corresp_id_comptag'
-        with ct.ConnexionBdd(bdd) as c:
+        rqt_corresp_comptg=f'select * from {schemaComptage}.{tableCorrespIdComptag}'
+        with ct.ConnexionBdd(nomConnBddOtv) as c:
             corresp_comptg=pd.read_sql(rqt_corresp_comptg, c.sqlAlchemyConn)
         df['id_comptag']=df.apply(lambda x : corresp_comptg.loc[corresp_comptg['id_gest']==x['id_comptag']].id_gti.values[0] 
                                                     if x['id_comptag'] in corresp_comptg.id_gest.tolist() else x['id_comptag'], axis=1)
         
-    def creer_comptage(self,listComptage, annee, src, type_veh,obs=None, periode=None, bdd='local_otv_boulot') : 
+    def creer_comptage(self,listComptage, annee, src, type_veh,obs=None, periode=None) : 
         """
         creer une df a inserer dans la table des comptage
         in : 
@@ -132,11 +133,10 @@ class Comptage():
             src : texte ou list : source des donnnes
             obs : txt ou list : observation
             type_veh : txt parmis les valeurs de enum_type_veh
-            bdd :  string de connexion a la bdd
         """
-        with ct.ConnexionBdd(bdd) as c  :
-            enumTypeVeh=pd.read_sql('select code from comptage.enum_type_veh', c.sqlAlchemyConn).code.tolist()
-            listIdcomptagBdd=pd.read_sql('select id_comptag from comptage.compteur', c.sqlAlchemyConn).id_comptag.tolist()
+        with ct.ConnexionBdd(nomConnBddOtv) as c  :
+            enumTypeVeh=pd.read_sql(f'select code from {schemaComptage}.{tableEnumTypeVeh}', c.sqlAlchemyConn).code.tolist()
+            listIdcomptagBdd=pd.read_sql(f'select id_comptag from {schemaComptage}.{tableCompteur}', c.sqlAlchemyConn).id_comptag.tolist()
         if any([e not in listIdcomptagBdd for e in listComptage]):
             raise ValueError(f'les comptages {[e for e in listComptage if e not in listIdcomptagBdd]} ne sont pas dans la Bdd. Vérifier les correspondance de comptage ou creer les compteur en premier')
         if type_veh not in enumTypeVeh : 
@@ -157,60 +157,65 @@ class Comptage():
         return pd.DataFrame({'id_comptag':listComptage, 'annee':annee, 'periode':periode,'src':src, 'obs':obs, 'type_veh' : type_veh})
     
     
-    def recupererComptageSansTrafic(self,listIdComptag, annee, bdd='local_otv_boulot' ):
+    def recupererComptageSansTrafic(self,listIdComptag, annee):
         """
         a partir d'une liste d'id_comptag et d'une annee, recuperer les id_comptag n'ayant pas de données de TMJA associees
         in : 
             listIdComptag : list des id_comptage a chercher
             annee : texte : annee sur 4 caractere
-            bdd : string de connexion a la bdd
         """
-        with ct.ConnexionBdd(bdd) as c  :
+        with ct.ConnexionBdd(nomConnBddOtv) as c  :
             dfCptSansTmja=pd.read_sql(f'select id, id_comptag, annee from comptage.vue_comptage_sans_tmja where id_comptag=ANY(ARRAY{listIdComptag}) and annee=\'{annee}\'', c.sqlAlchemyConn)
         return  dfCptSansTmja
     
-    def recupererIdUniqComptage(self,dfSource, bdd='local_otv_boulot' ):
+    def recupererIdUniqComptage(self,dfSource, derniereAnnee=False):
         """
         a partir d'une liste d'id_comptag et d'une annee, recuperer les identifiant unique associes à chaque couple dans l'OTV
         in : 
             dfSource : df contenat un champs id_comptag et annee (qui soit etre unique) que l'on va joindre pour obtenir l'id_comptaguniqu
-            annee : texte : annee sur 4 caractere
-            bdd : string de connexion a la bdd
+            derniereAnnee : booleen : si True, alors on recupere l'idcomptag_uniq de la derniere annee connue
         out : 
             dfIdCptUniqs dfSource avec id_comptag_uniq, id_comptag, annee
         """
         O.checkAttributsinDf(dfSource, ['id_comptag', 'annee'])
-        with ct.ConnexionBdd(bdd) as c  :
-            dfIdCptUniqs=pd.read_sql(f"""select ca.id id_comptag_uniq, ca.id_comptag, ca.annee 
-                                         from comptage.comptage ca JOIN (SELECT * from (VALUES  
+        with ct.ConnexionBdd(nomConnBddOtv) as c  :
+            if derniereAnnee:
+                rqt = f"""select ca.id id_comptag_uniq, ca.id_comptag, ca.annee 
+                                         from {schemaComptage}.{tableComptage} ca JOIN (SELECT * from (VALUES  
                                          {','.join([f'{a, b}' for a, b in zip(dfSource.id_comptag.tolist(), dfSource.annee.tolist())])}) 
-                                         AS t (id_cpt, ann)) t ON t.id_cpt=ca.id_comptag AND t.ann=ca.annee""", c.sqlAlchemyConn)
+                                         AS t (id_cpt, ann)) t ON t.id_cpt=ca.id_comptag AND t.ann=ca.annee"""
+            else:
+                rqt = f"""select distinct on (ca.id_comptag) ca.id id_comptag_uniq, ca.id_comptag, ca.annee 
+                                         from {schemaComptage}.{tableComptage} ca JOIN (SELECT * from (VALUES  
+                                         {','.join([f'{a, b}' for a, b in zip(dfSource.id_comptag.tolist(), dfSource.annee.tolist())])}) 
+                                         AS t (id_cpt, ann)) t ON t.id_cpt=ca.id_comptag AND t.ann=ca.annee
+                                         order by ca.id_comptag, ca.annee DESC"""
+            dfIdCptUniqs=pd.read_sql(rqt, c.sqlAlchemyConn)
+            
         dfSourceIds=dfSource.merge(dfIdCptUniqs, on=['id_comptag', 'annee']).drop_duplicates()
         #verif que tout le monde a un id_comptag_uniq
         if dfSourceIds.id_comptag_uniq.isna().any():
             raise ValueError("les id_comptag {} n'ont pas d'id_comptag_uniq. Creer un comptage avant ")
         return  dfSourceIds 
     
-    def recupererIdUniqComptageAssoc(self,listIdComptag, bdd='local_otv_boulot' ):
+    def recupererIdUniqComptageAssoc(self,listIdComptag):
         """
         a partir d'une liste d'id_comptag ede reference, recuperer les identifiant unique dans la table comptage du schema comptage_assoc
         in : 
             listIdComptag : list des id_comptage a chercher
-            bdd : string de connexion a la bdd
         out : 
             dfIdCptUniqs df avec id_comptag_uniq, id_comptag, annee
         """
-        with ct.ConnexionBdd(bdd) as c  :
-            dfIdCptUniqsAssoc=pd.read_sql(f'select id id_comptag_uniq, id_cptag_ref from comptage_assoc.comptage where id_cptag_ref=ANY(ARRAY{listIdComptag})', c.sqlAlchemyConn)
+        with ct.ConnexionBdd(nomConnBddOtv) as c  :
+            dfIdCptUniqsAssoc=pd.read_sql(f'select id id_comptag_uniq, id_cptag_ref from {schemaComptageAssoc}.{tableComptage} where id_cptag_ref=ANY(ARRAY{listIdComptag})', c.sqlAlchemyConn)
         return  dfIdCptUniqsAssoc
     
-    def structureBddOld2NewForm(self,dfAConvertir, annee, listAttrFixe,listAttrIndics,typeIndic, bdd='local_otv_boulot'):
+    def structureBddOld2NewForm(self,dfAConvertir, annee, listAttrFixe,listAttrIndics,typeIndic):
         """
         convertir les données creer par les classes et issus de la structure de bdd 2010-2019 (wide-form) vers une structure 2020 (long-form) 
         en ajoutant au passage les ids_comptag_uniq
         in : 
             annee : texte : annee sur 4 caractere
-            bdd : string de connexion a la bdd
             typeIndic : texte parmi 'agrege', 'mensuel'
             dfAConvertir : dataframe a transformer
             listAttrFixe : liste des attributs qui ne vont pas deveir des indicateurs
@@ -233,7 +238,7 @@ class Comptage():
         elif typeIndic=='horaire' : 
             dfIndic=dfAConvertir.rename(columns={'type_veh':'indicateur'}).drop(
                 ['id_comptag', 'annee'], axis=1)
-        dfIndic=self.recupererIdUniqComptage(dfIndic, bdd).drop(['id_comptag', 'annee'], axis=1)
+        dfIndic=self.recupererIdUniqComptage(dfIndic).drop(['id_comptag', 'annee'], axis=1)
         #si valeur vide on vire la ligne
         if typeIndic in ('agrege','mensuel') :
             dfIndic.dropna(subset=['valeur'], inplace=True)
@@ -252,11 +257,11 @@ class Comptage():
         """
         return df.rename(columns={c : k for k, v in dico_mois.items() for c in df.columns if c in v})
         
-    def maj_geom(self,bdd, schema, table, nom_table_ref,nom_table_pr,dep=False):
+    def maj_geom(self, schema, table, nom_table_ref,nom_table_pr,dep=False):
         """
         mettre à jour les lignes de geom null
         en entree : 
-            bdd: txt de connexion à la bdd que l'on veut (cf ficchier id_connexions)
+
             schema : string nom du schema de la table
             table : string : nom de la table
             nom_table_ref : string : nom de table contenant le referntiel (schema qualified)
@@ -278,11 +283,11 @@ class Comptage():
               set src_geo='pr+abs', x_l93=round(st_x(geom)::numeric,3), y_l93=round(st_y(geom)::numeric,3)
               where src_geo is null and geom is not null"""   
               
-        with ct.ConnexionBdd(bdd) as c:
+        with ct.ConnexionBdd(nomConnBddOtv) as c:
                 c.sqlAlchemyConn.execute(rqt_geom)
                 c.sqlAlchemyConn.execute(rqt_attr)
                 
-    def localiser_comptage_a_inserer(self,df,bdd, schema_temp,nom_table_temp, table_ref, table_pr):
+    def localiser_comptage_a_inserer(self,df, schema_temp,nom_table_temp, table_ref, table_pr):
         """
         récupérer la geometrie de pt de comptage à inserer dans une df sans les inserer dans la Bdd
         in : 
@@ -292,7 +297,7 @@ class Comptage():
             table_ref : string : schema qualifyed nom de la table de reference du lineaire
             table_pr : string : schema qualifyed nom de la table de reference des pr
         """
-        with ct.ConnexionBdd(bdd) as c:
+        with ct.ConnexionBdd(nomConnBddOtv) as c:
             #passer les données dans Bdd
             c.sqlAlchemyConn.execute(f'drop table if exists {schema_temp}.{nom_table_temp}')
             df.to_sql(nom_table_temp,c.sqlAlchemyConn,schema_temp)   
@@ -315,22 +320,21 @@ class Comptage():
         self.df_attr=self.df_attr.loc[self.df_attr.apply(lambda x : x['debut_periode'].month not in [7,8] and x['fin_periode'].month not in [7,8], 
                                                          axis=1)].copy()
     
-    def donnees_existantes(self, bdd, table_linearisation_existante,table_cpt):
+    def donnees_existantes(self, table_linearisation_existante,table_cpt):
         """
         recuperer une linearisation existante et les points de comptages existants
         in : 
-            bdd : string : identifiant de connexion à la bdd
             table_linearisation_existante : string : schema-qualified table de linearisation de reference
             table_cpt : string : table des comptages
         """    
-        with ct.ConnexionBdd(bdd) as c:
+        with ct.ConnexionBdd(nomConnBddOtv) as c:
             lin_precedente=gp.GeoDataFrame.from_postgis(f'select * from {table_linearisation_existante}',c.sqlAlchemyConn, 
                                                     geom_col='geom',crs={'init': 'epsg:2154'})
             pt_cpt=pd.read_sql(f'select id_comptag,type_poste from comptage.{table_cpt}',c.sqlAlchemyConn)
             lin_precedente=lin_precedente.merge(pt_cpt, how='left', on='id_comptag')
         return lin_precedente
     
-    def plus_proche_voisin_comptage_a_inserer(self,df,bdd, schema_temp,nom_table_temp,table_linearisation_existante,table_pr,table_cpt):
+    def plus_proche_voisin_comptage_a_inserer(self,df, schema_temp,nom_table_temp,table_linearisation_existante,table_pr,table_cpt):
         """
         trouver si nouveau point de comptage est sur  un id_comptag linearise
         in:
@@ -342,9 +346,9 @@ class Comptage():
             table_cpt : string : table des comptages
         """
         #mettre en forme les points a inserer
-        points_a_inserer=self.localiser_comptage_a_inserer(df,bdd, schema_temp,nom_table_temp,table_linearisation_existante, table_pr)
+        points_a_inserer=self.localiser_comptage_a_inserer(df, schema_temp,nom_table_temp,table_linearisation_existante, table_pr)
         #recuperer les donnees existante
-        lin_precedente=self.donnees_existantes(bdd, table_linearisation_existante, table_cpt)
+        lin_precedente=self.donnees_existantes(table_linearisation_existante, table_cpt)
         
         #ne conserver que le spoints a inserer pour lesquels il y a une geometrie
         points_a_inserer_geom=points_a_inserer.loc[~points_a_inserer.geom.isna()].copy()
@@ -363,12 +367,12 @@ class Comptage():
                     ,on='id_comptag').rename(columns={'id_ign':'id_ign_lin','type_poste':'type_poste_new'}).drop_duplicates()
         return ppv_final,points_a_inserer_geom
     
-    def troncon_elemntaires(self,bdd, schema, table_graph,table_vertex,liste_lignes,id_name):    
+    def troncon_elemntaires(self,schema, table_graph,table_vertex,liste_lignes,id_name):    
         """
         a reprendre avec travail Vince
         """
     
-    def corresp_old_new_comptag(self,bdd, schema_temp,nom_table_temp,table_linearisation_existante,
+    def corresp_old_new_comptag(self,schema_temp,nom_table_temp,table_linearisation_existante,
                                 schema, table_graph,table_vertex,id_name,table_pr,table_cpt):
         """
          a reprendre avec travail Vince
@@ -379,10 +383,10 @@ class Comptage():
             else : return False
            
         #verif que les colonnes necessaires sont presentes dans le fichier de bas
-        ppv_final,points_a_inserer_geom=self.plus_proche_voisin_comptage_a_inserer(self.df_attr_insert,bdd, schema_temp,nom_table_temp,
+        ppv_final,points_a_inserer_geom=self.plus_proche_voisin_comptage_a_inserer(self.df_attr_insert, schema_temp,nom_table_temp,
                                                              table_linearisation_existante, table_pr,table_cpt)
         print('plus proche voisin fait')
-        dico_corresp=self.troncon_elemntaires(bdd, schema, table_graph,table_vertex,ppv_final.id_ign_lin.tolist(),id_name)
+        dico_corresp=self.troncon_elemntaires(schema, table_graph,table_vertex,ppv_final.id_ign_lin.tolist(),id_name)
         print('tronc elem fait')
         ppv_final['correspondance']=ppv_final.apply(lambda x : pt_corresp(x['id_ign_lin'],x['id_ign_cpt_new'],dico_corresp),axis=1)
         df_correspondance=ppv_final.loc[(ppv_final['correspondance']) & 
@@ -401,11 +405,10 @@ class Comptage():
                                for elem in zip(*[df[a].tolist() for a in liste_attr])]))[1:-1]
         return valeurs_txt
     
-    def update_bdd(self, schema, table, valeurs_txt,dico_attr_modif,identifiant='id_comptag',bdd='local_otv_boulot',filtre=None):
+    def update_bdd(self, schema, table, valeurs_txt,dico_attr_modif,identifiant='id_comptag',filtre=None):
         """
         mise à jour des id_comptag deja presents dans la base
         en entree : 
-            bdd: txt de connexion à la bdd que l'on veut (cf ficchier id_connexions)
             schema : string nom du schema de la table
             table : string : nom de la table
             valeurs_txt : tuple des valeurs pour mise à jour, issu de creer_valeur_txt_update
@@ -419,14 +422,13 @@ class Comptage():
         rqt_base=f'update {schema}.{table}  as c set {rqt_attr} from (values {valeurs_txt}) as v({identifiant},{attr_fichier}) where v.{identifiant}=c.{identifiant}'
         if filtre : 
             rqt_base=rqt_base+f' and {filtre}'
-        with ct.ConnexionBdd(bdd) as c:
+        with ct.ConnexionBdd(nomConnBddOtv) as c:
                 c.sqlAlchemyConn.execute(rqt_base)
 
-    def insert_bdd(self,bdd, schema, table, df, if_exists='append',geomType='POINT'):
+    def insert_bdd(self, schema, table, df, if_exists='append',geomType='POINT'):
         """
         insérer les données dans la bdd et mettre à jour la geometrie
         en entree : 
-            bdd: txt de connexion à la bdd que l'on veut (cf ficchier id_connexions)
             schema : string nom du schema de la table
             table : string : nom de la table
         """
@@ -434,39 +436,39 @@ class Comptage():
             if df.geometry.name!='geom':
                 df=O.gp_changer_nom_geom(df, 'geom')
                 df.geom=df.apply(lambda x : WKTElement(x['geom'].wkt, srid=2154), axis=1)
-            with ct.ConnexionBdd(bdd) as c:
+            with ct.ConnexionBdd(nomConnBddOtv) as c:
                 df.to_sql(table,c.sqlAlchemyConn,schema=schema,if_exists=if_exists, index=False,
                           dtype={'geom': Geometry()} )
         elif isinstance(df, pd.DataFrame) : 
-            with ct.ConnexionBdd(bdd) as c:
+            with ct.ConnexionBdd(nomConnBddOtv) as c:
                 df.to_sql(table,c.sqlAlchemyConn,schema=schema,if_exists=if_exists, index=False )
                 
     def insererComptage(self, df):
         """
         spécialisation de la fonction insert_bdd pour le cas des comptages
         """
-        self.insert_bdd('local_otv_boulot', 'comptage', 'comptage',
+        self.insert_bdd('comptage', 'comptage',
                         df, 'append', 'POINT')
         
     def insererAgrege(self, df):
         """
         spécialisation de la fonction insert_bdd pour le cas des indicateurs agrege
         """
-        self.insert_bdd('local_otv_boulot', 'comptage', 'indic_agrege',
+        self.insert_bdd('comptage', 'indic_agrege',
                         df, 'append', 'POINT')
         
     def insererMensuel(self, df):
         """
         spécialisation de la fonction insert_bdd pour le cas des indicateurs mensuel
         """
-        self.insert_bdd('local_otv_boulot', 'comptage', 'indic_mensuel',
+        self.insert_bdd('comptage', 'indic_mensuel',
                         df, 'append', 'POINT')
         
     def insererHoraire(self, df):
         """
         spécialisation de la fonction insert_bdd pour le cas des indicateurs horaire
         """
-        self.insert_bdd('local_otv_boulot', 'comptage', 'indic_horaire',
+        self.insert_bdd('comptage', 'indic_horaire',
                         df, 'append', 'POINT')
                 
 class Comptage_cd64(Comptage):
@@ -518,26 +520,25 @@ class Comptage_cd64(Comptage):
         """
         return df.loc[df.annee>=int('2018')].copy()
         
-    def classer_comptage_insert_update(self, bdd='local_otv_boulot',table='compteur', schema='comptage'):
+    def classer_comptage_insert_update(self,table='compteur', schema='comptage'):
         """
         repartir les comptages dans les classes de ceux qu'on connait et les nouveaux
         in : 
-            bdd : string de connexion a la base postgres
             table : strin : non schema-qualifyed table de la bdd contenant les compteurs
             schema : schema contenant les donnees de comptage
         """
         self.df_attr=self.filtrerAnnee(self.df_attr, '2018')
         #creation de l'existant
-        self.comptag_existant_bdd(bdd, table, schema=schema,dep='64', type_poste=False)
+        self.comptag_existant_bdd(table, schema=schema,dep='64', type_poste=False)
         #mise a jour des noms selon la table de corresp existnate
-        self.corresp_nom_id_comptag(self.df_attr, bdd)
+        self.corresp_nom_id_comptag(self.df_attr)
         #ajouter une colonne de geometrie
         #classement
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         return
     
-    def verifComptageInsert(self, dicoCorresp,gdfInsertCorrigee, bdd='local_otv_boulot') : 
+    def verifComptageInsert(self, dicoCorresp,gdfInsertCorrigee) : 
         """
         verifier que les comptages a inserer sont bine nouveau en les geolocalisant et comparant avec les donnes connues 
         in : 
@@ -547,7 +548,7 @@ class Comptage_cd64(Comptage):
 
         #il reste des geoms nulles, ajoutées manuellement
         #après verif on passe le dico corresp dans la table bbd des coreesp_id_comptag
-        self.insert_bdd(bdd, 'comptage', 'corresp_id_comptag', 
+        self.insert_bdd('comptage', 'corresp_id_comptag', 
                         pd.DataFrame.from_dict({'id_gest': [k for k in  dicoCorresp.keys()],'id_gti':[v for v in  dicoCorresp.values()]}))
         #recalcul des correspondances
         self.classer_comptage_insert_update()
@@ -590,19 +591,19 @@ class Comptage_cd23(Comptage):
         df_excel_filtre['src']='tableur CD23'
         self.df_attr=df_excel_filtre
         
-    def classer_comptage_update_insert(self,bdd='local_otv_boulot', table_cpt='compteur'):
+    def classer_comptage_update_insert(self, table_cpt='compteur'):
         """
         separer les donnes a mettre a jour de celles a inserer, selon les correspondances connues et les points existants
         """
-        self.corresp_nom_id_comptag(self.df_attr, bdd)
-        self.comptag_existant_bdd(bdd, table_cpt, dep='23')
+        self.corresp_nom_id_comptag(self.df_attr)
+        self.comptag_existant_bdd(table_cpt, dep='23')
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         
-    def update_bdd_23(self,bdd, schema, table):
+    def update_bdd_23(self, schema, table):
         valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag','tmja','pc_pl','src', 'fichier'])
         dico_attr_modif={f'tmja_{self.annee}':'tmja', f'pc_pl_{self.annee}':'pc_pl',f'src_{self.annee}':'src', 'fichier':'fichier'}
-        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)
+        self.update_bdd(schema, table, valeurs_txt,dico_attr_modif)
     
     def donneesMens(self):
         """
@@ -791,14 +792,12 @@ class Comptage_cd17(Comptage) :
                                                    x['fin_periode'].strftime('%d/%m/%Y')+',v85_tv '+str(x['v85']), axis=1)
         return donnees_brutes
     
-    def conversion_id_comptg_existant_xls_brochure (self,bdd):
+    def conversion_id_comptg_existant_xls_brochure (self):
         """
         prendre den compte si des id_comptages ont unnom differents entre le CD17 et le Cerema
-        in : 
-            bdd : l'identifiant de la Bdd pour recuperer la table de correspondance
         """
         rqt_corresp_comptg='select * from comptage.corresp_id_comptag'
-        with ct.ConnexionBdd(bdd) as c:
+        with ct.ConnexionBdd(nomConnBddOtv) as c:
             corresp_comptg=pd.read_sql(rqt_corresp_comptg, c.sqlAlchemyConn)
         self.df_attr=self.fichier_src.copy()
         self.df_attr['id_comptag']=self.df_attr.apply(lambda x : corresp_comptg.loc[corresp_comptg['id_gest']==x['id_comptag']].id_gti.values[0] 
@@ -821,7 +820,7 @@ class Comptage_cd17(Comptage) :
         #identification des points à mettre a jour
         self.df_attr_update=self.df_attr.loc[self.df_attr['id_comptag'].isin(self.existant.id_comptag.tolist())]
   
-    def mises_forme_bdd_brochure_pdf(self, bdd, schema, table, dep, type_poste):
+    def mises_forme_bdd_brochure_pdf(self, schema, table, dep, type_poste):
         """
         mise en forme et decompoistion selon comptage existant ou non dans Bdd
         in : 
@@ -829,7 +828,6 @@ class Comptage_cd17(Comptage) :
         en sortie : 
             df_attr_insert : df des pt de comptage a insrere
             df_attr_update : df des points de comtage a mettre a jour
-            bdd: txt de connexion à la bdd que l'on veut (cf ficchier id_connexions)
         """ 
         #mise en forme
         if self.type_fichier=='brochure' : 
@@ -849,24 +847,23 @@ class Comptage_cd17(Comptage) :
         df_attr['concession']='N'
         df_attr['fichier']=self.fichier
             #verif que pas de doublons et seprartion si c'est le cas
-        self.comptag_existant_bdd(bdd, table, schema, dep, type_poste)
-        self.corresp_nom_id_comptag(df_attr, bdd)
+        self.comptag_existant_bdd(table, schema, dep, type_poste)
+        self.corresp_nom_id_comptag(df_attr)
         df_attr_insert=df_attr.loc[~df_attr['id_comptag'].isin(self.existant.id_comptag.to_list())]
         df_attr_update=df_attr.loc[df_attr['id_comptag'].isin(self.existant.id_comptag.to_list())]
         self.df_attr, self.df_attr_insert, self.df_attr_update=df_attr, df_attr_insert,df_attr_update
         
-    def update_bdd_17(self,bdd, schema, table, localisation='boulot'):
+    def update_bdd_17(self, schema, table, localisation='boulot'):
         valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag',f'tmja_{self.annee}',f'pc_pl_{self.annee}', 'src',
                                                                       f'obs_{self.annee}','fichier'])
         dico_attr_modif={f'tmja_{self.annee}':f'tmja_{self.annee}', f'pc_pl_{self.annee}':f'pc_pl_{self.annee}', f'src_{self.annee}':'src',
                          f'obs_{self.annee}':f'obs_{self.annee}','fichier':'fichier'}
-        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)
+        self.update_bdd(schema, table, valeurs_txt,dico_attr_modif)
        
-    def insert_bdd_mens(self,bdd, schema, table) :
+    def insert_bdd_mens(self, schema, table) :
         """
         insérer des données dans la table des comptages mensuels
         en entree : 
-            bdd: txt de connexion à la bdd que l'on veut (cf ficchier id_connexions)
             schema : string nom du schema de la table
             table : string : nom de la table
         """ 
@@ -875,7 +872,7 @@ class Comptage_cd17(Comptage) :
         mens['donnees_type']='tmja' #a travailler plus tatrd si on doit extraire le tmja à partir des noms de colonnes, en lien du coup avec permanent_csv_attr()
         mens['annee']=str(self.annee)
         mens_fin=mens[list_attr_mens].copy()
-        with ct.ConnexionBdd(bdd) as c:
+        with ct.ConnexionBdd(nomConnBddOtv) as c:
             mens_fin.to_sql(table,c.sqlAlchemyConn,schema=schema,if_exists='append', index=False )
         
         
@@ -913,7 +910,7 @@ class Comptage_cd19(Comptage):
         donnees_transfert=donnees_filtrees.loc[donnees_filtrees['tmja']>0].copy()
         self.df_attr= donnees_transfert.copy()
     
-    def classer_comptage_update_insert(self,bdd,table_cpt,schema_cpt,
+    def classer_comptage_update_insert(self,table_cpt,schema_cpt,
                                        schema_temp,nom_table_temp,table_linearisation_existante,
                                        schema_graph, table_graph,table_vertex,id_name,table_pr) : 
         """
@@ -923,29 +920,29 @@ class Comptage_cd19(Comptage):
             table_pr : string : schema qualifyed nom de la table de reference des pr
         """
         #creation de l'existant
-        self.comptag_existant_bdd(bdd, schema=schema_cpt, table=table_cpt,dep='19', type_poste=False)
+        self.comptag_existant_bdd(schema=schema_cpt, table=table_cpt,dep='19', type_poste=False)
         #mise a jour des noms selon la table de corresp existnate
-        self.corresp_nom_id_comptag(self.df_attr, bdd)
+        self.corresp_nom_id_comptag(self.df_attr)
         #classement
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         #recherche de correspondance
-        corresp_cd19=self.corresp_old_new_comptag(bdd, schema_temp,nom_table_temp,table_linearisation_existante,
+        corresp_cd19=self.corresp_old_new_comptag(schema_temp,nom_table_temp,table_linearisation_existante,
                                        schema_graph, table_graph,table_vertex,id_name,table_pr)[0]
         #insertion des correspondance dans la table dediee
-        self.insert_bdd(bdd,schema_cpt,'corresp_id_comptag',corresp_cd19[['id_comptag','id_comptag_lin']].rename(columns={'id_comptag':'id_gest','id_comptag_lin':'id_gti'}))
+        self.insert_bdd(schema_cpt,'corresp_id_comptag',corresp_cd19[['id_comptag','id_comptag_lin']].rename(columns={'id_comptag':'id_gest','id_comptag_lin':'id_gti'}))
         #ajout de correspondance manuelle (3, à cause de nom de voie notamment) et creation d'un unique opint a insert
         #nouvelle mise a jour de l'id comptag suivant correspondance
-        self.comptag_existant_bdd(bdd, schema=schema_cpt, table=table_cpt,dep='19', type_poste=False)
-        self.corresp_nom_id_comptag(self.df_attr, bdd)
+        self.comptag_existant_bdd(schema=schema_cpt, table=table_cpt,dep='19', type_poste=False)
+        self.corresp_nom_id_comptag(self.df_attr)
         #puis nouveau classement
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
 
-    def update_bdd_19(self,bdd, schema, table):
+    def update_bdd_19(self, schema, table):
         valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag','tmja','pc_pl', 'src'])
         dico_attr_modif={'tmja_2019':'tmja', 'pc_pl_2019':'pc_pl', 'src_2019':'src'}
-        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)
+        self.update_bdd(schema, table, valeurs_txt,dico_attr_modif)
 
 class Comptage_cd40(Comptage):
     """
@@ -1069,24 +1066,24 @@ class Comptage_cd40(Comptage):
         self.df_attr=pd.DataFrame(dico_annee)
         self.df_attr_mens=donnees_mens_tot.copy()
     
-    def classer_comptage_insert_update(self,bdd,table, schema):
+    def classer_comptage_insert_update(self,table, schema):
         """
         repartir les donnes selon si les comptages sont a insrere ou mette a jour
         là c'est un peu biaisé car on a que des comptages permanents sans nouveaux
         """
         #creation de l'existant
-        self.comptag_existant_bdd(bdd, table, schema=schema,dep='40', type_poste=False)
+        self.comptag_existant_bdd(table, schema=schema,dep='40', type_poste=False)
         #mise a jour des noms selon la table de corresp existnate
-        self.corresp_nom_id_comptag(bdd,self.df_attr)
-        self.corresp_nom_id_comptag(self.df_attr_mens, bdd)
+        self.corresp_nom_id_comptag(self.df_attr)
+        self.corresp_nom_id_comptag(self.df_attr_mens)
         #classement
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         
-    def update_bdd_40(self,bdd, schema, table):
+    def update_bdd_40(self, schema, table):
         valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag','tmja','pc_pl'])
         dico_attr_modif={'tmja_2019':'tmja', 'pc_pl_2019':'pc_pl'}
-        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)
+        self.update_bdd(schema, table, valeurs_txt,dico_attr_modif)
     
 class Comptage_cd47(Comptage):
     """
@@ -1382,7 +1379,7 @@ class Comptage_cd47(Comptage):
                
         return df_agrege,df_horaire_tot, df_mensuel_tot   
     
-    def classer_comptage_update_insert(self,bdd):
+    def classer_comptage_update_insert(self):
         """
         a prtir du dico tot (regrouper_dico), separer les comptages a mettre a jour et ceux à inserer dans les attributs
         df_attr_update et df_attr_insert
@@ -1391,18 +1388,18 @@ class Comptage_cd47(Comptage):
         self.regrouper_dico()
         self.df_attr, self.df_attr_horaire, self.df_attr_mens=self.dataframe_dico(self.dico_tot)
         #prende en compte les variation d'id_comptag en gti et le gest
-        self.corresp_nom_id_comptag(self.df_attr, bdd)
+        self.corresp_nom_id_comptag(self.df_attr)
         #comparer avec les donnees existantes
         self.comptag_existant_bdd(dep='47')
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
     
-    def update_bdd_47(self,bdd,schema,table,df):
+    def update_bdd_47(self,schema,table,df):
         """
         mise a jour base sur la fonction update bdd
         """
         val_txt=self.creer_valeur_txt_update(df, ['id_comptag','tmja','pc_pl','src'])
-        self.update_bdd(bdd,schema,table, val_txt,{f'tmja_{str(self.annee)}':'tmja',f'pc_pl_{str(self.annee)}':'pc_pl',f'src_{str(self.annee)}':'src'})
+        self.update_bdd(schema,table, val_txt,{f'tmja_{str(self.annee)}':'tmja',f'pc_pl_{str(self.annee)}':'pc_pl',f'src_{str(self.annee)}':'src'})
         
     def mise_en_forme_insert(self):
         """
@@ -1618,14 +1615,13 @@ class Comptage_cd87(Comptage):
         self.dataframe_dico()
         self.filtrer_periode_ponctuels()
     
-    def classer_comptage_update_insert(self,bdd,table_cpt,schema_cpt,
+    def classer_comptage_update_insert(self,table_cpt,schema_cpt,
                                        schema_temp,nom_table_temp,table_linearisation_existante,
                                        schema_graph, table_graph,table_vertex,id_name,table_pr):
         """
         classer la df des comptage (self.df_attr) selon le spoints à mettre à jour et ceux à inserer, en prenant en compte les points diont l'id_comptag
         diffère mais qui sont sur le mm troncon elemnraire
         in :
-            bdd :string :id de la bdd
             table_cpt : string : nom de la table dans la bdd contenar les cpt
             schema_cpt :string : nom du schma contenant la table
             schema_temp : string : nom du schema en bdd opur calcul geom, cf localiser_comptage_a_inserer
@@ -1639,28 +1635,28 @@ class Comptage_cd87(Comptage):
         """
         #fare le tri avec les comptages existants : 
         #recuperer les compmtages existants
-        self.comptag_existant_bdd(bdd, table_cpt, schema=schema_cpt,dep='87', type_poste=False)
+        self.comptag_existant_bdd(table_cpt, schema=schema_cpt,dep='87', type_poste=False)
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         #obtenir une cle de correspondace pour les comptages tournants et permanents
-        df_correspondance=self.corresp_old_new_comptag(bdd, schema_temp,nom_table_temp,table_linearisation_existante,
+        df_correspondance=self.corresp_old_new_comptag(schema_temp,nom_table_temp,table_linearisation_existante,
                                         schema_graph, table_graph,table_vertex,id_name,table_pr,table_cpt)[0]
         #passer la df de correspondance dans le table corresp_id_comptage
         #verifier si cette clé n'existent pas deja dans la table de correspondance et passer les nouvelles dedans
         rqt_corresp_comptg='select * from comptage.corresp_id_comptag'
-        with ct.ConnexionBdd(bdd) as c:
+        with ct.ConnexionBdd(nomConnBddOtv) as c:
             corresp_comptg=pd.read_sql(rqt_corresp_comptg, c.sqlAlchemyConn)
         df_correspondance=df_correspondance[0].loc[~df_correspondance[0]['id_comptag'].isin(corresp_comptg.id_gest.tolist())]
         if not df_correspondance.empty:
-            self.insert_bdd(bdd, 'comptage', 'corresp_id_comptag', 
+            self.insert_bdd('comptage', 'corresp_id_comptag', 
                df_correspondance.rename(columns={'id_comptag_lin':'id_gti','id_comptag':'id_gest'})[['id_gest','id_gti']])
         #faire la correspondance entre les noms de comptage
-        self.corresp_nom_id_comptag(self.df_attr, bdd)
+        self.corresp_nom_id_comptag(self.df_attr)
         #recalculer les insert et update
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
     
-    def update_bdd_d87(self,bdd,table_cpt,schema_cpt):
+    def update_bdd_d87(self,table_cpt,schema_cpt):
         """
         mettre à jour la bdd avec df_attr_update, en ayant au préalbale traite les NaN
         """
@@ -1674,9 +1670,9 @@ class Comptage_cd87(Comptage):
         valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update, ['id_comptag','tmja','pc_pl','obs','src','fichier'])
         dico_attr={'tmja_'+self.annee:'tmja','pc_pl_'+self.annee:'pc_pl','obs_'+self.annee:'obs','src_'+self.annee:'src','fichier':'fichier'}
         #update
-        self.update_bdd(bdd, schema_cpt, table_cpt, valeurs_txt,dico_attr)
+        self.update_bdd(schema_cpt, table_cpt, valeurs_txt,dico_attr)
         
-    def insert_bdd_d87(self,bdd,table_cpt,schema_cpt,nom_table_ref,nom_table_pr):
+    def insert_bdd_d87(self,table_cpt,schema_cpt,nom_table_ref,nom_table_pr):
         """
         inserer les point df_attr_insert qui n'était pas à mettre à jour
         in : 
@@ -1697,9 +1693,9 @@ class Comptage_cd87(Comptage):
         self.df_attr_insert['obs']=self.df_attr_insert.apply(lambda x : f"""nouveau_point,{x['date_debut'].strftime("%d/%m/%Y")}-{x['date_fin'].strftime("%d/%m/%Y")}""" if not (pd.isnull(x['date_debut']) and  pd.isnull(x['date_fin'])) else None,axis=1)
         self.df_attr_insert.rename(columns={'absc' : 'abs', 'tmja':'tmja_'+self.annee,'pc_pl':'pc_pl_'+self.annee,'obs':'obs_'+self.annee},inplace=True)
         self.df_attr_insert.drop(['date_debut','date_fin','route'],axis=1,inplace=True)
-        self.insert_bdd(bdd,schema_cpt,table_cpt, self.df_attr_insert)
+        self.insert_bdd(schema_cpt,table_cpt, self.df_attr_insert)
         #mettre à jour la geom
-        self.maj_geom(bdd, schema_cpt, table_cpt,nom_table_ref,nom_table_pr, dep='87')
+        self.maj_geom(schema_cpt, table_cpt,nom_table_ref,nom_table_pr, dep='87')
     
     class CptCd87_ManqueFichierDansDicoError(Exception):  
         """
@@ -1880,25 +1876,24 @@ class Comptage_cd16(Comptage):
         """
         return pd.concat([self.creerDfTtJoursIris(self.dossierIrisTv, 'TV'), self.creerDfTtJoursIris(self.dossierIrisPl, 'PL')])
 
-    def classer_comptage_update_insert(self,bdd,table_cpt):
+    def classer_comptage_update_insert(self,table_cpt):
         """
         faire le tri entre les comptages à mettre a jour et ceux à inserer. Pour arppel dans le 16 normalement on a que du update
         in :
-            bdd : string, descriptf bdd (cf module Connexion_transfert de Outils
             table_cpt : string : nom e la table des compatges que l'on va chercher a modifer
         """
-        self.comptag_existant_bdd(bdd, table_cpt, dep='16')
-        self.corresp_nom_id_comptag(self.df_attr, bdd)
+        self.comptag_existant_bdd(table_cpt, dep='16')
+        self.corresp_nom_id_comptag(self.df_attr)
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
 
-    def update_bdd_16(self,bdd, schema, table):
+    def update_bdd_16(self, schema, table):
         """
         mettre à jour la table des comptages dans le 16
         """
         valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag','tmja','pc_pl','src'])
         dico_attr_modif={'tmja_'+str(self.annee):'tmja', 'pc_pl_'+str(self.annee):'pc_pl','src_'+str(self.annee):'src'}
-        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)
+        self.update_bdd(schema, table, valeurs_txt,dico_attr_modif)
     
 
 class Comptage_cd86(Comptage):
@@ -1930,11 +1925,11 @@ class Comptage_cd86(Comptage):
         donnees_brutes_perm['id_gest']=donnees_brutes_perm.apply(lambda x : f"86-{x['route']}-{x['pr']}+{x['absc']}", axis=1)
         return donnees_brutes_perm
 
-    def corresp_perm(self, bdd, table):
+    def corresp_perm(self, table):
         """
         creer le dico de corresp des compt perm fouri en 2018 avec ceux existants
         """
-        self.comptag_existant_bdd(bdd, table, schema='comptage',dep='86')
+        self.comptag_existant_bdd(table, schema='comptage',dep='86')
         corresp=self.existant[['id_comptag','route','pr','abs']].merge(self.ouvrir_cpt_perm_xls(), left_on=['route','pr'], right_on=['route','PLOD'], how='right').sort_values('id_comptag')
         corresp['id_comptag']=corresp.apply(lambda x : x['id_comptag'] if not pd.isnull(x['id_comptag']) else f"86-{x['route']}-{x['pr_y']}+{x['absc']}", axis=1)
         #le dico de correspondance à inserer dans corresp_id_comptage
@@ -1990,13 +1985,13 @@ class Comptage_cd86(Comptage):
         donnees_concat.TYPE_POSTE=donnees_concat.TYPE_POSTE.apply(lambda x : dico_corresp_type_poste[x])
         return donnees_brutes_perm,donnees_brutes_second, donnees_concat
     
-    def equivalence_id_comptag(self,bdd,table_cpt, df) : 
+    def equivalence_id_comptag(self,table_cpt, df) : 
         """
         pour conserver soit l'id_comptag issu du plod, soit celui issu du cumul, si il est présent dans la liste des id_coptage ou dans liste des id_cgest de la table corresp
         """
         rqt_corresp_comptg='select * from comptage.corresp_id_comptag'
         rqt_id_comtg=f"select * from comptage.{table_cpt} where dep='86'"
-        with ct.ConnexionBdd(bdd) as c:
+        with ct.ConnexionBdd(nomConnBddOtv) as c:
             list_corresp_comptg=pd.read_sql(rqt_corresp_comptg, c.sqlAlchemyConn).id_gest.tolist()
             list_id_comptg=gp.GeoDataFrame.from_postgis(rqt_id_comtg, c.sqlAlchemyConn, geom_col='geom',crs={'init': 'epsg:2154'}).id_comptag.tolist()
         
@@ -2008,7 +2003,7 @@ class Comptage_cd86(Comptage):
     
         df['id_comptag']=df.apply(lambda x : maj_id_comptg(x['id_gest_plod'], x['id_gest_cumuld'], list_id_comptg,list_corresp_comptg ), axis=1)
     
-    def comptage_forme(self,bdd, table_cpt) : 
+    def comptage_forme(self, table_cpt) : 
         """
         creer le df_attr a partir des donnees secondaire et permanent
         2 cas de figuer pour le moment : en 2018 ajout des pr + abs issus de plod et abscd dans la liste de correspondance, en 2019 conservation des 2 colonnes et recherche si existants
@@ -2018,7 +2013,7 @@ class Comptage_cd86(Comptage):
             self.df_attr=self.df_attr.loc[~self.df_attr.isna().any(axis=1)].copy()
         else : 
             donnees_concat=self.ouvrir_fichier_unique()[2]
-            self.equivalence_id_comptag(bdd, table_cpt, donnees_concat)
+            self.equivalence_id_comptag(table_cpt, donnees_concat)
             self.df_attr=donnees_concat[['TMJA','POURCENTAGE_PL','TYPE_POSTE','route','id_comptag']].rename(columns={a:a.lower() for a 
                                         in donnees_concat[['TMJA','POURCENTAGE_PL','TYPE_POSTE','route','id_comptag']].columns}).rename(columns={'pourcentage_pl':'pc_pl'})
             self.df_attr['pr']=self.df_attr.id_comptag.apply(lambda x : int(x.split('-')[2].split('+')[0]))
@@ -2026,30 +2021,30 @@ class Comptage_cd86(Comptage):
         self.df_attr['src']='tableur'
     
     
-    def classer_comptage_update_insert(self,bdd, table_cpt):
-        self.comptag_existant_bdd(bdd, table_cpt, dep='86')
-        self.corresp_nom_id_comptag(self.df_attr, bdd)
+    def classer_comptage_update_insert(self, table_cpt):
+        self.comptag_existant_bdd(table_cpt, dep='86')
+        self.corresp_nom_id_comptag(self.df_attr)
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         
-    def update_bdd_86(self,bdd, schema, table):
+    def update_bdd_86(self, schema, table):
         """
         mettre à jour la table des comptages dans le 16
         """
         valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag','tmja','pc_pl','src'])
         dico_attr_modif={f'tmja_{str(self.annee)}':'tmja', f'pc_pl_{str(self.annee)}':'pc_pl',f'src_{str(self.annee)}':'src'}
-        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)
+        self.update_bdd(schema, table, valeurs_txt,dico_attr_modif)
     
-    def insert_bdd_86(self,bdd, schema_cpt, table_cpt):   
+    def insert_bdd_86(self):   
         self.df_attr_insert['dep']='86'
         self.df_attr_insert['reseau']='RD'
         self.df_attr_insert['gestionnai']='CD86'
         self.df_attr_insert['concession']='N'
         self.df_attr_insert['obs']="nouveau_point 2019, denominationCD86 ='tournant'"
         self.df_attr_insert.rename(columns={'absc' : 'abs', 'tmja':'tmja_'+str(self.annee),'pc_pl':'pc_pl_'+str(self.annee),'obs':'obs_'+str(self.annee), 'src':'src_'+str(self.annee)},inplace=True)
-        self.insert_bdd(bdd,schema_cpt,table_cpt, self.df_attr_insert)
+        self.insert_bdd(schemaComptage,tableComptage, self.df_attr_insert)
         #mettre à jour la geom
-        self.maj_geom(bdd, schema_cpt, table_cpt, dep='86')
+        self.maj_geom(schemaComptage, tableComptage, dep='86')
         
         
 class Comptage_cd24(Comptage):
@@ -2105,13 +2100,13 @@ class Comptage_cd24(Comptage):
         self.df_attr=donnees_finales
         self.df_attr_mens=donnees_mens
         
-    def classer_comptage_update_insert(self,bdd, table_cpt):
+    def classer_comptage_update_insert(self, table_cpt):
         """
         attention, on aurait pu ajouter un check des comptages deja existant et rechercher les correspondances comme dans le 87,
         mais les données PR de l'IGN sont trop pourries dans ce dept, dc corresp faite à la main en amont
         """
-        self.corresp_nom_id_comptag(self.df_attr, bdd)
-        self.comptag_existant_bdd(bdd, table_cpt, dep='24')
+        self.corresp_nom_id_comptag(self.df_attr)
+        self.comptag_existant_bdd(table_cpt, dep='24')
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         """
@@ -2120,13 +2115,13 @@ class Comptage_cd24(Comptage):
              'referentiel','troncon_route_bdt24_ed17_l','troncon_route_bdt24_ed17_l_vertices_pgr','id')
         """
         
-    def update_bdd_24(self,bdd, schema, table):
+    def update_bdd_24(self, schema, table):
         valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag','tmja','pc_pl','src', 'fichier','obs','type_poste'])
         dico_attr_modif={f'tmja_{self.annee}':'tmja', f'pc_pl_{self.annee}':'pc_pl',f'src_{self.annee}':'src', 
                          'fichier':'fichier',f'obs_{self.annee}':'obs','type_poste':'type_poste'}
-        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif) 
+        self.update_bdd(schema, table, valeurs_txt,dico_attr_modif) 
     
-    def insert_bdd_24(self,bdd, schema, table):
+    def insert_bdd_24(self, schema, table):
         self.df_attr_insert=self.df_attr_insert.loc[self.df_attr_insert.geometry!=0].copy()
         self.df_attr_insert.loc[self.df_attr_insert['id_comptag']=='24-D939-4+610', 'geometry']=Point(517579.400,6458283.399)
         self.df_attr_insert.loc[self.df_attr_insert['id_comptag']=='24-D939-4+610', 'obs_geo']='mano'
@@ -2141,7 +2136,7 @@ class Comptage_cd24(Comptage):
         self.df_attr_insert['x_l93']=self.df_attr_insert.apply(lambda x : round(x['geometry'].x,3), axis=1)
         self.df_attr_insert['y_l93']=self.df_attr_insert.apply(lambda x : round(x['geometry'].y,3), axis=1)
         self.df_attr_insert['convention']=False
-        self.insert_bdd(bdd, schema, table,self.df_attr_insert)
+        self.insert_bdd(schema, table,self.df_attr_insert)
  
 class Comptage_cd33(Comptage):
     """
@@ -2173,13 +2168,13 @@ class Comptage_cd33(Comptage):
         gdfPerm['type_poste']='permanent'
         return gdfPerm
     
-    def trierPermConnus(self, bdd, table, localisation):
+    def trierPermConnus(self, table, localisation):
         """
         trouver les comptages permanents connus a partir de l'annee precedente
         """
         gdfPerm=self.analysePerm()
         #on va récupérer les données existantes : 
-        self.comptag_existant_bdd(bdd, table, schema='comptage',localisation=localisation,dep='33', gest='CD33')
+        self.comptag_existant_bdd(table, schema='comptage',localisation=localisation,dep='33', gest='CD33')
         #et tenter une jointure sur les donnees 2018 :  tous y sont, donc c'est bon
         GdfPerm=gdfPerm[['troncon','route', f'tmja_{self.annee}', f'tmja_{self.annee-1}', f'pc_pl_{self.annee}', 'geometry',
                                   'fichier',f'src_{self.annee}','convention','type_poste']+[k for k in dico_mois.keys()]].merge(
@@ -2235,7 +2230,7 @@ class Comptage_cd33(Comptage):
                 donnees_mens_tour.loc[j+1000,'donnees_type']='pc_pl'
         return donnees_mens_tour
             
-    def correspondanceTournant(self, bdd, localisation, rqtPpvCptTournant, rqtCptExistant, rqtGeomReferentielEpure, rqtPpvCptBdd,
+    def correspondanceTournant(self, localisation, rqtPpvCptTournant, rqtCptExistant, rqtGeomReferentielEpure, rqtPpvCptBdd,
                                schema, table_graph, table_vertex, dfTournant ):
         """"
         Comme on a aucun PR + abs, on fait une correspondanec en cherchant les id_ign commun avec une determination de troncon elementaire,
@@ -2247,14 +2242,14 @@ class Comptage_cd33(Comptage):
                 return True
             else : return False
             
-        with ct.ConnexionBdd(bdd, localisation) as c : 
+        with ct.ConnexionBdd(localisation) as c : 
             list_lgn=pd.read_sql(rqtPpvCptTournant, c.sqlAlchemyConn).id_ign.tolist()
             cpt_existant=pd.read_sql(rqtCptExistant, c.sqlAlchemyConn)
             dfDepartementale=gp.read_postgis(rqtGeomReferentielEpure, c.sqlAlchemyConn)
             ppvIdComptag=pd.read_sql(rqtPpvCptBdd, c.sqlAlchemyConn)
         
         #dico des troncons elementaire
-        simplification=self.troncon_elemntaires(bdd, schema, table_graph, table_vertex,liste_lignes=list_lgn,id_name='id')
+        simplification=self.troncon_elemntaires(schema, table_graph, table_vertex,liste_lignes=list_lgn,id_name='id')
         #plus proche voisin des comptages tournants
         ppvTournIgn=O.plus_proche_voisin(dfTournant[['troncon','geometry']],dfDepartementale,20,'troncon','id_ign' )
         #synthese des plus proche voisin
@@ -2299,11 +2294,11 @@ class Comptage_cd33(Comptage):
         return df_attr_insert[['id_comptag','route','type_poste','src_geo','obs_geo','dep','reseau','gestionnai','concession','x_l93','y_l93',f'tmja_{self.annee}',
                 f'pc_pl_{self.annee}', f'obs_{self.annee}', f'src_{self.annee}', 'fichier', 'convention', 'geometry', 'troncon']]
         
-    def update_bdd_33(self,bdd, schema, table):
+    def update_bdd_33(self, schema, table):
         valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag',f'tmja_{self.annee}',f'pc_pl_{self.annee}',f'src_{self.annee}', 'fichier'])
         dico_attr_modif={f'tmja_{self.annee}':f'tmja_{self.annee}', f'pc_pl_{self.annee}':f'pc_pl_{self.annee}',f'src_{self.annee}':f'src_{self.annee}', 
                          'fichier':'fichier'}
-        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)
+        self.update_bdd(schema, table, valeurs_txt,dico_attr_modif)
     
 class Comptage_vinci(Comptage):
     """
@@ -2322,7 +2317,7 @@ class Comptage_vinci(Comptage):
         return donnees_brutes
     
     def importer_donnees_correspondance(self):
-        with ct.ConnexionBdd('local_otv_boulot') as c :
+        with ct.ConnexionBdd(nomConnBddOtv) as c :
             rqt=f"""select * from source.asf_otv_tmja_2017"""
             base=pd.read_sql(rqt, c.sqlAlchemyConn).rename(columns={'(*) PR début':'pr_deb'})
             base=base.loc[~base.pr_deb.isna()].copy()
@@ -2352,18 +2347,18 @@ class Comptage_vinci(Comptage):
         self.df_attr_mens['annee']=str(self.annee)
         self.df_attr_mens['fichier']=os.path.basename(self.fichier_perm)
         
-    def classer_comptage_update_insert(self,bdd, table_cpt):
+    def classer_comptage_update_insert(self, table_cpt):
         """
         uniquement pour verif, car normalemnet df_attr=df_atr_update et df_attr_insertest vide
         """
-        self.comptag_existant_bdd(bdd, table_cpt)
+        self.comptag_existant_bdd(table_cpt)
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         
         
-    def update_bdd_Vinci(self,bdd, schema, table):
+    def update_bdd_Vinci(self, schema, table):
         val_txt=self.creer_valeur_txt_update(self.df_attr, ['id_comptag','tmja','pc_pl', 'src'])
-        self.update_bdd(bdd, schema, table, val_txt,{f'tmja_{str(self.annee)}':'tmja',f'pc_pl_{str(self.annee)}':'pc_pl', f'src_{str(self.annee)}':'src'})
+        self.update_bdd(schema, table, val_txt,{f'tmja_{str(self.annee)}':'tmja',f'pc_pl_{str(self.annee)}':'pc_pl', f'src_{str(self.annee)}':'src'})
         
 class Comptage_alienor(Comptage):    
     def __init__(self,fichier_perm, annee):
@@ -2390,9 +2385,9 @@ class Comptage_alienor(Comptage):
         self.df_attr=donnees_agregees.copy()
         self.df_attr_mens=donnees_mens.copy()
     
-    def update_bdd_Alienor(self,bdd, schema, table):
+    def update_bdd_Alienor(self, schema, table):
         val_txt=self.creer_valeur_txt_update(self.df_attr, ['id_comptag','tmja_'+str(self.annee),'pc_pl_'+str(self.annee), 'src'])
-        self.update_bdd(bdd, schema, table, val_txt,{'tmja_'+str(self.annee):'tmja_'+str(self.annee),'pc_pl_'+str(self.annee):'pc_pl_'+str(self.annee), 
+        self.update_bdd(schema, table, val_txt,{'tmja_'+str(self.annee):'tmja_'+str(self.annee),'pc_pl_'+str(self.annee):'pc_pl_'+str(self.annee), 
                                                      'src_'+str(self.annee):'src'})    
 
 class Comptage_atlandes(Comptage):    
@@ -2586,8 +2581,8 @@ class Comptage_GrandPoitiers(Comptage):
         donnees_horaires_f['id_comptag']=id_comptag
         return tmja,pc_pl, donnees_horaires_f,fichiers_sens
     
-    def comptage_forme(self, bdd):
-        with ct.ConnexionBdd(bdd) as c : 
+    def comptage_forme(self):
+        with ct.ConnexionBdd(nomConnBddOtv) as c : 
             rqt="select * from comptage.gp_tmja_2015_p"
             points_existants=gp.read_postgis(rqt,c.sqlAlchemyConn)
         i=0
@@ -2608,9 +2603,9 @@ class Comptage_GrandPoitiers(Comptage):
         self.df_attr=pd.DataFrame.from_dict(dico_cpt, orient='index').reset_index().rename(columns={'index':'id_comptag'})
         self.df_attr_horaire=donnees_horaires_tot.copy()
         
-    def update_bdd_grdPoi(self,bdd, schema, table):
+    def update_bdd_grdPoi(self, schema, table):
         val_txt=self.creer_valeur_txt_update(self.df_attr, ['id_comptag','tmja','pc_pl', 'src'])
-        self.update_bdd(bdd, schema, table, val_txt,{f'tmja_{str(self.annee)}':'tmja',f'pc_pl_{str(self.annee)}':'pc_pl', f'src_{str(self.annee)}':'src'})
+        self.update_bdd(schema, table, val_txt,{f'tmja_{str(self.annee)}':'tmja',f'pc_pl_{str(self.annee)}':'pc_pl', f'src_{str(self.annee)}':'src'})
     
     class PasDeFichierError(Exception): 
         def __init__(self, ref_pt):
@@ -2793,10 +2788,10 @@ class Comptage_Niort(Comptage):
         
         self.df_attr=pd.concat([indic_agreg_2sens(k,v) for k,v in dico_fichiers_final.items()], axis=0,sort=False)
         
-    def update_bdd_Niort(self,bdd, schema, table):
+    def update_bdd_Niort(self, schema, table):
         valeurs_txt=self.creer_valeur_txt_update(self.df_attr,['id_comptag','tmja','pc_pl'])
         dico_attr_modif={f'tmja_{self.annee}':'tmja', f'pc_pl_{self.annee}':'pc_pl'}
-        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)
+        self.update_bdd(schema, table, valeurs_txt,dico_attr_modif)
         
 class Comptage_GrandDax(Comptage): 
     def __init__(self, fichiers_pt_comptages):
@@ -3238,10 +3233,10 @@ class Comptage_LaRochelle(Comptage):
                       'fichier':[self.dossier+a for a in list_fichiers]})
         self.df_attr_horaire=pd.concat([*list_df_tv,*list_df_pl],axis=0, sort=False)
         
-    def update_bdd_LaRochelle(self,bdd, schema, table):
+    def update_bdd_LaRochelle(self, schema, table):
         valeurs_txt=self.creer_valeur_txt_update(self.df_attr,['id_comptag','tmja_2015','pc_pl_2015','src_2015', 'fichier'])
         dico_attr_modif={f'tmja_2016':'tmja_2015', f'pc_pl_2016':'pc_pl_2015',f'src_2016':'src_2015', 'fichier':'fichier'}
-        self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)  
+        self.update_bdd(schema, table, valeurs_txt,dico_attr_modif)  
         
 class Comptage_Anglet(Comptage):
     """
@@ -3336,7 +3331,7 @@ class Comptage_Anglet(Comptage):
                                                     'note_manuelle_qualite', 'obs_qualite', 'fichier']].drop_duplicates(), on='id_comptag', how='left')
         return
            
-    def plusProcheVoisinBddRegroupe(self, tableLinauto, bdd='local_otv_boulot', distance=15):
+    def plusProcheVoisinBddRegroupe(self, tableLinauto, distance=15):
         """
         passer la df dans la bdd pour trouver le plus proche voisin selon le regroupement du schema linauto
         in : 
@@ -3345,7 +3340,7 @@ class Comptage_Anglet(Comptage):
         out : 
             dfPPV : dataframe du plud proche voisin, sur la base de gdfGeoloc
         """  
-        self.insert_bdd('local_otv_boulot', 'public', f'cpt_anglet_{self.annee}',self.gdfGeoloc.drop('fichier', axis=1), if_exists='replace' )  
+        self.insert_bdd('public', f'cpt_anglet_{self.annee}',self.gdfGeoloc.drop('fichier', axis=1), if_exists='replace' )  
         rqt=f"""WITH 
                 cpteur_base AS (
                 SELECT DISTINCT ON (c.id_comptag) c.id_comptag id_comptag_bdd, t.gid, st_distance(c.geom, t.geom)
@@ -3357,7 +3352,7 @@ class Comptage_Anglet(Comptage):
                  FROM public.cpt_anglet_{self.annee} c left JOIN linauto.{tableLinauto} t ON st_dwithin(c.geom, t.geom, {distance})
                                                LEFT JOIN cpteur_base c2 ON t.gid=c2.gid
                  ORDER BY c.field_1, st_distance(c.geom, t.geom)"""
-        with ct.ConnexionBdd(bdd) as c : 
+        with ct.ConnexionBdd(nomConnBddOtv) as c : 
             dfPPV=gp.read_postgis(rqt, c.sqlAlchemyConn, crs='epsg:2154').merge(self.dfIndicAgrege, on='id_comptag', how='left'
                             ).merge(periodeDepuisHoraire(self.dfHoraire.assign(annee=self.annee)), how='left', on='id_comptag')
             dfPPV=O.gp_changer_nom_geom(dfPPV, 'geometrie')
@@ -3394,7 +3389,7 @@ class Comptage_Anglet(Comptage):
         dfPPVCptAssoc.drop_duplicates(['indicateur','valeur', 'periode'], inplace=True)
         return dfPPVCptRef, dfPPVCptAssoc
     
-    def insererCompteur(self, dfPPVSsDbl, bdd='local_otv_boulot', schema='comptage', table='compteur'):
+    def insererCompteur(self, dfPPVSsDbl, schema='comptage', table='compteur'):
         """
         Preparer les donnes liees au compteur et les inserer (si besoin) dans la bdd
         in : 
@@ -3403,15 +3398,14 @@ class Comptage_Anglet(Comptage):
         #creer les compteurs a inserer dans la bdd
         dfCptAcreer=dfPPVSsDbl.loc[dfPPVSsDbl.id_comptag_bdd.isna()]
         if not dfCptAcreer.empty :
-            compteur=dfCptAcreer[['geometrie', 'id_comptag', 'route', 'reseau', 'dep', 'gestionnai','concession', 'type_poste', 'src_geo', 'obs_geo', 'x_l93', 'y_l93',
-                   'fictif', 'src_cpt', 'convention','obs_supl','sens_cpt']].drop_duplicates().copy()
+            compteur=dfCptAcreer[attBddCompteur].drop_duplicates().copy()
             #inserer
-            self.insert_bdd(bdd, schema, table, compteur)
+            self.insert_bdd(schema, table, compteur)
         else : 
             print('pas de nouveau compteur a inserer')
             return
         
-    def insererComptage(self, dfPPVSsDbl, bdd='local_otv_boulot', schema='comptage', table='comptage'):
+    def insererComptage(self, dfPPVSsDbl, schema='comptage', table='comptage'):
         """
         Preparer les donnes liees au comptages et les inserer dans la bdd
         in : 
@@ -3421,10 +3415,10 @@ class Comptage_Anglet(Comptage):
         dfPPVSsDblTemp['id_comptag_final']=dfPPVSsDblTemp.apply(lambda x : x.id_comptag_bdd if not pd.isnull(x.id_comptag_bdd) else x.id_comptag, axis=1)
         comptage=dfPPVSsDblTemp[['id_comptag_final', 'annee', 'periode']].assign(src='gestionnaire', type_veh='tv/pl').rename(columns={'id_comptag_final':'id_comptag'}).drop_duplicates()
         #inserer
-        self.insert_bdd(bdd, schema, table,comptage)
+        self.insert_bdd(schema, table,comptage)
         return
         
-    def insererIndics(self, dfPPVSsDbl, bdd='local_otv_boulot', schema='comptage', tableAgrege='indic_agrege', tableHoraire='indic_horaire'):
+    def insererIndics(self, dfPPVSsDbl,schema='comptage', tableAgrege='indic_agrege', tableHoraire='indic_horaire'):
         """
         Preparer les donnes liees au indicateurs(horaires, agrege) et les inserer dans la bdd
         in : 
@@ -3439,23 +3433,23 @@ class Comptage_Anglet(Comptage):
             indicateur=dfHoraireSsDbl.indicateur.str.upper()).merge(self.recupererIdUniqComptage(
             dfHoraireSsDbl.id_comptag_final.tolist(), self.annee).rename(columns={'id_comptag':'id_comptag_final'}), on=['id_comptag_final', 'annee']).drop([
             'sens_cpt', 'note_manuelle_qualite', 'obs_qualite', 'annee', 'id_comptag','id_comptag_final', 'obs_supl'], axis=1)
-        self.insert_bdd(bdd, schema, tableAgrege,indicAgrege)
-        self.insert_bdd(bdd, schema, tableHoraire,indicHoraire)
+        self.insert_bdd(schema, tableAgrege,indicAgrege)
+        self.insert_bdd(schema, tableHoraire,indicHoraire)
         return
         
-    def insererDatas(self, dfPPVSsDbl, bdd='local_otv_boulot', schema='comptage', tableComptag='comptage',
+    def insererDatas(self, dfPPVSsDbl, schema='comptage', tableComptag='comptage',
                      tableCpteur='compteur', tableAgrege='indic_agrege', tableHoraire='indic_horaire'):
         """
         preparer et inserere les donnees de compteurs, comptages et indicateurs
         in : 
             dfPPVSsDbl : donnees issues de cptSsDblEtSsGeom()
         """
-        self.insererCompteur(dfPPVSsDbl, bdd, schema, tableCpteur)
-        self.insererComptage(dfPPVSsDbl, bdd, schema, tableComptag)
-        self.insererIndics(dfPPVSsDbl, bdd, schema, tableAgrege, tableHoraire)
+        self.insererCompteur(dfPPVSsDbl, schema, tableCpteur)
+        self.insererComptage(dfPPVSsDbl, schema, tableComptag)
+        self.insererIndics(dfPPVSsDbl, schema, tableAgrege, tableHoraire)
         
         
-    def insererQualiteFaible(self, dfPPVCptRef, bdd='local_otv_boulot', schema='qualite', table='qualite_manuelle_cptag'):
+    def insererQualiteFaible(self, dfPPVCptRef, schema='qualite', table='qualite_manuelle_cptag'):
         """
         inserer les elements de qualite faible des comptages precedemment inseres dans la bdd
         in : 
@@ -3469,10 +3463,10 @@ class Comptage_Anglet(Comptage):
         dfQualiteFaibleAInsere=dfQualiteFaible.merge(self.recupererIdUniqComptage(dfQualiteFaible.id_comptag_final.tolist(), self.annee), 
                               left_on='id_comptag_final', right_on='id_comptag')[['id_comptag_uniq','note_manuelle','obs'
                                 ]].drop_duplicates(['id_comptag_uniq','note_manuelle','obs'])
-        self.insert_bdd(bdd, schema, table,dfQualiteFaibleAInsere)
+        self.insert_bdd(schema, table,dfQualiteFaibleAInsere)
         return                        
     
-    def creerComptageAssoc(self, dfPPVCptAssoc, bdd='local_otv_boulot', schema='comptage_assoc', tableAssoc='comptage'):    
+    def creerComptageAssoc(self, dfPPVCptAssoc):    
         """
         creer la table des comptage du schema comptage_assoc
         in  : 
@@ -3489,10 +3483,10 @@ class Comptage_Anglet(Comptage):
         dfAssocInsert=dfAssoc.assign(src='gestionnaire', type_veh='tv/pl', obs=None).drop_duplicates(['id_comptag_uniq', 'periode'])
         dfAssocInsert['rang']=dfAssocInsert.assign(toto=1).groupby('id_comptag_uniq').toto.rank(method='first')
         #inserer les comptages
-        self.insert_bdd(bdd, schema, tableAssoc, dfAssocInsert[['id_comptag_uniq', 'periode', 'src', 'type_veh', 'rang', 'obs']].rename(columns={'id_comptag_uniq':'id_cptag_ref'}))
+        self.insert_bdd(schemaComptageAssoc, tableComptage, dfAssocInsert[['id_comptag_uniq', 'periode', 'src', 'type_veh', 'rang', 'obs']].rename(columns={'id_comptag_uniq':'id_cptag_ref'}))
         return dfAssoc
     
-    def creerIndicsAssoc(self, dfAssoc, bdd='local_otv_boulot', schema='comptage_assoc', tableAgreg='indic_agrege', tableHoraire='indic_horaire'):
+    def creerIndicsAssoc(self, dfAssoc, schema='comptage_assoc', tableAgreg='indic_agrege', tableHoraire='indic_horaire'):
         """
         creer les tables en bdd des indcis_agreges et indic_horaires pour les comptages associes
         in : 
@@ -3506,8 +3500,8 @@ class Comptage_Anglet(Comptage):
         dfHoraireassoc=self.dfHoraire.loc[self.dfHoraire.fichier.isin(dfIndicAgregeAssoc.fichier.tolist())].merge(dfIndicAgregeAssoc[['id_comptag_uniq_assoc', 'fichier']], on='fichier').drop(
             ['id_comptag','obs_supl','sens_cpt', 'note_manuelle_qualite', 'obs_qualite'], axis=1).rename(columns={'id_comptag_uniq_assoc':'id_comptag_uniq'})
         dfHoraireassoc['indicateur']=dfHoraireassoc.indicateur.str.upper()    
-        self.insert_bdd(bdd, schema, tableAgreg,dfIndicAgregeAssoc.rename(columns={'id_comptag_uniq_assoc':'id_comptag_uniq'}))
-        self.insert_bdd(bdd, schema, tableHoraire,dfHoraireassoc)
+        self.insert_bdd(schema, tableAgreg,dfIndicAgregeAssoc.rename(columns={'id_comptag_uniq_assoc':'id_comptag_uniq'}))
+        self.insert_bdd(schema, tableHoraire,dfHoraireassoc)
         return dfIndicAgregeAssoc, dfHoraireassoc
         
 class Comptag_Angouleme(Comptage):
@@ -3685,7 +3679,7 @@ class Comptag_Angouleme(Comptage):
         self.dfHoraire=dfDataBrutesIdcomptag[attributsHoraire+['jour', 'id_comptag', 'fichier', 'indicateur']]
         self.dfIndicAgrege=tmjaDepuisHoraire(self.dfHoraire.assign(annee=self.annee))
         
-    def plusProcheVoisinBddRegroupe(self, tableLinauto, bdd='local_otv_boulot', distance=15):
+    def plusProcheVoisinBddRegroupe(self, tableLinauto, distance=15):
         """
         passer la df dans la bdd pour trouver le plus proche voisin selon le regroupement du schema linauto
         in : 
@@ -3694,7 +3688,7 @@ class Comptag_Angouleme(Comptage):
         out : 
             dfPPV : dataframe du plud proche voisin, sur la base de gdfGeoloc
         """  
-        self.insert_bdd('local_otv_boulot', 'public', f'cpt_angouleme_{self.annee}',self.gdfGeoloc, if_exists='replace' )  
+        self.insert_bdd(nomConnBddOtv, 'public', f'cpt_angouleme_{self.annee}',self.gdfGeoloc, if_exists='replace' )  
         rqt=f"""WITH 
                 cpteur_base AS (
                 SELECT DISTINCT ON (c.id_comptag) c.id_comptag id_comptag_bdd, t.gid, st_distance(c.geom, t.geom)
@@ -3706,7 +3700,7 @@ class Comptag_Angouleme(Comptage):
                  FROM public.cpt_angouleme_{self.annee} c left JOIN linauto.{tableLinauto} t ON st_dwithin(c.geom, t.geom, {distance})
                                                LEFT JOIN cpteur_base c2 ON t.gid=c2.gid
                  ORDER BY c.id_comptag, st_distance(c.geom, t.geom)"""
-        with ct.ConnexionBdd(bdd) as c : 
+        with ct.ConnexionBdd(nomConnBddOtv) as c : 
             dfPPV=gp.read_postgis(rqt, c.sqlAlchemyConn, crs='epsg:2154').merge(self.dfIndicAgrege, on='id_comptag', how='left'
                             ).merge(periodeDepuisHoraire(self.dfHoraire.assign(annee=self.annee)), how='left', on='id_comptag')
             dfPPV=O.gp_changer_nom_geom(dfPPV, 'geometrie')
@@ -3773,7 +3767,7 @@ class Comptag_Angouleme(Comptage):
         return dfPPVCptRef, dfPPVCptAssoc
         
     
-    def insererCompteur(self, dfPPVSsDbl, CptAForcer=None, bdd='local_otv_boulot', schema='comptage', table='compteur'):
+    def insererCompteur(self, dfPPVSsDbl, CptAForcer=None, schema='comptage', table='compteur'):
         """
         Preparer les donnes liees au compteur et les inserer (si besoin) dans la bdd
         in : 
@@ -3783,15 +3777,14 @@ class Comptag_Angouleme(Comptage):
         #creer les compteurs a inserer dans la bdd
         dfCptAcreer=dfPPVSsDbl.loc[(dfPPVSsDbl.id_comptag_bdd.isna()) | (dfPPVSsDbl.id_comptag.isin(CptAForcer))]
         if not dfCptAcreer.empty :
-            compteur=dfCptAcreer[[e for e in dfCptAcreer.columns if e in  ('geometrie', 'id_comptag', 'route', 'reseau', 'dep', 'gestionnai','concession', 'type_poste', 'src_geo', 'obs_geo', 'x_l93', 'y_l93',
-                   'fictif', 'src_cpt', 'convention','obs_supl','sens_cpt')]].drop_duplicates().copy()
+            compteur=dfCptAcreer[[e for e in dfCptAcreer.columns if e in attBddCompteur]].drop_duplicates().copy()
             #inserer
-            self.insert_bdd(bdd, schema, table, compteur)
+            self.insert_bdd(schema, table, compteur)
         else : 
             print('pas de nouveau compteur a inserer')
             return
         
-    def insererComptage(self, dfPPVSsDbl, CptAForcer=None, bdd='local_otv_boulot', schema='comptage', table='comptage'):
+    def insererComptage(self, dfPPVSsDbl, CptAForcer=None, schema='comptage', table='comptage'):
         """
         Preparer les donnes liees au comptages et les inserer dans la bdd
         in : 
@@ -3802,10 +3795,10 @@ class Comptag_Angouleme(Comptage):
                                                                 and x.id_comptag not in CptAForcer  else x.id_comptag, axis=1)
         comptage=dfPPVSsDblTemp[['id_comptag_final', 'annee', 'periode']].assign(src='gestionnaire', type_veh='tv/pl').rename(columns={'id_comptag_final':'id_comptag'}).drop_duplicates()
         #inserer
-        self.insert_bdd(bdd, schema, table,comptage)
+        self.insert_bdd(schema, table,comptage)
         return
         
-    def insererIndics(self, dfPPVSsDbl,CptAForcer=None,  bdd='local_otv_boulot', schema='comptage', tableAgrege='indic_agrege', tableHoraire='indic_horaire'):
+    def insererIndics(self, dfPPVSsDbl,CptAForcer=None, schema='comptage', tableAgrege='indic_agrege', tableHoraire='indic_horaire'):
         """
         Preparer les donnes liees au indicateurs(horaires, agrege) et les inserer dans la bdd
         in : 
@@ -3821,11 +3814,11 @@ class Comptag_Angouleme(Comptage):
             indicateur=dfHoraireSsDbl.indicateur.str.upper()).merge(self.recupererIdUniqComptage(
             dfHoraireSsDbl.id_comptag_final.tolist(), self.annee).rename(columns={'id_comptag':'id_comptag_final'}), on=['id_comptag_final', 'annee']).drop([
             'sens_cpt', 'note_manuelle_qualite', 'obs_qualite', 'annee', 'id_comptag','id_comptag_final', 'obs_supl'], axis=1, errors='ignore')
-        self.insert_bdd(bdd, schema, tableAgrege,indicAgrege)
-        self.insert_bdd(bdd, schema, tableHoraire,indicHoraire)
+        self.insert_bdd(schema, tableAgrege,indicAgrege)
+        self.insert_bdd(schema, tableHoraire,indicHoraire)
         return
     
-    def insererDatas(self, dfPPVSsDbl, CptAForcer=None, bdd='local_otv_boulot', schema='comptage', tableComptag='comptage',
+    def insererDatas(self, dfPPVSsDbl, CptAForcer=None, schema='comptage', tableComptag='comptage',
                      tableCpteur='compteur', tableAgrege='indic_agrege', tableHoraire='indic_horaire'):
         """
         preparer et inserere les donnees de compteurs, comptages et indicateurs
@@ -3833,11 +3826,11 @@ class Comptag_Angouleme(Comptage):
             dfPPVSsDbl : donnees issues de cptSsDblEtSsGeom()
             CptAForcer : list d'id_comptag que l'on veut inclure dans la Bdd, de force, mm si un autre id_comptag est proche. creation des compteurs
         """
-        self.insererCompteur(dfPPVSsDbl, CptAForcer, bdd, schema, tableCpteur)
-        self.insererComptage(dfPPVSsDbl, CptAForcer, bdd, schema, tableComptag)
-        self.insererIndics(dfPPVSsDbl, CptAForcer, bdd, schema, tableAgrege, tableHoraire)
+        self.insererCompteur(dfPPVSsDbl, CptAForcer, schema, tableCpteur)
+        self.insererComptage(dfPPVSsDbl, CptAForcer, schema, tableComptag)
+        self.insererIndics(dfPPVSsDbl, CptAForcer, schema, tableAgrege, tableHoraire)
         
-    def creerComptageAssoc(self, dfPPVCptAssoc, bdd='local_otv_boulot', schema='comptage_assoc', tableAssoc='comptage'):    
+    def creerComptageAssoc(self, dfPPVCptAssoc):    
         """
         creer la table des comptage du schema comptage_assoc
         in  : 
@@ -3854,10 +3847,10 @@ class Comptag_Angouleme(Comptage):
         dfAssocInsert=dfAssoc.assign(src='gestionnaire', type_veh='tv/pl', obs=None).drop_duplicates(['id_comptag_uniq', 'periode'])
         dfAssocInsert['rang']=dfAssocInsert.assign(toto=1).groupby('id_comptag_uniq').toto.rank(method='first')
         #inserer les comptages
-        #self.insert_bdd(bdd, schema, tableAssoc, dfAssocInsert[['id_comptag_uniq', 'periode', 'src', 'type_veh', 'rang', 'obs']].rename(columns={'id_comptag_uniq':'id_cptag_ref'}))
+        #self.insert_bdd(schemaComptageAssoc, tableComptage, dfAssocInsert[['id_comptag_uniq', 'periode', 'src', 'type_veh', 'rang', 'obs']].rename(columns={'id_comptag_uniq':'id_cptag_ref'}))
         return dfAssoc
     
-    def creerIndicsAssoc(self, dfAssoc, bdd='local_otv_boulot', schema='comptage_assoc', tableAgreg='indic_agrege', tableHoraire='indic_horaire'):
+    def creerIndicsAssoc(self, dfAssoc):
         """
         ATTENTION : 
         creer les tables en bdd des indcis_agreges et indic_horaires pour les comptages associes
@@ -3872,8 +3865,8 @@ class Comptag_Angouleme(Comptage):
         dfHoraireassoc=self.dfHoraire.loc[self.dfHoraire.fichier.isin(dfIndicAgregeAssoc.fichier.tolist())].merge(dfIndicAgregeAssoc[['id_comptag_uniq_assoc', 'fichier']], on='fichier').drop(
             ['id_comptag','obs_supl','sens_cpt', 'note_manuelle_qualite', 'obs_qualite'], axis=1, errors='ignore').rename(columns={'id_comptag_uniq_assoc':'id_comptag_uniq'})
         dfHoraireassoc['indicateur']=dfHoraireassoc.indicateur.str.upper()    
-        self.insert_bdd(bdd, schema, tableAgreg,dfIndicAgregeAssoc.rename(columns={'id_comptag_uniq_assoc':'id_comptag_uniq'}))
-        self.insert_bdd(bdd, schema, tableHoraire,dfHoraireassoc)
+        self.insert_bdd(schemaComptageAssoc, tableIndicAgrege,dfIndicAgregeAssoc.rename(columns={'id_comptag_uniq_assoc':'id_comptag_uniq'}))
+        self.insert_bdd(schemaComptageAssoc, tableIndicHoraire,dfHoraireassoc)
         return dfIndicAgregeAssoc, dfHoraireassoc
  
 class Comptage_Dira(Comptage):
@@ -3882,12 +3875,12 @@ class Comptage_Dira(Comptage):
     et le nom du dossier qui contient les fichiers excel de l'année complete, plus le nom du fihcier de Comptage issu de la carto (cf dossier historique)
     on ajoute aussi le nom de table et de schema comptagede la Bdd pour pouvoir de suite se connecter et obtenir les infos des points existants
     """ 
-    def __init__(self,fichierTmjaParSection, dossierAnneeComplete,fichierComptageCarto, annee,bdd, table):
+    def __init__(self,fichierTmjaParSection, dossierAnneeComplete,fichierComptageCarto, annee,table):
         self.fichierTmjaParSection = fichierTmjaParSection
         self.fichierComptageCarto = fichierComptageCarto
         self.dossierAnneeComplete = dossierAnneeComplete
         self.annee = annee
-        self.dfCorrespExistant = self.correspIdsExistant(bdd, table)
+        self.dfCorrespExistant = self.correspIdsExistant(table)
         
     def ouvrirMiseEnFormeFichierTmja(self):
         """
@@ -3926,11 +3919,11 @@ class Comptage_Dira(Comptage):
                 return df
         return pd.DataFrame([])
     
-    def correspIdsExistant(self,bdd,table_cpt):
+    def correspIdsExistant(self,table_cpt):
         """
         obtenir une df de correspndance entre l'id_comptag et les valeusr stockées dans obs_supl de la Bdd
         """
-        self.comptag_existant_bdd(table_cpt,bdd, schema='comptage',dep=False, type_poste=False, gest='DIRA')
+        self.comptag_existant_bdd(table_cpt,schema='comptage',dep=False, type_poste=False, gest='DIRA')
         return pd.concat([self.decomposeObsSupl(b,c,d) for b,c,d in zip(self.existant.obs_supl.tolist(),self.existant.id_comptag.tolist(), self.existant.id_cpt.tolist())], axis=0, sort=False)
     
     def jointureExistantFichierTmja(self, nomAttrFichierDira='nom_simple'):
@@ -4197,7 +4190,7 @@ class Comptage_Dira(Comptage):
         
         
         
-    def update_bdd_Dira(self,bdd, schema, table, nullOnly=True):
+    def update_bdd_Dira(self,schema, table, nullOnly=True):
         """
         metter à jour la table des comptage
         in : 
@@ -4207,9 +4200,9 @@ class Comptage_Dira(Comptage):
         valeurs_txt=self.creer_valeur_txt_update(self.df_attr,['id_comptag','tmja','pc_pl','src', 'fichier'])
         dico_attr_modif={f'tmja_{self.annee}':'tmja', f'pc_pl_{self.annee}':'pc_pl',f'src_{self.annee}':'src', 'fichier':'fichier'}
         if nullOnly : 
-            self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif,'c.tmja_2019 is null')
+            self.update_bdd(schema, table, valeurs_txt,dico_attr_modif,'c.tmja_2019 is null')
         else : 
-            self.update_bdd(bdd, schema, table, valeurs_txt,dico_attr_modif)
+            self.update_bdd(schema, table, valeurs_txt,dico_attr_modif)
     
     class BoucleNonConnueError(Exception):
         """
@@ -4294,7 +4287,7 @@ class Comptage_Dirco(Comptage):
         return pd.concat([dfTv2SensCompte,dfTv1SensCompte, dfPl],axis=0,sort=False).sort_values(['id_comptag','donnees_type'])
 
     
-    def indicateurGlobalFichierMJM(self,bdd, cptARetirer):
+    def indicateurGlobalFichierMJM(self,cptARetirer):
         """
         concatener et mettre en forme les donnée de chaque feuille issues de indicateurGlobalFeuilleMJM
         in : 
@@ -4302,7 +4295,7 @@ class Comptage_Dirco(Comptage):
         """
         dfTouteFeuilles=pd.concat([self.indicateurGlobalFeuilleMJM(self.miseEnFormeMJM(self.dfSourceTmjm[k])) 
                           for k in self.dfSourceTmjm.keys()], axis=0, sort=False).assign(annee=self.annee).reset_index()
-        self.corresp_nom_id_comptag(dfTouteFeuilles, bdd)
+        self.corresp_nom_id_comptag(dfTouteFeuilles)
         cptARetirer=cptARetirer if isinstance(cptARetirer,list) else [cptARetirer,]
         dfTouteFeuilles=dfTouteFeuilles.loc[~dfTouteFeuilles.id_comptag.isin(cptARetirer)]
         return dfTouteFeuilles

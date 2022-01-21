@@ -108,7 +108,7 @@ def GroupeCompletude(dfValide, frequence='1H', vitesse=False):
     O.checkAttributsinDf(dfValide, ['date_heure', 'sens', 'type_veh', 'nbVeh'])
     if vitesse : 
         O.checkAttributsinDf(dfValide, 'vitesse')
-        
+    print(dfValide.sens.unique())    
     O.checkAttributValues(dfValide, 'sens', 'sens1', 'sens2')
     O.checkAttributValues(dfValide, 'type_veh', 'TV', 'VL', 'PL', '2R')
         
@@ -139,7 +139,7 @@ def GroupeCompletude(dfValide, frequence='1H', vitesse=False):
             **{'v10': pd.NamedAgg(column='vitesse',aggfunc=lambda x : np.percentile(x,10)),
                'v50': pd.NamedAgg(column='vitesse',aggfunc=lambda x : np.percentile(x,50)),
                'v85': pd.NamedAgg(column='vitesse',aggfunc=lambda x : np.percentile(x,85))}).reset_index().sort_values('date_heure')])
-    dfHeureTypeSens=dfHeureTypeSens.merge(dfGroupVtsHeure, on=['date_heure','sens', 'type_veh'],how='left').sort_values(['date_heure', 'type_veh', 'sens'])
+        dfHeureTypeSens=dfHeureTypeSens.merge(dfGroupVtsHeure, on=['date_heure','sens', 'type_veh'],how='left').sort_values(['date_heure', 'type_veh', 'sens'])
     
     #si un sens est completement à O on le vire
     dfTestSens=dfHeureTypeSens.groupby('sens').nbVeh.sum().reset_index()
@@ -384,7 +384,10 @@ class Mixtra(object):
         ouvrir le ou les fichiers
         """
         try : 
-            df=pd.read_csv( self.fichier, delimiter='\t', encoding='latin_1')
+            df=pd.read_csv(self.fichier,delimiter='\0|\t', encoding='latin_1', engine='python'
+                           ).dropna(axis=0, how='all')
+            df.columns=['ASupr']+[c for c in df.columns][:-1]
+            df.drop('ASupr', axis=1, inplace=True)
         except pd._libs.parsers.ParserError :
             df=pd.read_excel(self.fichier, dtype={'Horodate de passage':str})
             df['Horodate de passage']=df['Horodate de passage'].str[:16]
@@ -401,20 +404,21 @@ class Mixtra(object):
                 silhouette : int
             """
             if silhouette in (1,12) : 
-                return 'vl'
+                return 'VL'
             elif silhouette==13 : 
-                return '2r'
-            else : return 'pl'
+                return '2R'
+            else : return 'PL'
         dfVehiculesValides=dfFichier.loc[dfFichier['Véhicule Valide']==1].copy()
         dfVehiculesValides['date_heure']=pd.to_datetime(dfVehiculesValides['Horodate de passage']+':'+dfVehiculesValides['Seconde'].
                                                         astype(int).astype(str)+'.'+dfVehiculesValides['Centième'].astype(int).astype(str), dayfirst=True)
         dfVehiculesValides['type_veh']=dfVehiculesValides.Silhouette.apply(lambda x : type_vehicule(x))
         dfVehiculesValides.rename(columns={'Véhicule Valide':'nbVeh','Vitesse (km/h)':'vitesse'}, inplace=True)
+        dfVehiculesValides['sens'] = dfVehiculesValides['Voie'].apply(lambda x: f'sens{int(x+1)}')
         return dfVehiculesValides      
         
 class Viking(object):
     '''
-    Donn�es issues de compteurs � tubes
+    Donnees issues de compteurs radar
     pour chaque point de comptage on peut avoir 1 ou 2 sens. 
     pour chaque sens on peut avoir 1 ou plusieurs fichiers 
     '''
@@ -470,7 +474,7 @@ class ComptageDonneesIndiv(object):
     a partir de données individuelles de sens 1 et parfois sens 2, creer les donnees 2 sens
     ces donnees indiv peuvent etre issue que de Mixtra ou que de Viking ou de melange
     """
-    def __init__(self,dossier, vitesse=False):
+    def __init__(self,dossier, vitesse=False, verifNbJoursComptage=False):
         """
         in : 
            dossier : raw string du dossier qui conteint les données individuelles 
@@ -478,22 +482,19 @@ class ComptageDonneesIndiv(object):
         atributs : 
             dossier : raw string de l'emplacement du dossier
             vitesse : boolean : traiter ou non les vitesse
+            verifNbJoursComptage : boolean sdi True, on verifie que le nb de jours est suffisant (erreursi pas suffisant). si false on prend tel quel
             df2SensBase : df des passages d echaque vehicule poyr les 2 sens avec horodatage et type_veh
             dfHeureTypeSens : regrouepement des passages par heure, type de vehicule et sens cf GroupeCompletude()
             dicoNbJours : dictionnaire caracterisant les nombr de jours par type sur la periode de dcomptage, cf NombreDeJours()a
             dfSemaineMoyenne : dataframe horaire moyenne par jour (contient les 7 jours de la semaine avec 24 h par jour)
-            listAttributs : list des attributs de la df de base avant mise en forme
         """
         self.dossier=dossier
         self.vitesse=vitesse
-        self.listAttributs=self.calculListAttributs()
-        self.df2SensBase= self.dfSens(*self.analyseSensFichiers())
+        self.verifNbJoursComptage = verifNbJoursComptage
+        self.df2SensBase= self.dfSens(self.analyseSensFichiers())
         self.dfHeureTypeSens,self.dicoNbJours,self.dfSemaineMoyenne=self.MettreEnFormeDonnees()
         
-    
-    def calculListAttributs(self):
-        return ['date_heure','nbVeh','type_veh'] if not self.vitesse else ['date_heure','nbVeh','type_veh','vitesse']
-    
+   
     def analyseSensFichiers(self):
         """
         connaitre qui est le sens1, qui est le sens2.
@@ -504,39 +505,37 @@ class ComptageDonneesIndiv(object):
             listFichiersSens2 : list de chemin en raw string
         """
         with os.scandir(self.dossier) as it:
-            listFichiersSens1=list(set([os.path.join(self.dossier,f.name) for f in it for a in ['s1','sens1'] if f.is_file() and f.name.lower().endswith(('.vik','.xls'))  and a in f.name.lower()]))
-        with os.scandir(self.dossier) as it:
-            listFichiersSens2=list(set([os.path.join(self.dossier,f.name) for f in it for a in ['s2','sens2'] if f.is_file() and f.name.lower().endswith(('.vik','.xls'))  and a in f.name.lower()]))
-        return listFichiersSens1,listFichiersSens2
+            listFichiers = set([os.path.join(self.dossier,f.name) for f in it 
+                                          if f.is_file() and f.name.lower().endswith(('.vik','.xls'))])
+        return listFichiers
             
-    def dfSens(self,listFichiersSens1,listFichiersSens2):
+    def dfSens(self,listFichiers):
         """
         pour chaque sens obtenir la liste des fichiers Mixtra ou Viking ou les deux
         in :
-            listFichiersSens1 : list de chemin en raw string, issu de analyseSensFichiers()
-            listFichiersSens2 : list de chemin en raw string
+            listFichiers : list de chemin en raw string, issu de analyseSensFichiers()
         """
-        listDfSens1,listDfSens2=[],[]
-        for f in listFichiersSens1 : 
+        listDfSens = []
+        listAttributs=['sens', 'date_heure','nbVeh','type_veh'] if not self.vitesse else ['sens','date_heure','nbVeh','type_veh','vitesse'] 
+        for f in listFichiers : 
             if f.lower().endswith('.xls') : 
-                listDfSens1.append(Mixtra(f).dfFichier[self.listAttributs])
+                listDfSens.append(Mixtra(f).dfFichier[listAttributs])
             elif f.lower().endswith('.vik') :
-                listDfSens1.append(Viking(f).dfFichier[self.listAttributs])
-        for f in listFichiersSens2 : 
-            if f.lower().endswith('.xls') : 
-                listDfSens2.append(Mixtra(f).dfFichier[self.listAttributs])
-            elif f.lower().endswith('.vik') :
-                listDfSens2.append(Viking(f).dfFichier[self.listAttributs])
-        return pd.concat([pd.concat(listDfSens1, axis=0).assign(sens='sens1'),pd.concat(listDfSens2, axis=0).assign(sens='sens2')], axis=0)
-        
-    def MettreEnFormeDonnees(self):
+                listDfSens.append(Viking(f).dfFichier[listAttributs])
+        df2Sens = pd.concat(listDfSens, axis=0)
+        return df2Sens
+    
+       
+    def MettreEnFormeDonnees(self, frequence='1H'):
         """
         pour chaque sens et 2 sens confondus : gerer les cas ou l enb de jours n'est pas o cf NettoyageTemps()k
        ensuite on regroupe les donnees par heure et type de vehicule et sens, cf GroupeCompletude() 
         """
-        verifNbJour(self.df2SensBase) #verfier que le nb de jours est ok
-        dfValide=NettoyageTemps(self.df2SensBase)
-        dfHeureTypeSens=GroupeCompletude(dfValide,self.vitesse)
+        if self.verifNbJoursComptage:
+            dfValide = NettoyageTemps(self.df2SensBase)
+        else:
+            dfValide = self.df2SensBase
+        dfHeureTypeSens=GroupeCompletude(dfValide, frequence=frequence, vitesse=self.vitesse)
         dicoNbJours=NombreDeJours(dfHeureTypeSens)
         dfMoyenne=semaineMoyenne(dfHeureTypeSens,self.vitesse)
         return dfHeureTypeSens,dicoNbJours,dfMoyenne
