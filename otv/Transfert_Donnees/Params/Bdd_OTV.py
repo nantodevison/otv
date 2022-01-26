@@ -10,7 +10,7 @@ attBddCompteur = ['geometrie', 'id_comptag', 'route', 'reseau', 'dep', 'gestionn
                    'fictif', 'src_cpt', 'convention','obs_supl','sens_cpt']
 attrComptageAssoc = ['id_comptag_ref', 'rang', 'periode', 'type_veh', 'src', 'obs', 'id_cpteur_asso']
 attrCompteurAssoc = ['id_cpteur_asso', 'geom', 'route', 'pr', 'abs', 'type_poste', 'techno', 'src_geo', 
-                     'obs_geo', 'obs_supl', 'src_cpt', 'convention', 'sens_cpt']
+                     'obs_geo', 'obs_supl', 'src_cpt', 'convention', 'sens_cpt', 'id_cpt', 'id_sect', 'id_cpteur_ref']
 schemaComptage = 'comptage'
 schemaComptageAssoc = 'comptage_assoc'
 tableComptage = 'comptage'

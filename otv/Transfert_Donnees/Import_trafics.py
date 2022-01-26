@@ -170,29 +170,34 @@ class Comptage():
     
     def recupererIdUniqComptage(self,dfSource, derniereAnnee=False):
         """
-        a partir d'une liste d'id_comptag et d'une annee, recuperer les identifiant unique associes à chaque couple dans l'OTV
+        a partir d'une liste d'id_comptag et d'une annee, recuperer les identifiant unique associes à chaque couple dans l'OTV, ou simplement
+        l'dientifiant unique de la dernière année comptée
         in : 
-            dfSource : df contenat un champs id_comptag et annee (qui soit etre unique) que l'on va joindre pour obtenir l'id_comptaguniqu
+            dfSource : df contenat un champs id_comptag (et annee si derniereAnnee = True ; qui soit etre unique) 
+                        que l'on va joindre pour obtenir l'id_comptag_uniq
             derniereAnnee : booleen : si True, alors on recupere l'idcomptag_uniq de la derniere annee connue
         out : 
             dfIdCptUniqs dfSource avec id_comptag_uniq, id_comptag, annee
         """
-        O.checkAttributsinDf(dfSource, ['id_comptag', 'annee'])
+        if not derniereAnnee:
+            O.checkAttributsinDf(dfSource, ['id_comptag', 'annee'])
         with ct.ConnexionBdd(nomConnBddOtv) as c  :
             if derniereAnnee:
-                rqt = f"""select ca.id id_comptag_uniq, ca.id_comptag, ca.annee 
-                                         from {schemaComptage}.{tableComptage} ca JOIN (SELECT * from (VALUES  
-                                         {','.join([f'{a, b}' for a, b in zip(dfSource.id_comptag.tolist(), dfSource.annee.tolist())])}) 
-                                         AS t (id_cpt, ann)) t ON t.id_cpt=ca.id_comptag AND t.ann=ca.annee"""
+                txt = '\'),(\''.join(dfSource.id_comptag.tolist())
+                listIdCpt = f"('{txt}')"
+                rqt = f"""select DISTINCT ON (ca.id_comptag) ca.id id_comptag_uniq, ca.id_comptag, ca.annee 
+                             from {schemaComptage}.{tableComptage} ca JOIN (SELECT * from (VALUES  
+                             {listIdCpt}) 
+                             AS t (id_cpt)) t ON t.id_cpt=ca.id_comptag
+                             ORDER BY ca.id_comptag, ca.annee desc"""
             else:
                 rqt = f"""select distinct on (ca.id_comptag) ca.id id_comptag_uniq, ca.id_comptag, ca.annee 
                                          from {schemaComptage}.{tableComptage} ca JOIN (SELECT * from (VALUES  
                                          {','.join([f'{a, b}' for a, b in zip(dfSource.id_comptag.tolist(), dfSource.annee.tolist())])}) 
                                          AS t (id_cpt, ann)) t ON t.id_cpt=ca.id_comptag AND t.ann=ca.annee
                                          order by ca.id_comptag, ca.annee DESC"""
-            dfIdCptUniqs=pd.read_sql(rqt, c.sqlAlchemyConn)
-            
-        dfSourceIds=dfSource.merge(dfIdCptUniqs, on=['id_comptag', 'annee']).drop_duplicates()
+            dfIdCptUniqs = pd.read_sql(rqt, c.sqlAlchemyConn)
+        dfSourceIds = dfSource.merge(dfIdCptUniqs, on=['id_comptag', 'annee']).drop_duplicates() if not derniereAnnee else dfSource.merge(dfIdCptUniqs, on='id_comptag')
         #verif que tout le monde a un id_comptag_uniq
         if dfSourceIds.id_comptag_uniq.isna().any():
             raise ValueError("les id_comptag {} n'ont pas d'id_comptag_uniq. Creer un comptage avant ")
