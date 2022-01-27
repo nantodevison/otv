@@ -24,6 +24,7 @@ import Connexion_Transfert as ct
 from Donnees_horaires import (comparer2Sens,verifValiditeFichier,concatIndicateurFichierHoraire,SensAssymetriqueError,
                               verifNbJoursValidDispo, tmjaDepuisHoraire, periodeDepuisHoraire, attributsHoraire)
 from Donnees_sources import FIM, MHCorbin, DataSensError
+from Integration_nouveau_comptage import (corresp_nom_id_comptag, comptag_existant_bdd, localiser_comptage_a_inserer)
 import Outils as O
 from Params.Mensuel import dico_mois
 from Params.Bdd_OTV import (attBddCompteur, nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, 
@@ -1393,9 +1394,9 @@ class Comptage_cd47(Comptage):
         self.regrouper_dico()
         self.df_attr, self.df_attr_horaire, self.df_attr_mens=self.dataframe_dico(self.dico_tot)
         #prende en compte les variation d'id_comptag en gti et le gest
-        self.corresp_nom_id_comptag(self.df_attr)
+        corresp_nom_id_comptag(self.df_attr)
         #comparer avec les donnees existantes
-        self.comptag_existant_bdd(dep='47')
+        self.existant = comptag_existant_bdd(dep='47')
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
     
