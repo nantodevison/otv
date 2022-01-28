@@ -1167,9 +1167,9 @@ class Comptage_cd47(Comptage):
                     mois=[k for k, v in dico_mois.items() if unidecode(debut_periode.month_name()[:4].lower()) in v][0]
                     v['mensuel'][mois]=[tmja,pc_pl]
                     if i==0 : 
-                        v['horaire']=self.donnees_horaires(data.iloc[4:])
+                        v['horaire']=self.donnees_horaires(data.iloc[4:]).assign(fichier=fichier)
                     else : 
-                        v['horaire']=pd.concat([v['horaire'],self.donnees_horaires(data.iloc[4:])], sort=False, axis=0)
+                        v['horaire']=pd.concat([v['horaire'],self.donnees_horaires(data.iloc[4:]).assign(fichier=fichier)], sort=False, axis=0)
                     v['listfichier'].append(fichier)
                 try :
                     v['tmja']=int(statistics.mean([a[0] for a in v['mensuel'].values() if not isinstance(a[0],str)]))
@@ -1201,9 +1201,9 @@ class Comptage_cd47(Comptage):
                                 tmja, pc_pl, debut_periode, fin_periode=self.donnees_generales(data)
                                 periode=f'{debut_periode.strftime("%Y/%m/%d")}-{fin_periode.strftime("%Y/%m/%d")}'
                                 if i==0 : 
-                                    horaire=self.donnees_horaires(data.iloc[4:])
+                                    horaire=self.donnees_horaires(data.iloc[4:].assign(fichier=fichier))
                                 else : 
-                                    horaire=pd.concat([horaire,self.donnees_horaires(data.iloc[4:])], sort=False, axis=0)
+                                    horaire=pd.concat([horaire,self.donnees_horaires(data.iloc[4:]).assign(fichier=fichier)], sort=False, axis=0)
                                 i+=1
                                 liste_tmja.append(tmja)
                                 liste_pc_pl.append(pc_pl) 
@@ -1227,7 +1227,7 @@ class Comptage_cd47(Comptage):
                                 id_comptag, pr, absc,route=self.id_comptag(data)
                                 tmja, pc_pl, debut_periode, fin_periode=self.donnees_generales(data)
                                 periode=f'{debut_periode.strftime("%Y/%m/%d")}-{fin_periode.strftime("%Y/%m/%d")}'
-                                horaire=self.donnees_horaires(data.iloc[4:])
+                                horaire=self.donnees_horaires(data.iloc[4:]).assign(fichier=fichier)
                                 dico_final[id_comptag]={'tmja':tmja, 'pc_pl':pc_pl,'type_poste' : 'ponctuel',
                                                         'periode':periode,'pr':pr,'absc':absc,'route':route,'horaire':horaire,
                                                         'fichier': fichier}
@@ -1236,7 +1236,7 @@ class Comptage_cd47(Comptage):
                             id_comptag,pr,absc,route=self.id_comptag(data)
                             tmja, pc_pl,debut_periode,fin_periode=self.donnees_generales(data)
                             periode=f'{debut_periode.strftime("%Y/%m/%d")}-{fin_periode.strftime("%Y/%m/%d")}'
-                            horaire=self.donnees_horaires(data.iloc[4:])
+                            horaire=self.donnees_horaires(data.iloc[4:]).assign(fichier=liste_fichier[0])
                             dico_final[id_comptag]={'tmja':tmja, 'pc_pl':pc_pl,'type_poste' : 'ponctuel',
                                                         'periode':periode,'pr':pr,'absc':absc,'route':route,'horaire':horaire,
                                                         'fichier': liste_fichier[0]}
@@ -1266,27 +1266,34 @@ class Comptage_cd47(Comptage):
         
         for (i,(k, v)) in enumerate(dico.items()) : 
             for x,y in v.items()  : 
-                if x=='horaire' :
-                    df_horaire=y
-                    df_horaire['id_comptag']=k
+                if x == 'horaire' :
+                    df_horaire = y
+                    df_horaire['id_comptag'] = k
+                    df_horaire.drop('total', axis=1, inplace=True, errors='ignore')
                     if i==0 : 
                         df_horaire_tot=df_horaire.copy()
                     else : 
                         df_horaire_tot=pd.concat([df_horaire_tot,df_horaire], sort=False, axis=0)
-        df_horaire_tot.columns=['type_veh','h0_1','h1_2','h2_3','h3_4','h4_5','h5_6','h6_7','h7_8','h8_9','h9_10','h10_11','h11_12','h12_13',
-                                'h13_14','h14_15','h15_16','h16_17','h17_18','h18_19','h19_20','h20_21','h21_22','h22_23','h23_24','id_comptag']
+        print(df_horaire_tot.columns)
+        df_horaire_tot.rename(columns={c: f"h{c.split('_')[0]}_{c.split('_')[1].replace('h','')}" for c in df_horaire_tot.columns
+                                       if re.match('[0-9]+_[0-9]+h', c)}, inplace=True)
+        """df_horaire_tot.columns=['type_veh','h0_1','h1_2','h2_3','h3_4','h4_5','h5_6','h6_7','h7_8','h8_9','h9_10','h10_11','h11_12','h12_13',
+                                'h13_14','h14_15','h15_16','h16_17','h17_18','h18_19','h19_20','h20_21','h21_22','h22_23','h23_24', 'id_comptag', 'fichier']
+        """
+        print(df_horaire_tot.columns)
         df_horaire_tot.reset_index(inplace=True)
         
         for (i,(k, v)) in enumerate(dico.items()) : 
-            for x,y in v.items()  : 
-                if x=='mensuel' :
+            for x, y in v.items():
+                if x == 'mensuel':
                     df_mensuel=pd.DataFrame(y, index=range(2))
-                    df_mensuel['id_comptag']=k
-                    df_mensuel['annee']=str(self.annee)
-                    if i==0 : 
-                        df_mensuel_tot=df_mensuel.copy()
+                    df_mensuel['id_comptag'] = k
+                    df_mensuel['annee'] = str(self.annee)
+                    df_mensuel['fichier'] = v['fichier']
+                    if i == 0 : 
+                        df_mensuel_tot = df_mensuel.copy()
                     else : 
-                        df_mensuel_tot=pd.concat([df_mensuel_tot,df_mensuel], sort=False, axis=0)
+                        df_mensuel_tot = pd.concat([df_mensuel_tot,df_mensuel], sort=False, axis=0)
         df_mensuel_tot['annee']=str(self.annee)
                
         return df_agrege,df_horaire_tot, df_mensuel_tot   

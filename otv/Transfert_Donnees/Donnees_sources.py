@@ -446,7 +446,7 @@ class Viking(object):
         with open(self.fichier) as f :
                 entete=[e.strip() for e in f.readlines()][0]
         anneeDeb,moisDeb,jourDeb=(entete.split('.')[i].strip() for i in range(5,8)) 
-        
+        print(entete)
         dfFichier=pd.read_csv(self.fichier,delimiter=' ',skiprows=1, 
                                  names=['sens', 'jour', 'heureMin','secCent', 'vts', 'ser', 'type_veh'],dtype={'heureMin':str,'secCent':str})
         return dfFichier,anneeDeb,moisDeb,jourDeb
@@ -459,9 +459,22 @@ class Viking(object):
             """
             creer la date d'acquisition. Attention : si comptage sur un mois entier ça ne marche pas
             """
+            # gerer le changement d'annee
             if jourMesure<int(jourDeb) : 
-                moisDeb=str(int(moisDeb)+1)
-            return pd.to_datetime(f'20{anneeDeb}-{moisDeb}-{jourMesure} {str(heureMin)[:2]}:{str(heureMin)[2:]}:{str(secCent)[:2]}.{str(secCent)[2:]}')
+                if 1 <= int(moisDeb) < 12:
+                    moisModif = str(int(moisDeb)+1)
+                    anneeModif = anneeDeb
+                elif int(moisDeb) == 12:
+                    moisModif = '1'
+                    anneeModif = str(int(anneeDeb)+1)
+                else:
+                    raise ValueError("le mois n'est pas entre 1 et 12")
+            else:
+                anneeModif = anneeDeb
+                moisModif = moisDeb
+            return pd.to_datetime(f'20{anneeModif}-{moisModif}-{jourMesure} {str(heureMin)[:2]}:{str(heureMin)[2:]}:{str(secCent)[:2]}.{str(secCent)[2:]}')
+        
+        
         self.dfFichier['date_heure']=self.dfFichier.apply(lambda x : creer_date(self.jourDeb,self.moisDeb,self.anneeDeb, 
                             x['jour'],x['heureMin'],x['secCent']), axis=1)
         self.dfFichier['type_veh']=self.dfFichier['type_veh'].str.upper()

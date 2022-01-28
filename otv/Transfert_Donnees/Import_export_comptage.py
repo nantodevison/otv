@@ -148,3 +148,25 @@ def insererSchemaComptage(df, typeData):
     insert_bdd(schemaComptage, nomTable,
                     df, 'append', 'POINT')
     return
+
+def insererSchemaComptageAssoc(df, typeData):
+    """
+    spécialisation de la fonction insert_bdd pour le cas des compteurs
+    in : 
+        df : dataframe a inserer. doit respecter le formet de la bdd
+        typeData : string parmi 'comptage', compteur, indicAgrege, indicMensuel, indicHoraire
+    """
+    O.checkParamValues(typeData, ['comptage', 'compteur', 'indicAgrege', 'indicMensuel', 'indicHoraire'])
+    if typeData == 'comptage': 
+        nomTable = tableComptage
+    elif typeData == 'compteur': 
+        nomTable = tableCompteur
+    elif typeData == 'indicAgrege':
+        nomTable = tableIndicAgrege
+    elif typeData == 'indicMensuel':
+        nomTable = tableIndicMensuel 
+    elif typeData == 'indicHoraire':
+        nomTable = tableIndicHoraire
+    insert_bdd(schemaComptageAssoc, nomTable,
+                    df, 'append', 'POINT')
+    return

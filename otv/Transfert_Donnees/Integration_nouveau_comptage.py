@@ -13,8 +13,8 @@ import pandas as pd
 import Connexion_Transfert as ct
 from Params.Bdd_OTV import (nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, tableEnumTypeVeh, 
                             tableCompteur, tableCorrespIdComptag,attrCompteurAssoc, attBddCompteur,
-                            attrCompteurValeurMano, attrComptageAssoc, enumTypePoste)
-from Import_export_comptage import (recupererIdUniqComptage,)
+                            attrCompteurValeurMano, attrComptageAssoc, enumTypePoste, attrIndicHoraireAssoc)
+from Import_export_comptage import (recupererIdUniqComptage, recupererIdUniqComptageAssoc)
 import geopandas as gp
 
 
@@ -23,7 +23,7 @@ def corresp_nom_id_comptag(df):
     pour les id_comptag dont on sait que les noms gti et gestionnaire different  mais que ce sont les memes (cf table comptage.corresp_id_comptag), 
     on remplace le nom gest par le nom_gti, pour pouvoir faire des jointure ensuite
     in : 
-        df : dataframe des comptage du gest. attention doit contenir l'attribut 'id_comptag', ene g�n�ral prendre df_attr
+        df : dataframe des comptage du gest. attention doit contenir l'attribut 'id_comptag', ene general prendre df_attr
     """
     rqt_corresp_comptg = f'select * from {schemaComptage}.{tableCorrespIdComptag}'
     with ct.ConnexionBdd(nomConnBddOtv) as c:
@@ -171,31 +171,69 @@ def structureBddOld2NewForm(dfAConvertir, annee, listAttrFixe,listAttrIndics,typ
     en ajoutant au passage les ids_comptag_uniq
     in : 
         annee : texte : annee sur 4 caractere
-        typeIndic : texte parmi 'agrege', 'mensuel'
+        typeIndic : texte parmi 'agrege', 'mensuel', 'horaire'
         dfAConvertir : dataframe a transformer
         listAttrFixe : liste des attributs qui ne vont pas deveir des indicateurs
         listAttrIndics : liste des attributs qui vont devenir des indicateurs
     """  
-    if typeIndic not in ('agrege', 'mensuel', 'horaire') : 
+    if typeIndic not in ('agrege', 'mensuel', 'horaire'):
         raise ValueError ("le type d'indicateur doit etre parmi 'agrege', 'mensuel', 'horaire'" )
-    if any([e not in listAttrFixe for e in ['id_comptag', 'annee']]) : 
+    if any([e not in listAttrFixe for e in ['id_comptag', 'annee']]):
         raise AttributeError('les attributs id_comptag et annee sont obligatoire dans listAttrFixe')
-    if typeIndic=='agrege' :
-        dfIndic=pd.melt(dfAConvertir.assign(annee=dfAConvertir.annee.astype(str)), id_vars=listAttrFixe, value_vars=listAttrIndics, 
+    if typeIndic == 'agrege':
+        dfIndic = pd.melt(dfAConvertir.assign(annee=dfAConvertir.annee.astype(str)), id_vars=listAttrFixe, value_vars=listAttrIndics, 
                               var_name='indicateur', value_name='valeur')
-        columns=[c for c in ['id_comptag', 'indicateur', 'valeur', 'fichier', 'obs', 'annee'] if c in dfIndic.columns]
-        dfIndic=dfIndic[columns].rename(columns={'id':'id_comptag_uniq'})
-    elif typeIndic=='mensuel' :
-        dfIndic=pd.melt(dfAConvertir.assign(annee=dfAConvertir.annee.astype(str)), id_vars=listAttrFixe, value_vars=listAttrIndics, 
+        columns = [c for c in ['id_comptag', 'indicateur', 'valeur', 'fichier', 'obs', 'annee'] if c in dfIndic.columns]
+        dfIndic = dfIndic[columns].rename(columns={'id':'id_comptag_uniq'})
+    elif typeIndic == 'mensuel':
+        dfIndic = pd.melt(dfAConvertir.assign(annee=dfAConvertir.annee.astype(str)), id_vars=listAttrFixe, value_vars=listAttrIndics, 
                               var_name='mois', value_name='valeur')
-        columns=[c for c in ['id_comptag', 'donnees_type', 'valeur', 'mois', 'fichier', 'annee'] if c in dfIndic.columns]
-        dfIndic=dfIndic[columns].rename(columns={'donnees_type':'indicateur'})
-    elif typeIndic=='horaire' : 
-        dfIndic=dfAConvertir.rename(columns={'type_veh':'indicateur'}).drop(
-            ['id_comptag', 'annee'], axis=1)
-    dfIndic=recupererIdUniqComptage(dfIndic).drop(['id_comptag', 'annee'], axis=1)
+        columns = [c for c in ['id_comptag', 'donnees_type', 'valeur', 'mois', 'fichier', 'annee'] if c in dfIndic.columns]
+        dfIndic = dfIndic[columns].rename(columns={'donnees_type':'indicateur'})
+    elif typeIndic == 'horaire': 
+        dfIndic = dfAConvertir.rename(columns={'type_veh':'indicateur'})
+    dfIndic = recupererIdUniqComptage(dfIndic).drop(['id_comptag', 'annee'], axis=1)
     #si valeur vide on vire la ligne
-    if typeIndic in ('agrege','mensuel') :
+    if typeIndic in ('agrege','mensuel'):
+        dfIndic.dropna(subset=['valeur'], inplace=True)
+    if not dfIndic.loc[dfIndic.id_comptag_uniq.isna()].empty : 
+        print(dfIndic.columns)
+        raise ValueError(f"certains comptages ne peuvent etre associes a la table des comptages de la Bdd {dfIndic.loc[dfIndic.id_comptag_uniq.isna()].id_comptag_uniq.tolist()}")
+    return dfIndic
+
+
+def structureBddOld2NewFormAssoc(dfAConvertir, annee, listAttrFixe,listAttrIndics,typeIndic):
+    """
+    convertir les données creer par les classes et issus de la structure de bdd 2010-2019 (wide-form) vers une structure 2020 (long-form) 
+    en ajoutant au passage les ids_comptag_uniq
+    in : 
+        annee : texte : annee sur 4 caractere
+        typeIndic : texte parmi 'agrege', 'mensuel', 'horaire'
+        dfAConvertir : dataframe a transformer
+        listAttrFixe : liste des attributs qui ne vont pas deveir des indicateurs
+        listAttrIndics : liste des attributs qui vont devenir des indicateurs
+    """  
+    if typeIndic not in ('agrege', 'mensuel', 'horaire'):
+        raise ValueError ("le type d'indicateur doit etre parmi 'agrege', 'mensuel', 'horaire'" )
+    if any([e not in listAttrFixe for e in ['id_cptag_ref', 'annee']]):
+        raise AttributeError('les attributs id_comptag et annee sont obligatoire dans listAttrFixe')
+    if typeIndic == 'agrege':
+        dfIndic = pd.melt(dfAConvertir.assign(annee=dfAConvertir.annee.astype(str)), id_vars=listAttrFixe, value_vars=listAttrIndics, 
+                              var_name='indicateur', value_name='valeur')
+        columns = [c for c in ['id_cptag_ref', 'indicateur', 'valeur', 'fichier', 'obs', 'annee'] if c in dfIndic.columns]
+        dfIndic = dfIndic[columns].rename(columns={'id':'id_comptag_uniq'})
+    #elif typeIndic == 'mensuel':
+    #    dfIndic = pd.melt(dfAConvertir.assign(annee=dfAConvertir.annee.astype(str)), id_vars=listAttrFixe, value_vars=listAttrIndics, 
+    #                         var_name='mois', value_name='valeur')
+    #    columns = [c for c in ['id_comptag', 'donnees_type', 'valeur', 'mois', 'fichier', 'annee'] if c in dfIndic.columns]
+    #    dfIndic = dfIndic[columns].rename(columns={'donnees_type':'indicateur'})
+    elif typeIndic == 'horaire': 
+        dfIndic = dfAConvertir.rename(columns={'type_veh':'indicateur'})
+        dfIndic = dfIndic.drop(['id_comptag', 'id_cpteur_asso'], axis=1, errors='ignore')
+    dfIndic = dfIndic.merge(recupererIdUniqComptageAssoc(dfIndic.id_cptag_ref.tolist()), on='id_cptag_ref'
+                            ).drop(['id_cptag_ref', 'annee'], axis=1, errors='ignore')
+    #si valeur vide on vire la ligne
+    if typeIndic in ('agrege','mensuel'):
         dfIndic.dropna(subset=['valeur'], inplace=True)
     if not dfIndic.loc[dfIndic.id_comptag_uniq.isna()].empty : 
         print(dfIndic.columns)
@@ -256,12 +294,12 @@ def creerComptageAssoc(df, id_comptag_ref_nom, annee, id_compteur_asso_nom, src=
         dfSource = dfSource.loc[~dfSource[id_compteur_asso_nom].isin(listIdCptExclu)].copy()
     dfSource.rename(columns={id_compteur_asso_nom: 'id_cpteur_asso'}, inplace=True)
     corresIdComptagInterne = recupererIdUniqComptage(dfSource[[id_comptag_ref_nom]].rename(columns={id_comptag_ref_nom: 'id_comptag'}), True)
-    dfIds = dfSource.merge(corresIdComptagInterne, left_on=id_comptag_ref_nom, right_on='id_comptag', how='left').rename(columns={'id_comptag_uniq': 'id_comptag_ref'}).assign(annee=annee)
+    dfIds = dfSource.merge(corresIdComptagInterne, left_on=id_comptag_ref_nom, right_on='id_comptag', how='left').rename(columns={'id_comptag_uniq': 'id_cptag_ref'}).assign(annee=annee)
     dfIds['rang_bdd'] = dfIds[id_comptag_ref_nom].apply(lambda x: rangBddComptageAssoc(x))
     dfIds['rang_df'] = dfIds.groupby(id_comptag_ref_nom).cumcount()+1
     dfIds['rang'] = dfIds['rang_bdd']+dfIds['rang_df']
-
-    tableComptage = dfIds[[c for c in attrComptageAssoc if c in dfIds.columns]].copy()
+    print(dfIds.columns)
+    tableComptage = dfIds[[c for c in dfIds.columns if c in attrComptageAssoc]].copy()
     # ajouter ou modifier le champs observation pour les ponctuels ou tournant dont une partie de la periode est en vacances scolaire
     if 'obs' in tableComptage.columns:
         tableComptage['obs'] = tableComptage.apply(lambda x: remplirObsSelonVacances(x.obs, O.verifVacanceRange(x.periode)), axis=1)
@@ -269,7 +307,7 @@ def creerComptageAssoc(df, id_comptag_ref_nom, annee, id_compteur_asso_nom, src=
         tableComptage['obs'] = tableComptage.periode.apply(lambda x: remplirObsSelonVacances(None, O.verifVacanceRange(x)))
     return dfIds, tableComptage    
 
-def creerCommpteurAssoc(df, nomAttrIdCpteurAsso, nomAttrGeom=None, nomAttrIdCpteurRef=None, listIdCptExclu=None):
+def creerCompteurAssoc(df, nomAttrIdCpteurAsso, nomAttrGeom=None, nomAttrIdCpteurRef=None, listIdCptExclu=None):
     """
     a partir d'une df, creer la table des compteurdu schema comptage_assoc de la bdd. la table source doit contenir les attributs d'ientifiantde comptage,
     type_poste, src_geo, src_cpt, convention, sens_cpt. 
