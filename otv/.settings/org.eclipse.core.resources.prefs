@@ -1,6 +1,7 @@
 eclipse.preferences.version=1
 encoding//Transfert_Donnees/Donnees_horaires.py=utf-8
 encoding//Transfert_Donnees/Donnees_sources.py=utf-8
+encoding//Transfert_Donnees/Import_export_comptage.py=utf-8
 encoding//Transfert_Donnees/Import_trafics.py=utf-8
 encoding//Transfert_Donnees/Integration_nouveau_comptage.py=utf-8
 encoding//Transfert_Donnees/Linearisation.py=utf-8

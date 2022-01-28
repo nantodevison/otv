@@ -6,13 +6,15 @@ Created on 26 janv. 2022
 Module pour integrer les nouveaux comptages fournis par les gestionnaires
 '''
 
-import warnings
+import warnings, re
+import datetime as dt
 import Outils as O
 import pandas as pd
 import Connexion_Transfert as ct
-from Params.Bdd_OTV import (nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, 
-                            tableCompteur, tableCorrespIdComptag,attrCompteurAssoc,
+from Params.Bdd_OTV import (nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, tableEnumTypeVeh, 
+                            tableCompteur, tableCorrespIdComptag,attrCompteurAssoc, attBddCompteur,
                             attrCompteurValeurMano, attrComptageAssoc, enumTypePoste)
+from Import_export_comptage import (recupererIdUniqComptage,)
 import geopandas as gp
 
 
@@ -30,76 +32,6 @@ def corresp_nom_id_comptag(df):
                                                     if x['id_comptag'] in corresp_comptg.id_gest.tolist() else x['id_comptag'], axis=1)
     return 
 
-def comptag_existant_bdd(table=tableCompteur, schema=schemaComptage,dep=False, type_poste=False, gest=False):
-    """
-    recupérer les comptages existants dans une df
-    en entree : 
-        table : string : nom de la table
-        schema : string : nom du schema
-        dep : string, code du deprtament sur 2 lettres
-        type_poste : string ou list de string: type de poste dans 'permanent', 'tournant', 'ponctuel'
-    en sortie : 
-        existant : df selon la structure de la table interrogée
-    """
-    if not dep and not type_poste and not gest:
-        rqt = f"select * from {schema}.{table}"
-    elif not dep and not type_poste and gest:
-        rqt = f"select * from {schema}.{table} where gestionnai='{gest}'"
-    elif dep and not type_poste and not gest:
-        rqt = f"select * from {schema}.{table} where dep='{dep}'"
-    elif dep and not type_poste and gest:
-        rqt = f"select * from {schema}.{table} where dep='{dep}' and gestionnai='{gest}'"
-    elif dep and isinstance(type_poste, str) and not gest:
-        rqt = f"select * from {schema}.{table} where dep='{dep}' and type_poste='{type_poste}'"
-    elif dep and isinstance(type_poste, str) and gest :
-        rqt = f"select * from {schema}.{table} where dep='{dep}' and type_poste='{type_poste}' and gestionnai='{gest}' "
-    elif dep and isinstance(type_poste, list) and not gest : 
-        list_type_poste = '\',\''.join(type_poste)
-        rqt = f"""select * from {schema}.{table} where dep='{dep}' and type_poste in ('{list_type_poste}')"""
-    elif dep and isinstance(type_poste, list) and gest : 
-        list_type_poste = '\',\''.join(type_poste)
-        rqt = f"""select * from {schema}.{table} where dep='{dep}' and type_poste in ('{list_type_poste}') and gestionnai='{gest}'"""
-    with ct.ConnexionBdd(nomConnBddOtv) as c:
-        if table == tableCompteur :
-            existant = gp.GeoDataFrame.from_postgis(rqt, c.sqlAlchemyConn, geom_col='geom',crs='epsg:2154')
-        else :
-            existant = pd.read_sql(rqt, c.sqlAlchemyConn)
-    return existant
-
-def recupererIdUniqComptage(dfSource, derniereAnnee=False):
-        """
-        a partir d'une liste d'id_comptag et d'une annee, recuperer les identifiant unique associes à chaque couple dans l'OTV, ou simplement
-        l'dientifiant unique de la dernière année comptée
-        in : 
-            dfSource : df contenat un champs id_comptag (et annee si derniereAnnee = True ; qui soit etre unique) 
-                        que l'on va joindre pour obtenir l'id_comptag_uniq
-            derniereAnnee : booleen : si True, alors on recupere l'idcomptag_uniq de la derniere annee connue
-        out : 
-            dfIdCptUniqs dfSource avec id_comptag_uniq, id_comptag, annee
-        """
-        if not derniereAnnee:
-            O.checkAttributsinDf(dfSource, ['id_comptag', 'annee'])
-        with ct.ConnexionBdd(nomConnBddOtv) as c  :
-            if derniereAnnee:
-                txt = '\'),(\''.join(dfSource.id_comptag.tolist())
-                listIdCpt = f"('{txt}')"
-                rqt = f"""select DISTINCT ON (ca.id_comptag) ca.id id_comptag_uniq, ca.id_comptag, ca.annee 
-                             from {schemaComptage}.{tableComptage} ca JOIN (SELECT * from (VALUES  
-                             {listIdCpt}) 
-                             AS t (id_cpt)) t ON t.id_cpt=ca.id_comptag
-                             ORDER BY ca.id_comptag, ca.annee desc"""
-            else:
-                rqt = f"""select distinct on (ca.id_comptag) ca.id id_comptag_uniq, ca.id_comptag, ca.annee 
-                                         from {schemaComptage}.{tableComptage} ca JOIN (SELECT * from (VALUES  
-                                         {','.join([f'{a, b}' for a, b in zip(dfSource.id_comptag.tolist(), dfSource.annee.tolist())])}) 
-                                         AS t (id_cpt, ann)) t ON t.id_cpt=ca.id_comptag AND t.ann=ca.annee
-                                         order by ca.id_comptag, ca.annee DESC"""
-            dfIdCptUniqs = pd.read_sql(rqt, c.sqlAlchemyConn)
-        dfSourceIds = dfSource.merge(dfIdCptUniqs, on=['id_comptag', 'annee']).drop_duplicates() if not derniereAnnee else dfSource.merge(dfIdCptUniqs, on='id_comptag')
-        #verif que tout le monde a un id_comptag_uniq
-        if dfSourceIds.id_comptag_uniq.isna().any():
-            raise ValueError("les id_comptag {} n'ont pas d'id_comptag_uniq. Creer un comptage avant ")
-        return  dfSourceIds 
 
 def localiser_comptage_a_inserer(df, schema_temp,nom_table_temp, table_ref, table_pr):
     """
@@ -190,16 +122,86 @@ def creerCompteur(cptRef, attrGeom, dep, reseau, gestionnai, concession, techno=
     df = df[[attrGeom]  + attrCompteurValeurMano].assign(
         dep=dep, reseau=reseau, gestionnai=gestionnai, concession=concession, techno=techno, obs_geo=obs_geo,
         obs_supl=obs_supl, id_cpt=id_cpt, id_sect=id_sect, fictif=fictif, en_service=en_service)
-    df['x_l93'] = df[attrGeom].apply(lambda x: round(x.x,3) if not pd.isnull(x) else None)
-    df['y_l93'] = df[attrGeom].apply(lambda x: round(x.y,3) if not pd.isnull(x) else None)
+    df['x_l93'] = df[attrGeom].apply(lambda x: round(x.x,3) if not x.is_empty else None)
+    df['y_l93'] = df[attrGeom].apply(lambda x: round(x.y,3) if not x.is_empty else None)
     df.drop(
-        [c for c in df.columns if c not in ('dep', 'reseau', 'gestionnai', 'concession', attrGeom,
-                                            'id_comptag', 'type_poste', 'periode', 'pr', 'absc', 'route', 'src_cpt', 'convention', 'sens_cpt', 'reseau', 'dep',
-                                            'reseau', 'gestionnai', 'concession', 'techno', 'src_geo', 'obs_geo', 'obs_supl', 'id_cpt', 'id_sect', 'fictif',
-                                            'en_service')], axis=1, inplace=True)
+        [c for c in df.columns if c not in (attBddCompteur + [attrGeom])], axis=1, inplace=True)
     gdfCpt = gp.GeoDataFrame(df, geometry=attrGeom, crs=2154)
     gdfCpt = O.gp_changer_nom_geom(gdfCpt, 'geom')
     return gdfCpt
+
+
+def creer_comptage(listComptage, annee, src, type_veh,obs=None, periode=None) : 
+    """
+    creer une df a inserer dans la table des comptage
+    in : 
+        listComptage : liste des id_comptag concernes
+        annee : text 4 caracteres : annee des comptage
+        periode : text de forme YYYY/MM/DD-YYYY/MM/DD separe par ' ; ' si plusieurs periodes ou list de texte
+        src : texte ou list : source des donnnes
+        obs : txt ou list : observation
+        type_veh : txt parmis les valeurs de enum_type_veh
+    """
+    with ct.ConnexionBdd(nomConnBddOtv) as c  :
+        enumTypeVeh=pd.read_sql(f'select code from {schemaComptage}.{tableEnumTypeVeh}', c.sqlAlchemyConn).code.tolist()
+        listIdcomptagBdd=pd.read_sql(f'select id_comptag from {schemaComptage}.{tableCompteur}', c.sqlAlchemyConn).id_comptag.tolist()
+    if any([e not in listIdcomptagBdd for e in listComptage]):
+        raise ValueError(f'les comptages {[e for e in listComptage if e not in listIdcomptagBdd]} ne sont pas dans la Bdd. Vérifier les correspondance de comptage ou creer les compteur en premier')
+    if type_veh not in enumTypeVeh : 
+        raise ValueError(f'type_veh doit etre parmi {enumTypeVeh}')
+    if not (int(annee)<=dt.datetime.now().year and int(annee)>2000) or annee=='1900' :
+        raise ValueError(f'annee doit etre compris entre 2000 et {dt.datetime.now().year} ou egale a 1900')
+    #periode        
+    if isinstance(periode, str) :
+        if periode and not re.search('(20[0-9]{2}\/(0[1-9]|1[0-2])\/(0[1-9]|[1-2][0-9]|3[0-1])-20[0-9]{2}\/(0[1-9]|1[0-2])\/(0[1-9]|[1-2][0-9]|3[0-1]))+( ; )*', periode) :
+            raise ValueError(f'la periode doit etre de la forme YYYY/MM/DD-YYYY/MM/DD separe par \' ; \' si plusieurs periodes')
+    if isinstance(periode, list) :
+        #verif que ça colle avec les id_comptag
+        if len(periode)!=len(listComptage) :
+            raise ValueError('les liste de comptage et de periode doievnt avoir le mm nombre d elements')
+        for p in periode : 
+            if p and not re.search('(20[0-9]{2}\/(0[1-9]|1[0-2])\/(0[1-9]|[1-2][0-9]|3[0-1])-20[0-9]{2}\/(0[1-9]|1[0-2])\/(0[1-9]|[1-2][0-9]|3[0-1]))+( ; )*', p) :
+                raise ValueError(f'la periode doit etre de la forme YYYY/MM/DD-YYYY/MM/DD separe par \' ; \' si plusieurs periodes')
+    return pd.DataFrame({'id_comptag':listComptage, 'annee':annee, 'periode':periode,'src':src, 'obs':obs, 'type_veh' : type_veh})
+
+
+def structureBddOld2NewForm(dfAConvertir, annee, listAttrFixe,listAttrIndics,typeIndic):
+    """
+    convertir les données creer par les classes et issus de la structure de bdd 2010-2019 (wide-form) vers une structure 2020 (long-form) 
+    en ajoutant au passage les ids_comptag_uniq
+    in : 
+        annee : texte : annee sur 4 caractere
+        typeIndic : texte parmi 'agrege', 'mensuel'
+        dfAConvertir : dataframe a transformer
+        listAttrFixe : liste des attributs qui ne vont pas deveir des indicateurs
+        listAttrIndics : liste des attributs qui vont devenir des indicateurs
+    """  
+    if typeIndic not in ('agrege', 'mensuel', 'horaire') : 
+        raise ValueError ("le type d'indicateur doit etre parmi 'agrege', 'mensuel', 'horaire'" )
+    if any([e not in listAttrFixe for e in ['id_comptag', 'annee']]) : 
+        raise AttributeError('les attributs id_comptag et annee sont obligatoire dans listAttrFixe')
+    if typeIndic=='agrege' :
+        dfIndic=pd.melt(dfAConvertir.assign(annee=dfAConvertir.annee.astype(str)), id_vars=listAttrFixe, value_vars=listAttrIndics, 
+                              var_name='indicateur', value_name='valeur')
+        columns=[c for c in ['id_comptag', 'indicateur', 'valeur', 'fichier', 'obs', 'annee'] if c in dfIndic.columns]
+        dfIndic=dfIndic[columns].rename(columns={'id':'id_comptag_uniq'})
+    elif typeIndic=='mensuel' :
+        dfIndic=pd.melt(dfAConvertir.assign(annee=dfAConvertir.annee.astype(str)), id_vars=listAttrFixe, value_vars=listAttrIndics, 
+                              var_name='mois', value_name='valeur')
+        columns=[c for c in ['id_comptag', 'donnees_type', 'valeur', 'mois', 'fichier', 'annee'] if c in dfIndic.columns]
+        dfIndic=dfIndic[columns].rename(columns={'donnees_type':'indicateur'})
+    elif typeIndic=='horaire' : 
+        dfIndic=dfAConvertir.rename(columns={'type_veh':'indicateur'}).drop(
+            ['id_comptag', 'annee'], axis=1)
+    dfIndic=recupererIdUniqComptage(dfIndic).drop(['id_comptag', 'annee'], axis=1)
+    #si valeur vide on vire la ligne
+    if typeIndic in ('agrege','mensuel') :
+        dfIndic.dropna(subset=['valeur'], inplace=True)
+    if not dfIndic.loc[dfIndic.id_comptag_uniq.isna()].empty : 
+        print(dfIndic.columns)
+        raise ValueError(f"certains comptages ne peuvent etre associes a la table des comptages de la Bdd {dfIndic.loc[dfIndic.id_comptag_uniq.isna()].id_comptag_uniq.tolist()}")
+    return dfIndic
+
 
 def rangBddComptageAssoc(id_comptag_ref_Bdd):
     """

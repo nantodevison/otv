@@ -24,11 +24,12 @@ import Connexion_Transfert as ct
 from Donnees_horaires import (comparer2Sens,verifValiditeFichier,concatIndicateurFichierHoraire,SensAssymetriqueError,
                               verifNbJoursValidDispo, tmjaDepuisHoraire, periodeDepuisHoraire, attributsHoraire)
 from Donnees_sources import FIM, MHCorbin, DataSensError
-from Integration_nouveau_comptage import (corresp_nom_id_comptag, comptag_existant_bdd, localiser_comptage_a_inserer)
+from Integration_nouveau_comptage import (corresp_nom_id_comptag, structureBddOld2NewForm)
+from Import_export_comptage import (comptag_existant_bdd)
 import Outils as O
 from Params.Mensuel import dico_mois
 from Params.Bdd_OTV import (attBddCompteur, nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, 
-                            tableCompteur, tableIndicAgrege, tableIndicHoraire, tableIndicMensuel, tableCorrespIdComptag,
+                            tableCompteur, tableIndicAgrege, tableIndicHoraire, tableCorrespIdComptag,
                             tableEnumTypeVeh)
               
 class Comptage():
@@ -157,101 +158,6 @@ class Comptage():
                     raise ValueError(f'la periode doit etre de la forme YYYY/MM/DD-YYYY/MM/DD separe par \' ; \' si plusieurs periodes')
         return pd.DataFrame({'id_comptag':listComptage, 'annee':annee, 'periode':periode,'src':src, 'obs':obs, 'type_veh' : type_veh})
     
-    
-    def recupererComptageSansTrafic(self,listIdComptag, annee):
-        """
-        a partir d'une liste d'id_comptag et d'une annee, recuperer les id_comptag n'ayant pas de données de TMJA associees
-        in : 
-            listIdComptag : list des id_comptage a chercher
-            annee : texte : annee sur 4 caractere
-        """
-        with ct.ConnexionBdd(nomConnBddOtv) as c  :
-            dfCptSansTmja=pd.read_sql(f'select id, id_comptag, annee from comptage.vue_comptage_sans_tmja where id_comptag=ANY(ARRAY{listIdComptag}) and annee=\'{annee}\'', c.sqlAlchemyConn)
-        return  dfCptSansTmja
-    
-    def recupererIdUniqComptage(self,dfSource, derniereAnnee=False):
-        """
-        a partir d'une liste d'id_comptag et d'une annee, recuperer les identifiant unique associes à chaque couple dans l'OTV, ou simplement
-        l'dientifiant unique de la dernière année comptée
-        in : 
-            dfSource : df contenat un champs id_comptag (et annee si derniereAnnee = True ; qui soit etre unique) 
-                        que l'on va joindre pour obtenir l'id_comptag_uniq
-            derniereAnnee : booleen : si True, alors on recupere l'idcomptag_uniq de la derniere annee connue
-        out : 
-            dfIdCptUniqs dfSource avec id_comptag_uniq, id_comptag, annee
-        """
-        if not derniereAnnee:
-            O.checkAttributsinDf(dfSource, ['id_comptag', 'annee'])
-        with ct.ConnexionBdd(nomConnBddOtv) as c  :
-            if derniereAnnee:
-                txt = '\'),(\''.join(dfSource.id_comptag.tolist())
-                listIdCpt = f"('{txt}')"
-                rqt = f"""select DISTINCT ON (ca.id_comptag) ca.id id_comptag_uniq, ca.id_comptag, ca.annee 
-                             from {schemaComptage}.{tableComptage} ca JOIN (SELECT * from (VALUES  
-                             {listIdCpt}) 
-                             AS t (id_cpt)) t ON t.id_cpt=ca.id_comptag
-                             ORDER BY ca.id_comptag, ca.annee desc"""
-            else:
-                rqt = f"""select distinct on (ca.id_comptag) ca.id id_comptag_uniq, ca.id_comptag, ca.annee 
-                                         from {schemaComptage}.{tableComptage} ca JOIN (SELECT * from (VALUES  
-                                         {','.join([f'{a, b}' for a, b in zip(dfSource.id_comptag.tolist(), dfSource.annee.tolist())])}) 
-                                         AS t (id_cpt, ann)) t ON t.id_cpt=ca.id_comptag AND t.ann=ca.annee
-                                         order by ca.id_comptag, ca.annee DESC"""
-            dfIdCptUniqs = pd.read_sql(rqt, c.sqlAlchemyConn)
-        dfSourceIds = dfSource.merge(dfIdCptUniqs, on=['id_comptag', 'annee']).drop_duplicates() if not derniereAnnee else dfSource.merge(dfIdCptUniqs, on='id_comptag')
-        #verif que tout le monde a un id_comptag_uniq
-        if dfSourceIds.id_comptag_uniq.isna().any():
-            raise ValueError("les id_comptag {} n'ont pas d'id_comptag_uniq. Creer un comptage avant ")
-        return  dfSourceIds 
-    
-    def recupererIdUniqComptageAssoc(self,listIdComptag):
-        """
-        a partir d'une liste d'id_comptag ede reference, recuperer les identifiant unique dans la table comptage du schema comptage_assoc
-        in : 
-            listIdComptag : list des id_comptage a chercher
-        out : 
-            dfIdCptUniqs df avec id_comptag_uniq, id_comptag, annee
-        """
-        with ct.ConnexionBdd(nomConnBddOtv) as c  :
-            dfIdCptUniqsAssoc=pd.read_sql(f'select id id_comptag_uniq, id_cptag_ref from {schemaComptageAssoc}.{tableComptage} where id_cptag_ref=ANY(ARRAY{listIdComptag})', c.sqlAlchemyConn)
-        return  dfIdCptUniqsAssoc
-    
-    def structureBddOld2NewForm(self,dfAConvertir, annee, listAttrFixe,listAttrIndics,typeIndic):
-        """
-        convertir les données creer par les classes et issus de la structure de bdd 2010-2019 (wide-form) vers une structure 2020 (long-form) 
-        en ajoutant au passage les ids_comptag_uniq
-        in : 
-            annee : texte : annee sur 4 caractere
-            typeIndic : texte parmi 'agrege', 'mensuel'
-            dfAConvertir : dataframe a transformer
-            listAttrFixe : liste des attributs qui ne vont pas deveir des indicateurs
-            listAttrIndics : liste des attributs qui vont devenir des indicateurs
-        """  
-        if typeIndic not in ('agrege', 'mensuel', 'horaire') : 
-            raise ValueError ("le type d'indicateur doit etre parmi 'agrege', 'mensuel', 'horaire'" )
-        if any([e not in listAttrFixe for e in ['id_comptag', 'annee']]) : 
-            raise AttributeError('les attributs id_comptag et annee sont obligatoire dans listAttrFixe')
-        if typeIndic=='agrege' :
-            dfIndic=pd.melt(dfAConvertir.assign(annee=dfAConvertir.annee.astype(str)), id_vars=listAttrFixe, value_vars=listAttrIndics, 
-                                  var_name='indicateur', value_name='valeur')
-            columns=[c for c in ['id_comptag', 'indicateur', 'valeur', 'fichier', 'obs', 'annee'] if c in dfIndic.columns]
-            dfIndic=dfIndic[columns].rename(columns={'id':'id_comptag_uniq'})
-        elif typeIndic=='mensuel' :
-            dfIndic=pd.melt(dfAConvertir.assign(annee=dfAConvertir.annee.astype(str)), id_vars=listAttrFixe, value_vars=listAttrIndics, 
-                                  var_name='mois', value_name='valeur')
-            columns=[c for c in ['id_comptag', 'donnees_type', 'valeur', 'mois', 'fichier', 'annee'] if c in dfIndic.columns]
-            dfIndic=dfIndic[columns].rename(columns={'donnees_type':'indicateur'})
-        elif typeIndic=='horaire' : 
-            dfIndic=dfAConvertir.rename(columns={'type_veh':'indicateur'}).drop(
-                ['id_comptag', 'annee'], axis=1)
-        dfIndic=self.recupererIdUniqComptage(dfIndic).drop(['id_comptag', 'annee'], axis=1)
-        #si valeur vide on vire la ligne
-        if typeIndic in ('agrege','mensuel') :
-            dfIndic.dropna(subset=['valeur'], inplace=True)
-        if not dfIndic.loc[dfIndic.id_comptag_uniq.isna()].empty : 
-            print(dfIndic.columns)
-            raise ValueError(f"certains comptages ne peuvent etre associes a la table des comptages de la Bdd {dfIndic.loc[dfIndic.id_comptag_uniq.isna()].id_comptag_uniq.tolist()}")
-        return dfIndic
     
     def renommerMois(self,df):
         """
@@ -1354,8 +1260,8 @@ class Comptage_cd47(Comptage):
         """
         conversion d'un dico en df
         """
-        df_agrege=pd.DataFrame.from_dict({k:{x:y for x,y in v.items() if x!='horaire'} for k, v in dico.items()},
-                                        orient='index').reset_index().rename(columns={'index':'id_comptag'})
+        df_agrege=pd.DataFrame.from_dict({k: {x: y for x, y in v.items() if x not in  ('horaire', 'mensuel')} for k, v in dico.items()},
+                                         orient='index').reset_index().rename(columns={'index': 'id_comptag'})
         df_agrege['src']='donnees_xls_sources'
         
         for (i,(k, v)) in enumerate(dico.items()) : 
@@ -1363,10 +1269,10 @@ class Comptage_cd47(Comptage):
                 if x=='horaire' :
                     df_horaire=y
                     df_horaire['id_comptag']=k
-            if i==0 : 
-                df_horaire_tot=df_horaire.copy()
-            else : 
-                df_horaire_tot=pd.concat([df_horaire_tot,df_horaire], sort=False, axis=0)
+                    if i==0 : 
+                        df_horaire_tot=df_horaire.copy()
+                    else : 
+                        df_horaire_tot=pd.concat([df_horaire_tot,df_horaire], sort=False, axis=0)
         df_horaire_tot.columns=['type_veh','h0_1','h1_2','h2_3','h3_4','h4_5','h5_6','h6_7','h7_8','h8_9','h9_10','h10_11','h11_12','h12_13',
                                 'h13_14','h14_15','h15_16','h16_17','h17_18','h18_19','h19_20','h20_21','h21_22','h22_23','h23_24','id_comptag']
         df_horaire_tot.reset_index(inplace=True)
@@ -1377,10 +1283,10 @@ class Comptage_cd47(Comptage):
                     df_mensuel=pd.DataFrame(y, index=range(2))
                     df_mensuel['id_comptag']=k
                     df_mensuel['annee']=str(self.annee)
-            if i==0 : 
-                df_mensuel_tot=df_mensuel.copy()
-            else : 
-                df_mensuel_tot=pd.concat([df_mensuel_tot,df_mensuel], sort=False, axis=0)
+                    if i==0 : 
+                        df_mensuel_tot=df_mensuel.copy()
+                    else : 
+                        df_mensuel_tot=pd.concat([df_mensuel_tot,df_mensuel], sort=False, axis=0)
         df_mensuel_tot['annee']=str(self.annee)
                
         return df_agrege,df_horaire_tot, df_mensuel_tot   
