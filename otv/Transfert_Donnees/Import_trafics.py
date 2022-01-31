@@ -1968,93 +1968,100 @@ class Comptage_cd86(Comptage):
         
 class Comptage_cd24(Comptage):
     """
-    pour le moment on ne traite que les cpt perm de 2018 issus de D:\temp\otv\Donnees_source\CD24\2018_CD24_trafic.csv
+    pour le moment on ne traite que les cpt perm et tournants de 2020
     """ 
     def __init__(self,fichier_perm, annee):
+        self.fichier_perm = fichier_perm
         Comptage.__init__(self, fichier_perm)
         self.annee=annee
     
     def cpt_perm_csv(self):
-        donnees_brutes=self.ouvrir_csv()
-        donnees_traitees=donnees_brutes.loc[~donnees_brutes.MJA.isna()].copy()
-        donnees_traitees=donnees_traitees.loc[donnees_traitees['Sens']=='3'].rename(columns={'MJA' : 'tmja', 'MJAPPL':'pc_pl'}).copy()
-        donnees_traitees['id_comptag']=donnees_traitees.apply(lambda x : f"24-{x['Data']}-{x['PRC']}+{x['ABC']}", axis=1)
-        donnees_traitees['Latitude']=donnees_traitees.Latitude.apply(lambda x : float(x.replace(',','.')))
-        donnees_traitees['Longitude']=donnees_traitees.Longitude.apply(lambda x : float(x.replace(',','.')))
-        donnees_traitees['tmja']=donnees_traitees.tmja.apply(lambda x : int(x))
-        donnees_traitees['pc_pl']=donnees_traitees.pc_pl.apply(lambda x : float(x.replace(',','.')))
+        def creerPeriode(serie):
+            listPeriode = []
+            for i in range(1,5):
+                if not pd.isnull(serie[f'DDPeriode{i}']) and not pd.isnull(serie[f'DFPeriode{i}']):
+                    listPeriode.append(f"{pd.to_datetime(serie[f'DDPeriode{i}'], dayfirst=True).strftime('%Y/%m/%d')}-{pd.to_datetime(serie[f'DFPeriode{i}'], dayfirst=True).strftime('%Y/%m/%d')}")
+            return ' ; '.join(listPeriode)
+        donnees_brutes = self.ouvrir_csv()
+        donnees_traitees = donnees_brutes.loc[~donnees_brutes.MJA.isna()].copy()
+        donnees_traitees['Data'] = donnees_traitees.Route.apply(lambda x: x.split(' ')[1] if not pd.isnull(x) else None)
+        donnees_traitees = donnees_traitees.loc[donnees_traitees['Sens']=='3'].rename(columns={'MJA' : 'tmja', 'MJAPPL':'pc_pl'}).copy()
+        donnees_traitees['id_comptag'] = donnees_traitees.apply(lambda x : f"24-{x['Data']}-{x['PRC']}+{x['ABC']}", axis=1)
+        donnees_traitees['Latitude'] = donnees_traitees.Latitude.apply(lambda x : float(x.replace(',','.')))
+        donnees_traitees['Longitude'] = donnees_traitees.Longitude.apply(lambda x : float(x.replace(',','.')))
+        donnees_traitees['tmja'] = donnees_traitees.tmja.apply(lambda x : int(x))
+        donnees_traitees['pc_pl'] = donnees_traitees.pc_pl.apply(lambda x : float(x.replace(',','.')))
         donnees_traitees.rename(columns={'Data':'route', 'PRC':'pr', 'ABC':'abs'}, inplace=True)
         gdf_finale = gp.GeoDataFrame(donnees_traitees, geometry=gp.points_from_xy(donnees_traitees.Longitude, donnees_traitees.Latitude), crs='epsg:4326')
-        gdf_finale=gdf_finale.to_crs('epsg:2154')
-        gdf_finale['type_poste']=gdf_finale.apply(lambda x : 'permanent' if x['Type'].lower()=='per' else 'tournant', axis=1)
-        gdf_finale['geometry']=gdf_finale.apply(lambda x : 0 if x['Latitude']==0 else x['geometry'], axis=1)
-        gdf_finale['src']=f'tableau export SIG {str(self.annee)}'
-        gdf_finale['fichier']=self.fichier
-        gdf_finale.loc[gdf_finale.type_poste=='tournant','obs']=gdf_finale.apply(lambda x : f'{x.DDPeriode1}-{x.DFPeriode1} ; {x.DDPeriode2}-{x.DFPeriode2} ; {x.DDPeriode3}-{x.DFPeriode3} ; {x.DDPeriode4}-{x.DFPeriode4}', axis=1)
-        gdf_finale.obs.fillna('', inplace=True)
+        gdf_finale = gdf_finale.to_crs('epsg:2154')
+        gdf_finale['type_poste'] = gdf_finale.apply(lambda x : 'permanent' if x['Type'].lower() == 'per' else 'tournant', axis=1)
+        gdf_finale['geometry'] = gdf_finale.apply(lambda x : 0 if x['Latitude'] == 0 else x['geometry'], axis=1)
+        gdf_finale['src'] = f'tableau export SIG {str(self.annee)}'
+        gdf_finale['fichier'] = os.path.basename(self.fichier)
+        gdf_finale['annee'] = self.annee
+        gdf_finale.loc[gdf_finale.type_poste == 'tournant','periode'] = gdf_finale.apply(lambda x : creerPeriode(x), axis=1)
+        gdf_finale.periode.fillna('', inplace=True)
         return gdf_finale
     
     def comptage_forme(self):
-        donnees_finales=self.cpt_perm_csv()
+        donnees_finales = self.cpt_perm_csv()
         #mensuel permanent
-        donnees_mens_perm=donnees_finales.loc[donnees_finales.type_poste=='permanent'][[a for a in donnees_finales.columns if a in [m for e in dico_mois.values() for m in e]]+['id_comptag']].copy()
-        donnees_mens_perm.rename(columns={c:k for c in donnees_mens_perm.columns if c!='id_comptag' for k, v in dico_mois.items() if c in v}, inplace=True)
-        donnees_mens_perm['donnees_type']='tmja'
+        donnees_mens_perm = donnees_finales.loc[donnees_finales.type_poste == 'permanent'][[a for a in donnees_finales.columns if a in [m for e in dico_mois.values() for m in e]]+['id_comptag']].copy()
+        donnees_mens_perm.rename(columns={c:k for c in donnees_mens_perm.columns if c != 'id_comptag' for k, v in dico_mois.items() if c in v}, inplace=True)
+        donnees_mens_perm['donnees_type'] = 'tmja'
         #mensuel tournant
-        donnees_mens_tour=pd.DataFrame({'id_comptag':[],'donnees_type':[]})
-        for j,e in enumerate(donnees_finales.loc[donnees_finales.type_poste=='tournant'].itertuples()) : 
+        donnees_mens_tour = pd.DataFrame({'id_comptag':[],'donnees_type':[]})
+        for j,e in enumerate(donnees_finales.loc[donnees_finales.type_poste == 'tournant'].itertuples()) : 
             for  i in range(1,5):
-                mois=[k for k, v in dico_mois.items() if v[0]==Counter(pd.date_range(pd.to_datetime(getattr(e,f'DDPeriode{i}'), dayfirst=True)
-                                                        ,pd.to_datetime(getattr(e,f'DDPeriode{i}'), dayfirst=True)).month).most_common()[0][0]][0]
-                donnees_mens_tour.loc[j,mois]=getattr(e,f'MJP{i}')
-                donnees_mens_tour.loc[j,'donnees_type']='tmja'
-                donnees_mens_tour.loc[j+1000,mois]=float(getattr(e,f'MJPPL{i}').replace(',','.'))
-                donnees_mens_tour.loc[j,'id_comptag']=getattr(e,f'id_comptag')
-                donnees_mens_tour.loc[j+1000,'id_comptag']=getattr(e,f'id_comptag')
-                donnees_mens_tour.loc[j+1000,'donnees_type']='pc_pl'
+                if not pd.isnull(getattr(e,f'DDPeriode{i}')) and not pd.isnull(getattr(e,f'DFPeriode{i}')):
+                    mois = [k for k, v in dico_mois.items() if v[0] == Counter(pd.date_range(pd.to_datetime(getattr(e,f'DDPeriode{i}'), dayfirst=True)
+                                                            ,pd.to_datetime(getattr(e,f'DFPeriode{i}'), dayfirst=True)).month).most_common()[0][0]][0]
+                    donnees_mens_tour.loc[j,mois] = getattr(e,f'MJP{i}')
+                    donnees_mens_tour.loc[j,'donnees_type'] = 'tmja'
+                    donnees_mens_tour.loc[j+1000,mois] = float(getattr(e,f'MJPPL{i}').replace(',','.'))
+                    donnees_mens_tour.loc[j,'id_comptag'] = getattr(e,f'id_comptag')
+                    donnees_mens_tour.loc[j+1000,'id_comptag'] = getattr(e,f'id_comptag')
+                    donnees_mens_tour.loc[j+1000,'donnees_type'] = 'pc_pl'
         #global        
-        donnees_mens=pd.concat([donnees_mens_tour,donnees_mens_perm],axis=0).reset_index(drop=True)
-        donnees_mens['annee']=str(self.annee)
-        donnees_finales=donnees_finales[['id_comptag', 'tmja', 'pc_pl','route', 'pr', 'abs','src', 'geometry', 'type_poste', 'fichier', 'obs']].copy()
-        self.df_attr=donnees_finales
-        self.df_attr_mens=donnees_mens
+        self.df_attr_mens = pd.concat([donnees_mens_tour,donnees_mens_perm],axis=0).reset_index(drop=True)
+        self.df_attr = donnees_finales[['id_comptag', 'tmja', 'pc_pl','route', 'pr', 'abs','src', 'geometry', 'type_poste', 'fichier', 'periode']].copy()
         
-    def classer_comptage_update_insert(self, table_cpt):
+    def classer_comptage_update_insert(self):
         """
         attention, on aurait pu ajouter un check des comptages deja existant et rechercher les correspondances comme dans le 87,
         mais les données PR de l'IGN sont trop pourries dans ce dept, dc corresp faite à la main en amont
         """
-        self.corresp_nom_id_comptag(self.df_attr)
-        self.comptag_existant_bdd(table_cpt, dep='24')
-        self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
-        self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        corresp_nom_id_comptag(self.df_attr)
+        self.existant = comptag_existant_bdd(dep='24')
+        self.df_attr_update = self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        self.df_attr_insert = self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         """
         #on peut tenter un dico de correspondance, mais les données PR de l'IGN sont trop fausses pour faire confaince
-        dico_corresp=cd24.corresp_old_new_comptag('local_otv_station_gti', 'public','cd24_perm', 'lineaire.traf2017_bdt24_ed17_l',
+        dico_corresp = cd24.corresp_old_new_comptag('local_otv_station_gti', 'public','cd24_perm', 'lineaire.traf2017_bdt24_ed17_l',
              'referentiel','troncon_route_bdt24_ed17_l','troncon_route_bdt24_ed17_l_vertices_pgr','id')
         """
         
     def update_bdd_24(self, schema, table):
-        valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag','tmja','pc_pl','src', 'fichier','obs','type_poste'])
-        dico_attr_modif={f'tmja_{self.annee}':'tmja', f'pc_pl_{self.annee}':'pc_pl',f'src_{self.annee}':'src', 
+        valeurs_txt = self.creer_valeur_txt_update(self.df_attr_update,['id_comptag','tmja','pc_pl','src', 'fichier','obs','type_poste'])
+        dico_attr_modif = {f'tmja_{self.annee}':'tmja', f'pc_pl_{self.annee}':'pc_pl',f'src_{self.annee}':'src', 
                          'fichier':'fichier',f'obs_{self.annee}':'obs','type_poste':'type_poste'}
         self.update_bdd(schema, table, valeurs_txt,dico_attr_modif) 
     
     def insert_bdd_24(self, schema, table):
-        self.df_attr_insert=self.df_attr_insert.loc[self.df_attr_insert.geometry!=0].copy()
-        self.df_attr_insert.loc[self.df_attr_insert['id_comptag']=='24-D939-4+610', 'geometry']=Point(517579.400,6458283.399)
-        self.df_attr_insert.loc[self.df_attr_insert['id_comptag']=='24-D939-4+610', 'obs_geo']='mano'
-        self.df_attr_insert.loc[self.df_attr_insert['id_comptag']=='24-D939-4+610', 'src_geo']='tableau perm 2018'
-        self.df_attr_insert.loc[self.df_attr_insert['id_comptag']=='24-D710-32+270', 'src_geo']='tableau perm 2018'
-        self.df_attr_insert['dep']='24'
-        self.df_attr_insert['reseau']='RD'
-        self.df_attr_insert['gestionnai']='CD24'
-        self.df_attr_insert['concession']='N'
-        self.df_attr_insert=self.df_attr_insert.rename(columns={'tmja':f'tmja_{self.annee}', 'pc_pl':f'pc_pl_{self.annee}','src':f'src_{self.annee}',
+        self.df_attr_insert = self.df_attr_insert.loc[self.df_attr_insert.geometry!=0].copy()
+        self.df_attr_insert.loc[self.df_attr_insert['id_comptag'] == '24-D939-4+610', 'geometry']=Point(517579.400,6458283.399)
+        self.df_attr_insert.loc[self.df_attr_insert['id_comptag'] == '24-D939-4+610', 'obs_geo'] = 'mano'
+        self.df_attr_insert.loc[self.df_attr_insert['id_comptag'] == '24-D939-4+610', 'src_geo'] = 'tableau perm 2018'
+        self.df_attr_insert.loc[self.df_attr_insert['id_comptag'] == '24-D710-32+270', 'src_geo'] = 'tableau perm 2018'
+        self.df_attr_insert['dep'] = '24'
+        self.df_attr_insert['reseau'] = 'RD'
+        self.df_attr_insert['gestionnai'] = 'CD24'
+        self.df_attr_insert['concession'] = 'N'
+        self.df_attr_insert = self.df_attr_insert.rename(columns={'tmja':f'tmja_{self.annee}', 'pc_pl':f'pc_pl_{self.annee}','src':f'src_{self.annee}',
                                                                 'obs':f'obs_{self.annee}','fichier':'fichier','type_poste':'type_poste'})
-        self.df_attr_insert['x_l93']=self.df_attr_insert.apply(lambda x : round(x['geometry'].x,3), axis=1)
-        self.df_attr_insert['y_l93']=self.df_attr_insert.apply(lambda x : round(x['geometry'].y,3), axis=1)
-        self.df_attr_insert['convention']=False
+        self.df_attr_insert['x_l93'] = self.df_attr_insert.apply(lambda x : round(x['geometry'].x,3), axis=1)
+        self.df_attr_insert['y_l93'] = self.df_attr_insert.apply(lambda x : round(x['geometry'].y,3), axis=1)
+        self.df_attr_insert['convention'] = False
         self.insert_bdd(schema, table,self.df_attr_insert)
  
 class Comptage_cd33(Comptage):

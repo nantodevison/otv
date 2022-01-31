@@ -18,7 +18,7 @@ from shapely.geometry import Point
 from shapely.ops import transform
 import pyproj
 
-from datetime import datetime
+from datetime import datetime, time
 from importlib import resources
 import os, re
 
@@ -26,7 +26,6 @@ from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_error
 
 from Params.DonneesSourcesParams import MHcorbinMaxLength, MHcorbinMaxSpeed, MHCorbinValue0, MHCorbinFailAdviceCode
 import Connexion_Transfert as ct
@@ -451,6 +450,26 @@ class Viking(object):
                                  names=['sens', 'jour', 'heureMin','secCent', 'vts', 'ser', 'type_veh'],dtype={'heureMin':str,'secCent':str})
         return dfFichier,anneeDeb,moisDeb,jourDeb
     
+    
+    def creerDate(self):
+        """
+        creer les attributs relatif a l'horodatage
+        """
+        # ramener le jour de l'enregistrement suivant
+        self.dfFichier['jour_supp'] = self.dfFichier.jour-self.dfFichier.jour.shift(1)
+        #corriger les changements de mois
+        jourNouveauMois = self.dfFichier.loc[self.dfFichier.jour_supp < 0, 'jour']
+        self.dfFichier.loc[self.dfFichier.jour_supp < 0, 'jour_supp'] = 1 + jourNouveauMois - 1
+        # calcul de la nouvelle date
+        self.dfFichier['date_ref'] = self.dfFichier.iloc[0, self.dfFichier.columns.get_loc('date_heure')]
+        self.dfFichier['jour_supp_tot'] = self.dfFichier.jour_supp.cumsum()
+        self.dfFichier.jour_supp_tot.fillna(method='bfill', inplace=True)
+        self.dfFichier['jour_supp_tot'] = self.dfFichier['jour_supp_tot'].apply(lambda x: pd.to_timedelta(str(x)+'D'))
+        self.dfFichier['date_increment'] = (self.dfFichier['jour_supp_tot']+self.dfFichier['date_ref']).dt.date
+        self.dfFichier['heureNew'] = self.dfFichier.apply(lambda x: time(int(x.heureMin[:2]), int(x.heureMin[2:]), int(x.secCent[:2]), int(x.secCent[2:])*10000), axis=1)
+        self.dfFichier['date_heure'] = self.dfFichier.apply(lambda x: pd.Timestamp.combine(x.date_increment, x.heureNew), axis=1)
+
+
     def formaterDonnees(self):
         """
         ajouter l'attribut de date, modifier le sens et le type de vehicule pour coller au format de la classe Mixtra
@@ -477,6 +496,7 @@ class Viking(object):
         
         self.dfFichier['date_heure']=self.dfFichier.apply(lambda x : creer_date(self.jourDeb,self.moisDeb,self.anneeDeb, 
                             x['jour'],x['heureMin'],x['secCent']), axis=1)
+        self.creerDate()
         self.dfFichier['type_veh']=self.dfFichier['type_veh'].str.upper()
         self.dfFichier['nbVeh']=1
         self.dfFichier['vitesse']=self.dfFichier.vts.str[2:].astype(int)
