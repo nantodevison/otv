@@ -12,9 +12,10 @@ import Outils as O
 import pandas as pd
 import Connexion_Transfert as ct
 from Params.Bdd_OTV import (nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, tableEnumTypeVeh, 
-                            tableCompteur, tableCorrespIdComptag,attrCompteurAssoc, attBddCompteur,
+                            tableCompteur, tableCorrespIdComptag,attrCompteurAssoc, attBddCompteur, attrComptageMano,
                             attrCompteurValeurMano, attrComptageAssoc, enumTypePoste, attrIndicHoraireAssoc)
 from Import_export_comptage import (recupererIdUniqComptage, recupererIdUniqComptageAssoc)
+from Params.Mensuel import dico_mois
 import geopandas as gp
 
 
@@ -58,13 +59,15 @@ def localiser_comptage_a_inserer(df, schema_temp,nom_table_temp, table_ref, tabl
         points_a_inserer=gp.GeoDataFrame.from_postgis(f'select * from {schema_temp}.{nom_table_temp}', c.sqlAlchemyConn, geom_col='geom',crs='epsg:2154')
     return points_a_inserer
     
-def ventilerParSectionHomogene(tableCptNew, tableSectionHomo, codeDept):
+    
+def ventilerParSectionHomogene(tableCptNew, tableSectionHomo, codeDept, distancePlusProcheVoisin=10):
     """
     Pour les points supposes a creer, les separer selon les cas (cf Out)
     in : 
         tableCptNew: string : schemaqualified table des pointsgeolocalise. creer lors de localiser_comptage_a_inserer().
         tableSectionHomo: string : schemaqualified table des sections homogene dans la bdd
         codeDept: string: code departement sur 2 caractères
+        distancePlusProcheVoisin : integer : distance max de recherche du plus proche voisin
     out : 
         cptSansGeom: point sans geometrie
         ppvHorsSectHomo: point avec geom mais eloigne du referentiel
@@ -89,9 +92,9 @@ def ventilerParSectionHomogene(tableCptNew, tableSectionHomo, codeDept):
                                                            end
                                      """, c.sqlAlchemyConn)
     # on en déduit le plus proche voisin entre les points et la linauto
-    ppV = O.plus_proche_voisin(ptGeom, linauto, 10, 'id_comptag', 'gid')
+    ppV = O.plus_proche_voisin(ptGeom, linauto, distancePlusProcheVoisin, 'id_comptag', 'gid')
     ppVSectHomo = ppV.loc[~ppV.gid.isna()].copy()
-    ppvHorsSectHomo = pt.loc[pt.id_comptag.isin(ppV.loc[ppV.gid.isna()].id_comptag.tolist())].copy()  # PENSER A CREER LES COMPTEURS POUR CEUX LA !!!!!
+    ppvHorsSectHomo = pt.loc[~pt.id_comptag.isin(ppV.id_comptag.tolist())].copy()  # PENSER A CREER LES COMPTEURS POUR CEUX LA !!!!!
     # et on récupère l'id_comptag_existant et l'id de section homogene
     ppVTot = ptGeom.merge(ppVSectHomo, how='left', on='id_comptag').merge(linauto, how='left', on='gid')
     # trouver le nombre de comptage par section homogène (gid)
@@ -103,6 +106,7 @@ def ventilerParSectionHomogene(tableCptNew, tableSectionHomo, codeDept):
     if len(cptSansGeom)+len(cptSimpleSectHomo)+len(cptMultiSectHomo)+len(ppvHorsSectHomo) != len(pt):
         warnings.warn("""la somme des éléments présents dans 'cptSansGeom', 'ppvHorsSectHomo', 'cptSimpleSectHomo', 'cptMultiSectHomo' est supérieure au nombre d'éléments initiaux. vérifier les doublons dans les résultats, vérifier la linauto et les données sources""")
     return cptSansGeom, ppvHorsSectHomo, cptSimpleSectHomo, cptMultiSectHomo
+
 
 def creerCompteur(cptRef, attrGeom, dep, reseau, gestionnai, concession, techno=None, obs_geo=None, obs_supl=None, id_cpt=None,
                   id_sect=None, fictif=False, en_service=True):
@@ -254,6 +258,7 @@ def rangBddComptageAssoc(id_comptag_ref_Bdd):
         rang = pd.read_sql(rqt, c.sqlAlchemyConn).iloc[0]
     return rang
     
+    
 def creerComptageAssoc(df, id_comptag_ref_nom, annee, id_compteur_asso_nom, src=None, listIdCptExclu=None):
     """
     a partir d'une df, creer la df a injecter dans les tables compteur et comptage du schema comptage_assoc de la bdd
@@ -307,6 +312,7 @@ def creerComptageAssoc(df, id_comptag_ref_nom, annee, id_compteur_asso_nom, src=
         tableComptage['obs'] = tableComptage.periode.apply(lambda x: remplirObsSelonVacances(None, O.verifVacanceRange(x)))
     return dfIds, tableComptage    
 
+
 def creerCompteurAssoc(df, nomAttrIdCpteurAsso, nomAttrGeom=None, nomAttrIdCpteurRef=None, listIdCptExclu=None):
     """
     a partir d'une df, creer la table des compteurdu schema comptage_assoc de la bdd. la table source doit contenir les attributs d'ientifiantde comptage,
@@ -332,6 +338,7 @@ def creerCompteurAssoc(df, nomAttrIdCpteurAsso, nomAttrGeom=None, nomAttrIdCpteu
     tableCompteur = dfSource[[c for c in dfSource.columns if c in attrCompteurAssoc]]
     return tableCompteur
 
+
 def creerCorrespComptag(df, nomAttrIdComptagGest, nomAttrIdComptagGti, listIdCptExclu):
     """
     creer une df a integrer dans la bdd a partir d'une df comprenant : un attribut id_comptag de la bdd et un attribut id_comptag issu des données gestionnaire.
@@ -343,6 +350,7 @@ def creerCorrespComptag(df, nomAttrIdComptagGest, nomAttrIdComptagGti, listIdCpt
         listIdCptExclu : list ou tuple : list des id_comptage à ne pas prendre en compte
     """
     return df.loc[~df[nomAttrIdComptagGest].isin(listIdCptExclu)][[nomAttrIdComptagGest, nomAttrIdComptagGti]].copy().rename(columns={nomAttrIdComptagGest: 'id_gest', nomAttrIdComptagGti: 'id_gti'})
+    
     
 def hierarchisationCompteur(typePoste, periode, tmja, pc_pl):
     """
@@ -387,8 +395,9 @@ def hierarchisationCompteur(typePoste, periode, tmja, pc_pl):
             return tmja * 1000
         else:
             return (tmja * 1000) + pc_pl
-
+        
     return hierarchisationTypePoste(typePoste) + hierarchisationVacance(periode) + hierarchisationTrafic(tmja, pc_pl)
+
 
 def ventilerCompteurRefAssoc(cptMultiSectHomo):
     """
@@ -415,6 +424,7 @@ def ventilerCompteurRefAssoc(cptMultiSectHomo):
         raise ValueError('un ou plusieurs comptage n\'ont pas ete affecte comme reference ou associe')
     return cptRefMultiSectHomo, cptAssocMultiSectHomo
 
+
 def ventilerCompteurIdComptagExistant(cptSimpleSectHomo, cptRefMultiSectHomo):
     """
     pour les comptages de référence, catégoriser en fonction de la présence d'un id_comptag ou non sur la section homogène
@@ -433,15 +443,21 @@ def ventilerCompteurIdComptagExistant(cptSimpleSectHomo, cptRefMultiSectHomo):
     cptRefSectHomoOld = pd.concat([cptRefMultiSectHomoOld, cptSimpleSectHomoOld])
     return cptRefSectHomoNew, cptRefSectHomoOld
 
+
 def ventilerNouveauComptageRef(df, nomAttrtypePosteGest, nomAttrtypePosteBdd, nomAttrperiode):
     """
-    depuis une df des comptage de référence situé sur des tronçons avec un id_comptag existantdans la base, 
-    séparer en 3 groupe selon le type de poste dans la bdd et le type de poste du hestionnaire.
+    depuis une df des comptage de référence situé sur des tronçons avec un id_comptag existant dans la base, 
+    séparer en 4 groupe selon le type de poste dans la bdd et le type de poste du hestionnaire.
     in : 
         df : dataframe a classifier
         nomAttrtypePosteGest : string : nom de l'attribut supportant le type de poste fourni par le gest 
         nomAttrtypePosteBdd : string : nom de l'attribut supportant le type de poste dans la bdd
         nomAttrperiode : string : nom de l'attribut décrivant la période de mesure
+    out : 
+        dfCorrespIdComptag : dataframe des points qui vont simplelnet faire l'objet d'une correspondance d'id_comptage
+        dfCreationComptageAssocie : dataframe de spoint qui vont de suite devenir des comptages associes
+        dfModifTypePoste : dataframe des points existant dont on va modifier le type de poste
+        dfCreationCompteur : dataframe des points qui vont faire l'objet d'un  nouveau compteur
     """
     dfCorrespIdComptag = df.loc[((df[nomAttrtypePosteGest] == df[nomAttrtypePosteBdd]) &
                                  (df[nomAttrtypePosteGest] != 'ponctuel')) |
@@ -453,8 +469,91 @@ def ventilerNouveauComptageRef(df, nomAttrtypePosteGest, nomAttrtypePosteBdd, no
                                        ((df[nomAttrtypePosteGest] == df[nomAttrtypePosteBdd]) &
                                         (df[nomAttrtypePosteGest] == 'ponctuel') &
                                         (df[nomAttrperiode].apply(lambda x: O.verifVacanceRange(x))))].copy()
-    dfModifTypePoste = df.loc[((df[nomAttrtypePosteGest].isin(('permanent', 'tournant'))) & (df[nomAttrtypePosteBdd] == 'ponctuel')) |
-                              ((df[nomAttrtypePosteGest] == 'permanent') & (df[nomAttrtypePosteBdd] == 'tournant'))].copy()
-    return dfCorrespIdComptag, dfCreationComptageAssocie, dfModifTypePoste
+    dfModifTypePoste = df.loc[((df[nomAttrtypePosteGest] == 'permanent') & (df[nomAttrtypePosteBdd] == 'tournant'))].copy()
+    dfCreationCompteur = df.loc[((df[nomAttrtypePosteGest].isin(('permanent', 'tournant'))) & (df[nomAttrtypePosteBdd] == 'ponctuel'))].copy()
+    if len(dfModifTypePoste) + len(dfCorrespIdComptag) + len(dfCreationComptageAssocie) + len(dfCreationCompteur) != len(df):
+        warnings.warn("la somme des éléments présents dans 'dfCorrespIdComptag', 'dfCreationComptageAssocie', 'dfModifTypePoste' est différente du nombre d'éléments initiaux. Chercher les id_comptag no présents ou en doublons, creer des id_orresp_compatg en amont et relancer le process si besoin")
+    return dfCorrespIdComptag, dfCreationComptageAssocie, dfModifTypePoste, dfCreationCompteur
+
+
+def rassemblerNewCompteur(dep, reseau, gestionnai, concession, srcGeo=None, sensCpt=None, *tupleDfGeom):
+    """
+    regrouper les dataframes issues des fonctions de ventilation dans une seule destinée a etre intégrée das la bdd
+    in : 
+        srcGeo : la source de la géométrie, cf enum_src_geo dans la bdd
+        sensCpt : le nombre de sens de circulation des comptages, cf enum_sens_cpt dans la bdd
+        dep : string 2 caractère : le département
+        reseau : string : cf enum_reseau dans bdd
+        gestionnai : string : cf enum_gestionnai dans bdd
+        concession : boolean
+        tupleDfGeom : autant de tuple de type (df, NomDeLaGeometrie) que necessaire.
+    """
+    listCpteurNew = []
+    for c in tupleDfGeom:
+        df = c[0].copy()
+        if srcGeo:
+            df['src_geo'] = srcGeo
+        if sensCpt:
+            df['sens_cpt'] = sensCpt
+        df['src_cpt'] = df.type_poste.apply(lambda x: 'convention gestionnaire' if x == 'permanent' else 'gestionnaire')
+        df['convention'] = df.type_poste.apply(lambda x: True if x == 'permanent' else False)
+        listCpteurNew.append(creerCompteur(df, c[1], dep, reseau, gestionnai, concession))
+    return pd.concat(listCpteurNew)
+
+
+def rassemblerNewComptage(annee, type_veh, dfComptageCompteurConnu, *dfComptageCompteurNew):
+    """
+    regrouper les dataframes des comptages, selon qu'elle proviennentde compteurs deja connus ou de compteurs que l'on vient d'insérer
+    grace a rassemblerNewCompteur
+    in :
+        annee : caractères 4 string l'annee des comptages
+        type_veh : tring, cf enum_type_veh dans la bdd
+        dfComptageCompteurConnu : df des comptages relatifs a des compteurs deja dans la base, en général issu de df_attr_update
+        dfComptageCompteurNew : toutes les df relatives au comptages issues de la ventilation
+    """
+    # verifs
+    O.checkAttributsinDf(dfComptageCompteurConnu, attrComptageMano)
+    for d in dfComptageCompteurNew:
+        O.checkAttributsinDf(d, attrComptageMano)
+    # pour la partie des nouveaux compteurs
+    dfComptageNew = pd.concat(dfComptageCompteurNew)[attrComptageMano].assign(annee=annee)
+    # association avec la partie des compteurs deja connus
+    dfComptageNewTot = pd.concat([creer_comptage(dfComptageNew.id_comptag.tolist(), annee, dfComptageNew.src, type_veh, periode=dfComptageNew.periode),
+                             creer_comptage(dfComptageCompteurConnu.id_comptag.tolist(), annee, dfComptageCompteurConnu.src.tolist(), 
+                                            type_veh, periode=dfComptageCompteurConnu.periode.tolist())])
+    return dfComptageNewTot
+    
+def rassemblerIndics(annee, dfComptageNewTot, dfTraficAgrege, dfTraficMensuel=None, dfTraficHoraire=None):
+    """
+    regrouper et mettre en forme les dataframes des indicateurs agreges, mensuel et horaires, correspondants aux id_comptages
+    des comptages cree par rassemblerNewComptage()
+    in : 
+        annee : string 4 caractères
+        dfComptageNewTot : df des nouveaux comptages créées par  rassemblerNewComptage()
+        dfTraficAgrege : dataframe des données de trafic agrege. generalement df_attr
+        dfTraficMensuel : dataframe des données de trafic mensuelle. generalement df_attr_mens
+        dfTraficHoraire : dataframe des données de trafic haorire. generalement df_attr_horaire
+    """   
+    # récupérer les données
+    listIdComptagIndicNew = dfComptageNewTot.id_comptag.tolist()
+    dfAttrIndicAgregeNew = dfTraficAgrege.loc[dfTraficAgrege.id_comptag.isin(listIdComptagIndicNew)]
+    dfIndicAgregeNew = structureBddOld2NewForm(dfAttrIndicAgregeNew.assign(annee=annee), annee, ['id_comptag', 'annee', 'fichier'], ['tmja', 'pc_pl'], 'agrege')
+    if isinstance(dfTraficMensuel, pd.DataFrame) and not dfTraficMensuel.empty:
+        dfAttrIndicMensNew = dfTraficMensuel.loc[dfTraficMensuel.id_comptag.isin(listIdComptagIndicNew)]
+        dfIndicMensNew = structureBddOld2NewForm(dfAttrIndicMensNew.assign(annee=annee), annee, ['id_comptag', 'annee', 'fichier', 'donnees_type'], 
+                                              list(dico_mois.keys()), 'mensuel')
+    else :
+        dfIndicMensNew = None
+    if isinstance(dfTraficHoraire, pd.DataFrame) and not dfTraficHoraire.empty:
+        dfAttrIndicHoraireNew = dfTraficHoraire.loc[dfTraficHoraire.id_comptag.isin(listIdComptagIndicNew)]    
+        dfIndicHoraireNew = structureBddOld2NewForm(dfAttrIndicHoraireNew.assign(annee=annee), '2020', ['id_comptag', 'annee'], ['tata'], 'horaire')
+    else:
+        dfIndicHoraireNew = None
+    return dfIndicAgregeNew, dfIndicMensNew, dfIndicHoraireNew
+    
+    
+    
+    
+    
     
     

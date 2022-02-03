@@ -1981,7 +1981,10 @@ class Comptage_cd24(Comptage):
             for i in range(1,5):
                 if not pd.isnull(serie[f'DDPeriode{i}']) and not pd.isnull(serie[f'DFPeriode{i}']):
                     listPeriode.append(f"{pd.to_datetime(serie[f'DDPeriode{i}'], dayfirst=True).strftime('%Y/%m/%d')}-{pd.to_datetime(serie[f'DFPeriode{i}'], dayfirst=True).strftime('%Y/%m/%d')}")
+            if not listPeriode:
+                return None
             return ' ; '.join(listPeriode)
+        
         donnees_brutes = self.ouvrir_csv()
         donnees_traitees = donnees_brutes.loc[~donnees_brutes.MJA.isna()].copy()
         donnees_traitees['Data'] = donnees_traitees.Route.apply(lambda x: x.split(' ')[1] if not pd.isnull(x) else None)

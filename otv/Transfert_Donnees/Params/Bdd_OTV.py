@@ -9,10 +9,13 @@ import Connexion_Transfert as ct
 import pandas as pd
 
 nomConnBddOtv='local_otv_boulot'
-attBddCompteur = ['geometrie', 'id_comptag', 'route', 'reseau', 'dep', 'gestionnai','concession', 'type_poste', 'src_geo', 'obs_geo', 'x_l93', 'y_l93',
-                   'fictif', 'src_cpt', 'convention','obs_supl','sens_cpt']
+attBddCompteur = ['geometrie', 'id_comptag', 'pr', 'abs', 'route', 'reseau', 'dep', 'gestionnai','concession', 'type_poste', 'techno', 'src_geo', 
+                  'obs_geo', 'x_l93', 'y_l93', 'fictif', 'id_cpt', 'id_sect', 'last_ann_sect', 'src_cpt', 'convention','obs_supl','sens_cpt']
 attBddCompteurNonNull = ['id_comptag', 'reseau', 'dep', 'gestionnai','concession', 'type_poste', 'fictif', 'src_cpt', 'convention','sens_cpt']
-attrCompteurValeurMano = ['id_comptag', 'type_poste', 'src_geo', 'periode', 'pr', 'absc', 'route', 'src_cpt', 'convention', 'sens_cpt']
+attrComptage = ['id_comptag', 'annee', 'periode', 'src', 'obs', 'type_veh']
+attrComptageNonNull = ['id_comptag', 'annee', 'type_veh']
+attrComptageMano = ['id_comptag', 'src', 'periode']
+attrCompteurValeurMano = ['id_comptag', 'type_poste', 'src_geo', 'periode', 'pr', 'abs', 'route', 'src_cpt', 'convention', 'sens_cpt']
 attrComptageAssoc = ['id_cptag_ref', 'rang', 'periode', 'type_veh', 'src', 'obs', 'id_cpteur_asso']
 attrCompteurAssoc = ['id_cpteur_asso', 'geom', 'route', 'pr', 'abs', 'type_poste', 'techno', 'src_geo', 
                      'obs_geo', 'obs_supl', 'src_cpt', 'convention', 'sens_cpt', 'id_cpt', 'id_sect', 'id_cpteur_ref']
