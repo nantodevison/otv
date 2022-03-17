@@ -13,7 +13,7 @@ import pandas as pd
 import Connexion_Transfert as ct
 from Params.Bdd_OTV import (nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, tableEnumTypeVeh, 
                             tableCompteur, tableCorrespIdComptag,attrCompteurAssoc, attBddCompteur, attrComptageMano,
-                            attrCompteurValeurMano, attrComptageAssoc, enumTypePoste, attrIndicHoraireAssoc)
+                            attrCompteurValeurMano, attrComptageAssoc, enumTypePoste)
 from Import_export_comptage import (recupererIdUniqComptage, recupererIdUniqComptageAssoc)
 from Params.Mensuel import dico_mois
 import geopandas as gp
@@ -192,7 +192,7 @@ def structureBddOld2NewForm(dfAConvertir, annee, listAttrFixe,listAttrIndics,typ
     elif typeIndic == 'mensuel':
         dfIndic = pd.melt(dfAConvertir.assign(annee=dfAConvertir.annee.astype(str)), id_vars=listAttrFixe, value_vars=listAttrIndics, 
                               var_name='mois', value_name='valeur')
-        columns = [c for c in ['id_comptag', 'donnees_type', 'valeur', 'mois', 'fichier', 'annee'] if c in dfIndic.columns]
+        columns = [c for c in ['id_comptag', 'donnees_type', 'valeur', 'mois', 'fichier', 'annee', 'indicateur'] if c in dfIndic.columns]
         dfIndic = dfIndic[columns].rename(columns={'donnees_type':'indicateur'})
     elif typeIndic == 'horaire': 
         dfIndic = dfAConvertir.rename(columns={'type_veh':'indicateur'})

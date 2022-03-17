@@ -34,6 +34,8 @@ def comptag_existant_bdd(table=tableCompteur, schema=schemaComptage,dep=False, t
         rqt = f"select * from {schema}.{table} where dep='{dep}'"
     elif dep and not type_poste and gest:
         rqt = f"select * from {schema}.{table} where dep='{dep}' and gestionnai='{gest}'"
+    elif not dep and isinstance(type_poste, str) and gest:
+        rqt = f"select * from {schema}.{table} where gestionnai='{gest}' and type_poste='{type_poste}'"
     elif dep and isinstance(type_poste, str) and not gest:
         rqt = f"select * from {schema}.{table} where dep='{dep}' and type_poste='{type_poste}'"
     elif dep and isinstance(type_poste, str) and gest :
