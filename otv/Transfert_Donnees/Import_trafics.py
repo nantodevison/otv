@@ -501,7 +501,9 @@ class Comptage_cd17(Comptage) :
     Classe d'ouvertur de fichiers de comptage du CD17
     en entree : 
         fichier : raw string de chemin du fichier
-        type_fichier : type e fichier parmi ['brochure', 'permanent_csv',tournant_xls_bochure]
+        type_fichier : type e fichier parmi ['brochure', 'permanent_csv',tournant_xls_bochure', 'permanent_csv_formatTmjPl', 'permanent_csv_format3sens']
+                       permanent_csv_formatTmjPl est un format avec que des données 2 sens confondues, et une par indicateur ; fournie en 2020
+                       permanent_csv_format3sens  est un format avec une ligne par sens 'fournie en 2019)
         annee : integer : annee des points de comptages
     """  
             
@@ -510,14 +512,14 @@ class Comptage_cd17(Comptage) :
         self.annee = annee
         self.fichier = fichier
         self.liste_type_fichier = ['brochure_pdf', 'permanent_csv_format3sens','tournant_xls_bochure','ponctuel_xls_bochure',
-                                   'permanent_csv_format3sens']
+                                   'permanent_csv_format3sens', 'permanent_csv_formatTmjPl']
         if type_fichier in self.liste_type_fichier:
             self.type_fichier = type_fichier#pour plus tard pouvoir différencier les fichiers de comptage tournant / permanents des brochures pdf
         else : 
             raise Comptage_cd17.CptCd17_typeFichierError(type_fichier)
         if self.type_fichier == 'brochure_pdf':
             self.fichier_src=self.lire_borchure_pdf()
-        elif self.type_fichier == 'permanent_csv_format3sens': 
+        elif self.type_fichier in ('permanent_csv_format3sens', 'permanent_csv_formatTmjPl'): 
             self.fichier_src=self.ouvrir_csv(delimiter, skiprows)
         elif self.type_fichier == 'tournant_xls_bochure': 
             self.fichier_src=self.ouvrir_xls_tournant_brochure()
@@ -692,7 +694,7 @@ class Comptage_cd17(Comptage) :
         #identification des points à mettre a jour
         self.df_attr_update=self.df_attr.loc[self.df_attr['id_comptag'].isin(self.existant.id_comptag.tolist())]
   
-    def mises_forme_bdd_brochure_pdf(self, schema, table, dep, type_poste):
+    def mises_forme_bdd_brochure_pdf(self, dep, type_poste):
         """
         mise en forme et decompoistion selon comptage existant ou non dans Bdd
         in : 
@@ -721,14 +723,30 @@ class Comptage_cd17(Comptage) :
             df_attr['concession']  ='N'
             df_attr['fichier'] = self.fichier
                 #verif que pas de doublons et seprartion si c'est le cas
-            self.existant = comptag_existant_bdd(dep, type_poste)
-            self.corresp_nom_id_comptag(df_attr)
-            df_attr_insert = df_attr.loc[~df_attr['id_comptag'].isin(self.existant.id_comptag.to_list())]
-            df_attr_update = df_attr.loc[df_attr['id_comptag'].isin(self.existant.id_comptag.to_list())]
-            self.df_attr, self.df_attr_insert, self.df_attr_update=df_attr, df_attr_insert,df_attr_update
-            
+            existant = comptag_existant_bdd(dep, type_poste)
+            self.corresp_nom_id_comptag(df_attr) 
         #ANNEE 2020
-        
+        elif self.type_fichier in ('permanent_csv_formatTmjPl'):
+            # formatage des données 
+            self.fichier_src.columns = ['idcpt_gest', 'indicateur'] + self.fichier_src.columns[2:].tolist()
+            self.fichier_src.indicateur.replace({'TMJ': 'tmja', 'PL': 'pl', '%PL': 'pc_pl'}, inplace=True)
+            self.fichier_src.replace({'%': '', ',':'.'}, regex=True, inplace=True)
+            self.fichier_src['idcpt_gest'] = self.fichier_src.idcpt_gest.str.strip()
+            for mois in self.fichier_src.columns[2:]:
+                self.fichier_src[mois] = self.fichier_src[mois].astype(float)
+            self.fichier_src = renommerMois(self.fichier_src)
+            self.fichier_src['fichier'] = os.path.basename(self.fichier)
+            #j jointure avec existant
+            existant = comptag_existant_bdd(gest='CD17', type_poste='permanent')[['id_comptag', 'id_cpt']]
+            existantNotNa = existant.loc[~existant.id_cpt.isna()]
+            df_attr = existantNotNa.merge(self.fichier_src, left_on='id_cpt', right_on='idcpt_gest', how='left')
+            df_attr = df_attr.loc[df_attr.indicateur.isin(['tmja', 'pc_pl'])].drop(['id_cpt', 'idcpt_gest'], axis=1).copy()
+            df_attr.rename(columns={'Annee': 'valeur'}, inplace=True)
+            df_attr['annee'] = str(self.annee)
+        df_attr_insert = df_attr.loc[~df_attr['id_comptag'].isin(existant.id_comptag.to_list())]
+        df_attr_update = df_attr.loc[df_attr['id_comptag'].isin(existant.id_comptag.to_list())]
+        self.df_attr, self.df_attr_insert, self.df_attr_update=df_attr, df_attr_insert,df_attr_update  
+            
         
     def update_bdd_17(self, schema, table, localisation='boulot'):
         valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag',f'tmja_{self.annee}',f'pc_pl_{self.annee}', 'src',
