@@ -79,53 +79,6 @@ class Comptage():
             dfIdsConnus = dfTest.loc[~dfTest.id_comptag_uniq.isna()].copy()
             dfIdsInconnus = dfTest.loc[dfTest.id_comptag_uniq.isna()].copy()
         return dfIdsConnus, dfIdsInconnus
-        
-    
-    def corresp_nom_id_comptag(self,df):
-        """
-        pour les id_comptag dont on sait que les noms gti et gestionnaire diffèrent mais que ce sont les memes (cf table comptage.corresp_id_comptag), 
-        on remplace le nom gest par le nom_gti, pour pouvoir faire des jointure ensuite
-        in : 
-            df : dataframe des comptage du gest. attention doit contenir l'attribut 'id_comptag', ene général prendre df_attr
-        """
-        rqt_corresp_comptg=f'select * from {schemaComptage}.{tableCorrespIdComptag}'
-        with ct.ConnexionBdd(nomConnBddOtv) as c:
-            corresp_comptg=pd.read_sql(rqt_corresp_comptg, c.sqlAlchemyConn)
-        df['id_comptag']=df.apply(lambda x : corresp_comptg.loc[corresp_comptg['id_gest']==x['id_comptag']].id_gti.values[0] 
-                                                    if x['id_comptag'] in corresp_comptg.id_gest.tolist() else x['id_comptag'], axis=1)
-        
-    def creer_comptage(self,listComptage, annee, src, type_veh,obs=None, periode=None) : 
-        """
-        creer une df a inserer dans la table des comptage
-        in : 
-            listComptage : liste des id_comptag concernes
-            annee : text 4 caracteres : annee des comptage
-            periode : text de forme YYYY/MM/DD-YYYY/MM/DD separe par ' ; ' si plusieurs periodes ou list de texte
-            src : texte ou list : source des donnnes
-            obs : txt ou list : observation
-            type_veh : txt parmis les valeurs de enum_type_veh
-        """
-        with ct.ConnexionBdd(nomConnBddOtv) as c  :
-            enumTypeVeh=pd.read_sql(f'select code from {schemaComptage}.{tableEnumTypeVeh}', c.sqlAlchemyConn).code.tolist()
-            listIdcomptagBdd=pd.read_sql(f'select id_comptag from {schemaComptage}.{tableCompteur}', c.sqlAlchemyConn).id_comptag.tolist()
-        if any([e not in listIdcomptagBdd for e in listComptage]):
-            raise ValueError(f'les comptages {[e for e in listComptage if e not in listIdcomptagBdd]} ne sont pas dans la Bdd. Vérifier les correspondance de comptage ou creer les compteur en premier')
-        if type_veh not in enumTypeVeh : 
-            raise ValueError(f'type_veh doit etre parmi {enumTypeVeh}')
-        if not (int(annee)<=dt.datetime.now().year and int(annee)>2000) or annee=='1900' :
-            raise ValueError(f'annee doit etre compris entre 2000 et {dt.datetime.now().year} ou egale a 1900')
-        #periode        
-        if isinstance(periode, str) :
-            if periode and not re.search('(20[0-9]{2}\/(0[1-9]|1[0-2])\/(0[1-9]|[1-2][0-9]|3[0-1])-20[0-9]{2}\/(0[1-9]|1[0-2])\/(0[1-9]|[1-2][0-9]|3[0-1]))+( ; )*', periode) :
-                raise ValueError(f'la periode doit etre de la forme YYYY/MM/DD-YYYY/MM/DD separe par \' ; \' si plusieurs periodes')
-        if isinstance(periode, list) :
-            #verif que ça colle avec les id_comptag
-            if len(periode)!=len(listComptage) :
-                raise ValueError('les liste de comptage et de periode doievnt avoir le mm nombre d elements')
-            for p in periode : 
-                if p and not re.search('(20[0-9]{2}\/(0[1-9]|1[0-2])\/(0[1-9]|[1-2][0-9]|3[0-1])-20[0-9]{2}\/(0[1-9]|1[0-2])\/(0[1-9]|[1-2][0-9]|3[0-1]))+( ; )*', p) :
-                    raise ValueError(f'la periode doit etre de la forme YYYY/MM/DD-YYYY/MM/DD separe par \' ; \' si plusieurs periodes')
-        return pd.DataFrame({'id_comptag':listComptage, 'annee':annee, 'periode':periode,'src':src, 'obs':obs, 'type_veh' : type_veh})
     
         
     def maj_geom(self, schema, table, nom_table_ref,nom_table_pr,dep=False):
@@ -501,7 +454,7 @@ class Comptage_cd17(Comptage) :
     Classe d'ouvertur de fichiers de comptage du CD17
     en entree : 
         fichier : raw string de chemin du fichier
-        type_fichier : type e fichier parmi ['brochure', 'permanent_csv',tournant_xls_bochure', 'permanent_csv_formatTmjPl', 'permanent_csv_format3sens']
+        type_fichier : type e fichier parmi ['brochure', 'permanent_csv',tournant_xls_bochure', 'permanent_csv_formatTmjPl', 'permanent_csv_format3sens', 'ponctuel_csv']
                        permanent_csv_formatTmjPl est un format avec que des données 2 sens confondues, et une par indicateur ; fournie en 2020
                        permanent_csv_format3sens  est un format avec une ligne par sens 'fournie en 2019)
         annee : integer : annee des points de comptages
@@ -511,12 +464,11 @@ class Comptage_cd17(Comptage) :
         Comptage.__init__(self, fichier)
         self.annee = annee
         self.fichier = fichier
+        # verif de la valeur du type_fichier
         self.liste_type_fichier = ['brochure_pdf', 'permanent_csv_format3sens','tournant_xls_bochure','ponctuel_xls_bochure',
-                                   'permanent_csv_format3sens', 'permanent_csv_formatTmjPl']
-        if type_fichier in self.liste_type_fichier:
-            self.type_fichier = type_fichier#pour plus tard pouvoir différencier les fichiers de comptage tournant / permanents des brochures pdf
-        else : 
-            raise Comptage_cd17.CptCd17_typeFichierError(type_fichier)
+                                   'permanent_csv_format3sens', 'permanent_csv_formatTmjPl', 'ponctuel_csv']
+        O.checkParamValues(type_fichier, self.liste_type_fichier)
+        self.type_fichier = type_fichier
         if self.type_fichier == 'brochure_pdf':
             self.fichier_src=self.lire_borchure_pdf()
         elif self.type_fichier in ('permanent_csv_format3sens', 'permanent_csv_formatTmjPl'): 
@@ -525,6 +477,8 @@ class Comptage_cd17(Comptage) :
             self.fichier_src=self.ouvrir_xls_tournant_brochure()
         elif self.type_fichier == 'ponctuel_xls_bochure':
             self.fichier_src = self.ouvrir_xls_ponctuel_brochure()
+        elif self.type_fichier == 'ponctuel_csv':
+            self.fichier_src = self.ponctuel_csv_attr()
             
         
         
@@ -620,19 +574,54 @@ class Comptage_cd17(Comptage) :
         """
         sort une dataframe des voie, pr, abs, tmj, pc_pl, v85, periode et mois pour les fichiers csv de comptag permanent
         """
-        fichier_src_2sens=self.fichier_src.loc[self.fichier_src['Sens']=='3'].copy()
-        liste_attr=([a for a in fichier_src_2sens.columns if a[:6]=='MJM TV']+['Route','PRC','ABC']+['MJA TV TCJ '+str(self.annee),
+        fichier_src_2sens = self.fichier_src.loc[self.fichier_src['Sens']=='3'].copy()
+        liste_attr = ([a for a in fichier_src_2sens.columns if a[:6]=='MJM TV']+['Route','PRC','ABC']+['MJA TV TCJ '+str(self.annee),
                                                                             'MJA %PL TCJ '+str(self.annee),'MJAV85 TV TCJ '+str(self.annee)])
-        liste_nom=(['janv', 'fevr', 'mars', 'avri', 'mai', 'juin', 'juil', 'aout', 'sept', 'octo', 'nove', 'dece']+['route', 'pr','abs']+[
+        liste_nom = (['janv', 'fevr', 'mars', 'avri', 'mai', 'juin', 'juil', 'aout', 'sept', 'octo', 'nove', 'dece']+['route', 'pr','abs']+[
                                                                             'tmja_'+str(self.annee), 'pc_pl_'+str(self.annee), 'v85'])
         dico_corres_mois={a:b for a,b in zip(liste_attr,liste_nom)}
-        fichier_filtre=fichier_src_2sens[liste_attr].rename(columns=dico_corres_mois).copy()
-        fichier_filtre=fichier_filtre.loc[~fichier_filtre['tmja_'+str(self.annee)].isna()].copy()
-        fichier_filtre['tmja_'+str(self.annee)]=fichier_filtre['tmja_'+str(self.annee)].apply(lambda x : int(x))
-        fichier_filtre['pc_pl_'+str(self.annee)]=fichier_filtre['pc_pl_'+str(self.annee)].apply(lambda x : float(x.strip().replace(',','.')))
-        fichier_filtre['route']=fichier_filtre.route.apply(lambda x : x.split(' ')[1]) 
-        fichier_filtre['src']=self.type_fichier
+        fichier_filtre = fichier_src_2sens[liste_attr].rename(columns=dico_corres_mois).copy()
+        fichier_filtre = fichier_filtre.loc[~fichier_filtre['tmja_'+str(self.annee)].isna()].copy()
+        fichier_filtre['tmja_'+str(self.annee)] = fichier_filtre['tmja_'+str(self.annee)].apply(lambda x : int(x))
+        fichier_filtre['pc_pl_'+str(self.annee)] = fichier_filtre['pc_pl_'+str(self.annee)].apply(lambda x : float(x.strip().replace(',','.')))
+        fichier_filtre['route'] = fichier_filtre.route.apply(lambda x : x.split(' ')[1]) 
+        fichier_filtre['src'] = self.type_fichier
         return fichier_filtre
+    
+    def ponctuel_csv_attr(self):
+        """
+        a partir du format csv du millésime 2020, mettre en forme les donnees : nom d'attribut, creation d'attribut
+        """
+        dfBrute = pd.read_csv(self.fichier, skiprows=11, delimiter=';', parse_dates=['Début du comptage', 'Fin du comptage'], dayfirst=True, encoding='LATIN1').rename(columns={'Unnamed: 0': 'nom'})
+        dfBrute['pr_abs'] = dfBrute.nom.apply(lambda x: re.search('[0-9]{1,3}\+[|0-9]{3}', x).group(0) if re.search('[0-9]{1,3}\+[|0-9]{3}', x)  else None)
+        dfBrute['pr'] = dfBrute.pr_abs.apply(lambda x: x.split('+')[0] if x else None)
+        dfBrute['absc'] = dfBrute.pr_abs.apply(lambda x: x.split('+')[1] if x else None)
+        dfBrute['nomRoute'] = dfBrute.nom.str.strip().apply(lambda x: x.split()[0])
+        dfBrute.rename(columns={'MJA TV S3': 'tmja','%PL S3': 'pc_pl', 'nomRoute': 'route' }, inplace=True)
+        dfBrute['periode'] = dfBrute.apply(lambda x: f"{x['Début du comptage'].strftime('%Y/%m/%d')}-{x['Fin du comptage'].strftime('%Y/%m/%d')}" 
+                                   if not pd.isnull(x['Début du comptage']) and not pd.isnull(x['Fin du comptage']) else None, axis=1)
+        dfBrute['pc_pl'] = dfBrute.pc_pl.apply(lambda x: float(x.replace(',', '.')))
+        # filtre des données et cretion de l'identifiant
+        dfDonneesLocalisable = dfBrute.loc[dfBrute.nomRoute.apply(lambda x: True if re.search('D[0-9]+', x) else False)].copy()
+        dfDonneesLocalisable['id_comptag'] = dfDonneesLocalisable.apply(lambda x: f"17-{x.nomRoute}-{x.pr}+{x['absc']}", axis=1)
+        dfDonneesLocalisable = dfDonneesLocalisable.loc[(~dfDonneesLocalisable.pr.isna()) & (~dfDonneesLocalisable.absc.isna()) &
+                                                        (dfDonneesLocalisable.tmja > 0)].copy()
+        dfDonneesLocalisable['type_poste'] = 'ponctuel'
+        dfDonneesLocalisable['src'] = self.type_fichier
+        dfDonneesLocalisable['fichier'] = os.path.basename(self.fichier)
+        dfDonneesLocalisable['src'] = self.type_fichier
+        dfDonneesLocalisable['type_veh'] = 'tv/pl'
+        dfDonneesLocalisable['annee'] = self.annee
+        dfDonneesLocalisable['dep'] = '17'
+        dfDonneesLocalisable['reseau'] = 'CD'
+        dfDonneesLocalisable['gestionnai'] = 'CD17'
+        dfDonneesLocalisable['concession'] = 'False'
+        dfDonneesLocalisable['src_geo'] = 'pr+abs_gestionnaire'
+        dfDonneesLocalisable['fictif'] = False
+        dfDonneesLocalisable['src_cpt'] = 'gestionnaire'
+        dfDonneesLocalisable['sens_cpt'] = 'double sens'
+        dfDonneesLocalisable['en_service'] = True
+        return dfDonneesLocalisable
 
     def ouvrir_xls_tournant_brochure (self):
         """

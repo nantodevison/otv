@@ -14,7 +14,7 @@ import Connexion_Transfert as ct
 from Params.Bdd_OTV import (nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, tableEnumTypeVeh, 
                             tableCompteur, tableCorrespIdComptag,attrCompteurAssoc, attBddCompteur, attrComptageMano,
                             attrCompteurValeurMano, attrComptageAssoc, enumTypePoste)
-from Import_export_comptage import (recupererIdUniqComptage, recupererIdUniqComptageAssoc)
+from Import_export_comptage import (recupererIdUniqComptage, recupererIdUniqComptageAssoc, comptag_existant_bdd)
 from Params.Mensuel import dico_mois
 import geopandas as gp
 
@@ -32,6 +32,26 @@ def corresp_nom_id_comptag(df):
     df['id_comptag'] = df.apply(lambda x : corresp_comptg.loc[corresp_comptg['id_gest']==x['id_comptag']].id_gti.values[0] 
                                                     if x['id_comptag'] in corresp_comptg.id_gest.tolist() else x['id_comptag'], axis=1)
     return 
+
+def classer_comptage_update_insert(dfAClasser, departement):
+    """
+    vérifier les comptages existants, et les correspondances, et séparer une df entre les compteurs déjà présents dans la base
+    et ceux qui doivent être créés
+    in : 
+        dfAClasser : df des données de comptage mise en forme
+        deprtement : string du departement sur deux caracteres
+    out :
+        df_attr_update : extraction de la données source : identifiant de comptages deja presents dans la base
+        df_attr_insert : extraction de la données source : identifiant de comptages non presents dans la base
+    """
+    corresp_nom_id_comptag(dfAClasser)
+    existant = comptag_existant_bdd(dep=departement)
+    df_attr_update = dfAClasser.loc[dfAClasser.id_comptag.isin(existant.id_comptag.tolist())].copy()
+    df_attr_insert = dfAClasser.loc[~dfAClasser.id_comptag.isin(existant.id_comptag.tolist())].copy()
+    # ajout d'une vérif sur les longueurs resectives de donnees
+    if len(df_attr_update) + len(df_attr_insert) != len(dfAClasser):
+        raise ValueError('la separation enetre comptage a mettre a jour et comptage a inserer ne correspond pas a la taille des donnees sources')
+    return df_attr_update, df_attr_insert
 
 
 def localiser_comptage_a_inserer(df, schema_temp,nom_table_temp, table_ref, table_pr):
@@ -89,7 +109,10 @@ def ventilerParSectionHomogene(tableCptNew, tableSectionHomo, codeDept, distance
                                                            WHEN c.type_poste = 'tournant' THEN 2
                                                            WHEN c.type_poste = 'ponctuel' THEN 3 
                                                            ELSE 4 
-                                                           end
+                                                           end, CASE WHEN c.id_comptag IS NULL THEN 1
+                                                                     WHEN comptage.verif_periode_vacance(c.id_comptag, c.annee_tmja) THEN 2
+                                                                     ELSE 1 END, 
+                                                                         c.tmja DESC
                                      """, c.sqlAlchemyConn)
     # on en déduit le plus proche voisin entre les points et la linauto
     ppV = O.plus_proche_voisin(ptGeom, linauto, distancePlusProcheVoisin, 'id_comptag', 'gid')
@@ -103,8 +126,12 @@ def ventilerParSectionHomogene(tableCptNew, tableSectionHomo, codeDept, distance
     cptSimpleSectHomo = ppVTot.loc[ppVTot.gid.isin(nbCptSectHomo.loc[nbCptSectHomo == 1].index.tolist())].copy()
     cptMultiSectHomo = ppVTot.loc[ppVTot.gid.isin(nbCptSectHomo.loc[nbCptSectHomo > 1].index.tolist())].copy()
     #verif
-    if len(cptSansGeom)+len(cptSimpleSectHomo)+len(cptMultiSectHomo)+len(ppvHorsSectHomo) != len(pt):
+    if len(cptSansGeom)+len(cptSimpleSectHomo)+len(cptMultiSectHomo)+len(ppvHorsSectHomo) > len(pt):
         warnings.warn("""la somme des éléments présents dans 'cptSansGeom', 'ppvHorsSectHomo', 'cptSimpleSectHomo', 'cptMultiSectHomo' est supérieure au nombre d'éléments initiaux. vérifier les doublons dans les résultats, vérifier la linauto et les données sources""")
+    elif len(cptSansGeom)+len(cptSimpleSectHomo)+len(cptMultiSectHomo)+len(ppvHorsSectHomo) < len(pt):
+        warnings.warn(f"""la somme des éléments présents dans 'cptSansGeom', 'ppvHorsSectHomo', 'cptSimpleSectHomo', 'cptMultiSectHomo' est inférieure au nombre d'éléments initiaux. 
+        vérifier le id_comptag = {~pt.loc[pt.id_comptag.isin(cptSansGeom.id_comptag.tolist()+ppvHorsSectHomo.id_comptag.tolist()+cptSimpleSectHomo.id_comptag.tolist()+
+        cptMultiSectHomo.id_comptag.tolist())].gid}""")
     return cptSansGeom, ppvHorsSectHomo, cptSimpleSectHomo, cptMultiSectHomo
 
 
@@ -398,6 +425,22 @@ def hierarchisationCompteur(typePoste, periode, tmja, pc_pl):
         
     return hierarchisationTypePoste(typePoste) + hierarchisationVacance(periode) + hierarchisationTrafic(tmja, pc_pl)
 
+def ventilerDoublons(df):
+    """
+    dans une df, vérifier qu'i ln'y a pas de doublons en id_comptag, que ce soit de façon naticve ou suite à une modification
+    de correspondance
+    si c'est le cas, ventiler les doublons entre comptage de reference et comptage associe
+    in : 
+        df : dataframe des donnees a tester
+    out : 
+        ref : dataframe des id_comptag de reference
+        assoc : dataframe des id_comptag associe, avec champs id_comptag_ref
+    """
+    doublonsNatifs = df.loc[df.duplicated('id_comptag', keep=False)]
+    if not doublonsNatifs.empty:  # si c'est le cas, il faut néttoyer la donnees et creer des comptages associés (a reprendre en natif dans les fonctions)
+        ref, assoc = ventilerCompteurRefAssoc(df.loc[df.duplicated('id_comptag', keep=False)].assign(
+            id_comptag2=df.loc[df.duplicated('id_comptag', keep=False)].id_comptag).rename(columns={'id_comptag2': 'gid'}))
+    return ref, assoc
 
 def ventilerCompteurRefAssoc(cptMultiSectHomo):
     """
@@ -417,11 +460,14 @@ def ventilerCompteurRefAssoc(cptMultiSectHomo):
     cptRefMultiSectHomo = cptMultiSectHomo.loc[cptMultiSectHomo.groupby('gid').note_hierarchise.transform('max') == cptMultiSectHomo.note_hierarchise].sort_values('gid').copy()
     cptAssocMultiSectHomo = cptMultiSectHomo.loc[cptMultiSectHomo.groupby('gid').note_hierarchise.transform('max') != cptMultiSectHomo.note_hierarchise].sort_values('gid').copy()
     cptAssocMultiSectHomo = cptAssocMultiSectHomo.merge(cptRefMultiSectHomo[['gid', 'id_comptag']], on='gid', suffixes=(None, '_ref'))
+    # gestion du cas ou un comptage est associe a2 comptage de references differents (i.e il sont du mmm type, sur periode equivalente, avec le mm TMJA)
+    # dans ce cas on prend au hasard
+    cptAssocMultiSectHomo.drop_duplicates(['id_comptag'], inplace=True)
     # verif que tous les gid ont un cpt ref
     if not cptAssocMultiSectHomo.loc[~cptAssocMultiSectHomo.gid.isin(cptRefMultiSectHomo.gid.unique())].empty:
         raise ValueError('un des comptage associe n\'a pas de comptage de reference')
     if not len(cptRefMultiSectHomo)+len(cptAssocMultiSectHomo) == len(cptMultiSectHomo):
-        raise ValueError('un ou plusieurs comptage n\'ont pas ete affecte comme reference ou associe')
+        raise ValueError('un ou plusieurs comptage n\'ont pas ete affecte comme reference ou associe, ou sont en doublons')
     return cptRefMultiSectHomo, cptAssocMultiSectHomo
 
 
