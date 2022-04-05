@@ -13,7 +13,7 @@ import pandas as pd
 import Connexion_Transfert as ct
 from Params.Bdd_OTV import (nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, tableEnumTypeVeh, 
                             tableCompteur, tableCorrespIdComptag,attrCompteurAssoc, attBddCompteur, attrComptageMano,
-                            attrCompteurValeurMano, attrComptageAssoc, enumTypePoste)
+                            attrCompteurValeurMano, attrComptageAssoc, enumTypePoste, vueLastAnnKnow)
 from Import_export_comptage import (recupererIdUniqComptage, recupererIdUniqComptageAssoc, comptag_existant_bdd)
 from Params.Mensuel import dico_mois
 import geopandas as gp
@@ -104,7 +104,7 @@ def ventilerParSectionHomogene(tableCptNew, tableSectionHomo, codeDept, distance
         cptSansGeom = gp.read_postgis(f'select * from {tableCptNew} where geom is null', c.sqlAlchemyConn)
         linauto = gp.read_postgis(f"""
                                      select DISTINCT ON (t.gid) c.id_comptag id_comptag_bdd,c.type_poste type_poste_bdd, t.gid, t.geom, st_distance(c.geom, t.geom)
-                                      from (SELECT * FROM {tableSectionHomo} where list_dept like '%%{codeDept}%%') t LEFT JOIN {schemaComptage}.{tableCompteur} c ON st_dwithin(c.geom, t.geom, 30)
+                                      from (SELECT * FROM {tableSectionHomo} where list_dept like '%%{codeDept}%%') t LEFT JOIN {schemaComptage}.{vueLastAnnKnow} c ON st_dwithin(c.geom, t.geom, 30)
                                       ORDER BY t.gid, CASE WHEN c.type_poste = 'permanent' THEN 1 
                                                            WHEN c.type_poste = 'tournant' THEN 2
                                                            WHEN c.type_poste = 'ponctuel' THEN 3 
@@ -522,7 +522,112 @@ def ventilerNouveauComptageRef(df, nomAttrtypePosteGest, nomAttrtypePosteBdd, no
     return dfCorrespIdComptag, dfCreationComptageAssocie, dfModifTypePoste, dfCreationCompteur
 
 
-def rassemblerNewCompteur(dep, reseau, gestionnai, concession, srcGeo=None, sensCpt=None, *tupleDfGeom):
+def modifierVentilationComptageAssocies(dfCorrespIdComptag, cptRefSectHomoNew, dfCreationComptageAssocie, cptAssocMultiSectHomo,
+                                        listeDepuisAssociesVersCorresp=None,
+                                        listeDepuisCorrespVersAssocies=None, 
+                                        dicoDepuisNewCompteurVersAssocies=None):
+    """
+    à partir des elements crees par ventilerCompteurIdComptagExistant(), ventilerNouveauComptageRef(), ventilerCompteurIdComptagExistant()
+    et de liste ou de dico de transfert de d'un resultats vers un autre, redefinir les dataframes des comptages associes
+    in : 
+        listeDepuisCorrespVersAssocies : liste des ids comptages devant etre transferes depuis les correspondances d'id_comptage vers les comptages associes
+        dfCorrespIdComptag : dataframe isse de ventilerNouveauComptageRef()
+        dicoDepuisNewCompteurVersAssocies : dico de transfert de données depuis cptRefSectHomoNew (ventilerCompteurIdComptagExistant()) vers les comptages associes. clé = comptage qui va devenir comptage associé, value = compteur ref du comptage qui va devenir associe
+        cptRefSectHomoNew : dataframe de comptage qui necesittent creation de compteur, cf ventilerCompteurIdComptagExistant()
+        dfCreationComptageAssocie : dataframe des compatge associes. issu de ventilerNouveauComptageRef()
+        listeDepuisAssociesVersCorresp : liste des comptages a transferer depuis les comptages associes vers les correspondance de comptage
+        cptAssocMultiSectHomo : dataframe des comptages associes issue de ventilerCompteurRefAssoc
+    out : 
+        dfCreationComptageAssocie_MaJMano : dataframe des comptages associes, avec les corresp transferees dedans et si besoin les comptages vers corrsp sortis. Si pas concerne, renvoi none
+        dfCorrespIdComptag_MajMano : dataframe des corrsp, avec les corresp transferees dedans et si besoin les comptages vers comptages associes sortis. Si pas concerne, renvoi none
+        cptAssocMultiSectHomo_MajMano : dataframe des comptages associes, avec les corresp transferees dedans et si besoin les comptages vers corrsp sortis. Si pas concerne, renvoi none
+    """
+    # initialisation des variables finales   
+    dfCreationComptageAssocie_MaJMano = None
+    dfCorrespIdComptag_MajMano = None
+    cptAssocMultiSectHomo_MajMano = None
+    cptRefSectHomoNew_MajMano = None
+    
+    # FUSION DES DONNEES
+    # transfert des comptages depuis la correspondance d'id_comptage vers les comptages associés (dfCreationComptageAssocie)
+    # verif que tious les comptages a transfere ont bien une valeur de id_comptag_bdd
+    if listeDepuisCorrespVersAssocies:
+        dfCptCorrespVersAssocie = dfCorrespIdComptag.loc[dfCorrespIdComptag.id_comptag.isin(listeDepuisCorrespVersAssocies)]
+        if not dfCptCorrespVersAssocie.loc[dfCptCorrespVersAssocie.id_comptag_bdd.isna()].empty:
+            raise AttributeError("un des objets n'a pas de valeuyr pour id_comptag_bdd ; vérifier puis corriger")
+    # transfert depuis les nouveaux compteurs vers les les comptages associés (dfCreationComptageAssocie)
+    # association du comptag_bdd
+    if dicoDepuisNewCompteurVersAssocies:
+        dfNewCompteurVersAssocie = cptRefSectHomoNew.loc[cptRefSectHomoNew.id_comptag.isin(list(dicoDepuisNewCompteurVersAssocies.keys()))].copy()
+        dfNewCompteurVersAssocie['id_comptag_bdd'] = dfNewCompteurVersAssocie.apply(lambda x: [v for k, v in dicoDepuisNewCompteurVersAssocies.items()                                                                                       if x.id_comptag == k][0], axis=1 )
+    # verifs
+    if listeDepuisCorrespVersAssocies:
+        if len(dfCptCorrespVersAssocie) != len(listeDepuisCorrespVersAssocies):
+            raise ValueError("le nombre d'id_comptag identifie dans listeDepuisCorrespVersAssocies ne correspond pas au nombre d'objets trouves dans la(es) df visées")
+    if dicoDepuisNewCompteurVersAssocies:
+        if len(dfNewCompteurVersAssocie) != len(dicoDepuisNewCompteurVersAssocies):
+            raise ValueError("le nombre d'id_comptag identifie dans dicoDepuisNewCompteurVersAssocies ne correspond pas au nombre d'objets trouves dans la(es) df visées")
+    # fusion avec les comptages associes
+    if listeDepuisCorrespVersAssocies and dicoDepuisNewCompteurVersAssocies:
+        dfCreationComptageAssocie_MaJMano = pd.concat([dfCreationComptageAssocie, dfCptCorrespVersAssocie, dfNewCompteurVersAssocie])
+    elif listeDepuisCorrespVersAssocies:
+        dfCreationComptageAssocie_MaJMano = pd.concat([dfCreationComptageAssocie, dfCptCorrespVersAssocie])
+    elif dicoDepuisNewCompteurVersAssocies:
+        dfCreationComptageAssocie_MaJMano = pd.concat([dfCreationComptageAssocie, dfNewCompteurVersAssocie])
+    # si besoin retrait des comptages associes qui vont etre envoyes dans les corres_id_comptag
+    if listeDepuisAssociesVersCorresp:
+        dfCreationComptageAssocie_MaJMano = dfCreationComptageAssocie_MaJMano.drop(dfCreationComptageAssocie_MaJMano.loc[
+            dfCreationComptageAssocie_MaJMano.id_comptag.isin(listeDepuisAssociesVersCorresp)].index)    
+    # transfert des données depuis les comptages associes vers les correspondances d'id_comptag
+    if listeDepuisAssociesVersCorresp:
+        depuisDfCreationComptageAssocieVersCorresp = dfCreationComptageAssocie.loc[dfCreationComptageAssocie.id_comptag.isin(listeDepuisAssociesVersCorresp)]
+        depuisCptAssocMultiSectHomoVersCorresp = cptAssocMultiSectHomo.loc[cptAssocMultiSectHomo.id_comptag.isin(listeDepuisAssociesVersCorresp)]
+        dfDepuisAssocVersCorresp = pd.concat([depuisDfCreationComptageAssocieVersCorresp, depuisCptAssocMultiSectHomoVersCorresp])
+        # verifs
+        if len(dfDepuisAssocVersCorresp) != len(listeDepuisAssociesVersCorresp):
+            raise ValueError("le nombre d'id_comptag identifie dans listeDepuisAssociesVersCorresp ne correspond pas au nombre d'objets trouves dans la(es) df visées")
+        # fusion avec les corresp
+        dfCorrespIdComptag_MajMano = pd.concat([dfCorrespIdComptag, dfDepuisAssocVersCorresp])
+
+    # EVIDER LES DONNEES EN TROP
+    # retrait des comptages associes qui vont etre envoyes dans les corres_id_comptag
+    if listeDepuisCorrespVersAssocies:
+        dfCreationComptageAssocie_MaJMano = dfCreationComptageAssocie_MaJMano.loc[
+            ~dfCreationComptageAssocie_MaJMano.id_comptag.isin(listeDepuisAssociesVersCorresp)].copy()
+        cptAssocMultiSectHomo_MajMano = cptAssocMultiSectHomo.loc[
+            ~cptAssocMultiSectHomo.id_comptag.isin(listeDepuisAssociesVersCorresp)].copy()
+    if dicoDepuisNewCompteurVersAssocies:
+        # retrait des nouveaux compteurs qui vont etre envoyes dans associes
+        cptRefSectHomoNew_MajMano = cptRefSectHomoNew.loc[~cptRefSectHomoNew.id_comptag.isin(list(dicoDepuisNewCompteurVersAssocies.keys()))].copy()
+    if listeDepuisCorrespVersAssocies:
+        # retrait des corres_id_comptag qui vont etre envoyes dans les comptages associes
+        dfCorrespIdComptag_MajMano = dfCorrespIdComptag_MajMano.loc[~dfCorrespIdComptag_MajMano.id_comptag.isin(listeDepuisCorrespVersAssocies)].copy()
+        
+    # verifs finales de coherence
+    listeSortie = [dfCreationComptageAssocie_MaJMano, dfCorrespIdComptag_MajMano, cptAssocMultiSectHomo_MajMano, cptRefSectHomoNew_MajMano]
+    listeEntree = [dfCreationComptageAssocie, dfCorrespIdComptag, cptAssocMultiSectHomo, cptRefSectHomoNew]
+    if sum([len(a) for a in listeEntree]) != sum([len(b) for b in listeSortie]):
+        raise ValueError('la somme des élémenst en entrée est différente de la somem des éléments en sortie. vérifier les transferts')
+    
+    return (dfCreationComptageAssocie_MaJMano, dfCorrespIdComptag_MajMano, cptAssocMultiSectHomo_MajMano, cptRefSectHomoNew_MajMano)      
+
+
+def modifierVentilationCorrespIdComptag(dfCreationComptageAssocie, cptAssocMultiSectHomo,
+                                        dfCorrespIdComptag, listeDepuisCorrespVersAssocies):
+    """
+    à partir des elements crees par ventilerCompteurIdComptagExistant(), ventilerNouveauComptageRef(), ventilerCompteurIdComptagExistant()
+    et de liste ou de dico de transfert de d'un resultats vers un autre, redefinir les dataframe de correspondances d'id_comptag
+    in : 
+        dfCreationComptageAssocie : dataframe des compatge associes. issu de ventilerNouveauComptageRef()
+        listeDepuisAssociesVersCorresp : liste des comptages a transferer depuis les comptages associes vers les correspondance de comptage
+        cptAssocMultiSectHomo : dataframe des comptages associes issue de ventilerCompteurRefAssoc
+        dfCorrespIdComptag : dataframe isse de ventilerNouveauComptageRef()
+        listeDepuisAssociesVersCorresp : liste des comptages a transferer depuis les comptages associes vers les correspondance de comptage
+    """
+    
+    # return dfCorrespIdComptag_MajMano
+
+def rassemblerNewCompteur(dep, reseau, gestionnai, concession, srcGeo, sensCpt, *tupleDfGeom):
     """
     regrouper les dataframes issues des fonctions de ventilation dans une seule destinée a etre intégrée das la bdd
     in : 
@@ -543,7 +648,11 @@ def rassemblerNewCompteur(dep, reseau, gestionnai, concession, srcGeo=None, sens
             df['sens_cpt'] = sensCpt
         df['src_cpt'] = df.type_poste.apply(lambda x: 'convention gestionnaire' if x == 'permanent' else 'gestionnaire')
         df['convention'] = df.type_poste.apply(lambda x: True if x == 'permanent' else False)
-        listCpteurNew.append(creerCompteur(df, c[1], dep, reseau, gestionnai, concession))
+        # RUSTINE A REPRENDRE : 
+        if 'id_cpt' in df.columns:
+            listCpteurNew.append(creerCompteur(df, c[1], dep, reseau, gestionnai, concession, id_cpt=df.id_cpt.tolist()))
+        else: 
+            listCpteurNew.append(creerCompteur(df, c[1], dep, reseau, gestionnai, concession, id_cpt=df.id_cpt.tolist()))
     return pd.concat(listCpteurNew)
 
 
