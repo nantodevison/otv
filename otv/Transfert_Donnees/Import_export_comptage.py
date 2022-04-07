@@ -11,7 +11,7 @@ import pandas as pd
 import Connexion_Transfert as ct
 from Params.Bdd_OTV import (nomConnBddOtv, schemaComptage, tableIndicAgrege, tableComptage, 
                             tableCompteur, tableIndicHoraire, schemaComptageAssoc,
-                            tableIndicMensuel)
+                            tableIndicMensuel, tableCorrespIdComptag)
 import geopandas as gp
 
 
@@ -71,13 +71,13 @@ def recupererIdUniqComptage(dfSource, derniereAnnee=False):
             if derniereAnnee:
                 txt = '\'),(\''.join(dfSource.id_comptag.tolist())
                 listIdCpt = f"('{txt}')"
-                rqt = f"""select DISTINCT ON (ca.id_comptag) ca.id id_comptag_uniq, ca.id_comptag, ca.annee 
+                rqt = f"""select DISTINCT ON (ca.id_comptag) ca.id id_comptag_uniq, ca.id_comptag, ca.annee
                              from {schemaComptage}.{tableComptage} ca JOIN (SELECT * from (VALUES  
                              {listIdCpt}) 
                              AS t (id_cpt)) t ON t.id_cpt=ca.id_comptag
                              ORDER BY ca.id_comptag, ca.annee desc"""
             else:
-                rqt = f"""select distinct on (ca.id_comptag) ca.id id_comptag_uniq, ca.id_comptag, ca.annee 
+                rqt = f"""select distinct on (ca.id_comptag) ca.id id_comptag_uniq, ca.id_comptag, ca.annee
                                          from {schemaComptage}.{tableComptage} ca JOIN (SELECT * from (VALUES  
                                          {','.join([f'{a, b}' for a, b in zip(dfSource.id_comptag.tolist(), dfSource.annee.tolist())])}) 
                                          AS t (id_cpt, ann)) t ON t.id_cpt=ca.id_comptag AND t.ann=ca.annee
@@ -88,6 +88,7 @@ def recupererIdUniqComptage(dfSource, derniereAnnee=False):
         if dfSourceIds.id_comptag_uniq.isna().any():
             raise ValueError("les id_comptag {} n'ont pas d'id_comptag_uniq. Creer un comptage avant ")
         return  dfSourceIds 
+  
     
 def recupererIdUniqComptageAssoc(listIdComptag):
     """
@@ -98,7 +99,7 @@ def recupererIdUniqComptageAssoc(listIdComptag):
         dfIdCptUniqs df avec id_comptag_uniq, id_comptag, annee
     """
     with ct.ConnexionBdd(nomConnBddOtv) as c  :
-        dfIdCptUniqsAssoc=pd.read_sql(f'select id id_comptag_uniq, id_cptag_ref from {schemaComptageAssoc}.{tableComptage} where id_cptag_ref=ANY(ARRAY{listIdComptag})', c.sqlAlchemyConn)
+        dfIdCptUniqsAssoc=pd.read_sql(f'select id id_comptag_uniq, id_cptag_ref, id_cpteur_asso from {schemaComptageAssoc}.{tableComptage} where id_cptag_ref=ANY(ARRAY{listIdComptag})', c.sqlAlchemyConn)
     return  dfIdCptUniqsAssoc
 
 
@@ -136,7 +137,7 @@ def insererSchemaComptage(df, typeData):
         df : dataframe a inserer. doit respecter le formet de la bdd
         typeData : string parmi 'comptage', compteur, indicAgrege, indicMensuel, indicHoraire
     """
-    O.checkParamValues(typeData, ['comptage', 'compteur', 'indicAgrege', 'indicMensuel', 'indicHoraire'])
+    O.checkParamValues(typeData, ['comptage', 'compteur', 'indicAgrege', 'indicMensuel', 'indicHoraire', 'corresp_id_comptag'])
     if typeData == 'comptage': 
         nomTable = tableComptage
     elif typeData == 'compteur': 
@@ -147,6 +148,8 @@ def insererSchemaComptage(df, typeData):
         nomTable = tableIndicMensuel 
     elif typeData == 'indicHoraire':
         nomTable = tableIndicHoraire
+    elif typeData == 'corresp_id_comptag':
+        nomTable = tableCorrespIdComptag
     insert_bdd(schemaComptage, nomTable,
                     df, 'append', 'POINT')
     return

@@ -602,8 +602,8 @@ class Comptage_cd17(Comptage) :
                                    if not pd.isnull(x['Début du comptage']) and not pd.isnull(x['Fin du comptage']) else None, axis=1)
         dfBrute['pc_pl'] = dfBrute.pc_pl.apply(lambda x: float(x.replace(',', '.')))
         # filtre des données et cretion de l'identifiant
-        dfDonneesLocalisable = dfBrute.loc[dfBrute.nomRoute.apply(lambda x: True if re.search('D[0-9]+', x) else False)].copy()
-        dfDonneesLocalisable['id_comptag'] = dfDonneesLocalisable.apply(lambda x: f"17-{x.nomRoute}-{x.pr}+{x['absc']}", axis=1)
+        dfDonneesLocalisable = dfBrute.loc[dfBrute.route.apply(lambda x: True if re.search('D[0-9]+', x) else False)].copy()
+        dfDonneesLocalisable['id_comptag'] = dfDonneesLocalisable.apply(lambda x: f"17-{x.route}-{x.pr}+{x['absc']}", axis=1)
         dfDonneesLocalisable = dfDonneesLocalisable.loc[(~dfDonneesLocalisable.pr.isna()) & (~dfDonneesLocalisable.absc.isna()) &
                                                         (dfDonneesLocalisable.tmja > 0)].copy()
         dfDonneesLocalisable['type_poste'] = 'ponctuel'

@@ -246,12 +246,12 @@ def structureBddOld2NewFormAssoc(dfAConvertir, annee, listAttrFixe,listAttrIndic
     """  
     if typeIndic not in ('agrege', 'mensuel', 'horaire'):
         raise ValueError ("le type d'indicateur doit etre parmi 'agrege', 'mensuel', 'horaire'" )
-    if any([e not in listAttrFixe for e in ['id_cptag_ref', 'annee']]):
-        raise AttributeError('les attributs id_comptag et annee sont obligatoire dans listAttrFixe')
+    if any([e not in listAttrFixe for e in ['id_cptag_ref', 'annee', 'id_cpteur_asso']]):
+        raise AttributeError('les attributs id_comptag, id_cpteur_asso et annee sont obligatoire dans listAttrFixe')
     if typeIndic == 'agrege':
         dfIndic = pd.melt(dfAConvertir.assign(annee=dfAConvertir.annee.astype(str)), id_vars=listAttrFixe, value_vars=listAttrIndics, 
                               var_name='indicateur', value_name='valeur')
-        columns = [c for c in ['id_cptag_ref', 'indicateur', 'valeur', 'fichier', 'obs', 'annee'] if c in dfIndic.columns]
+        columns = [c for c in ['id_cptag_ref', 'indicateur', 'valeur', 'fichier', 'obs', 'annee', 'id_cpteur_asso'] if c in dfIndic.columns]
         dfIndic = dfIndic[columns].rename(columns={'id':'id_comptag_uniq'})
     #elif typeIndic == 'mensuel':
     #    dfIndic = pd.melt(dfAConvertir.assign(annee=dfAConvertir.annee.astype(str)), id_vars=listAttrFixe, value_vars=listAttrIndics, 
@@ -261,7 +261,7 @@ def structureBddOld2NewFormAssoc(dfAConvertir, annee, listAttrFixe,listAttrIndic
     elif typeIndic == 'horaire': 
         dfIndic = dfAConvertir.rename(columns={'type_veh':'indicateur'})
         dfIndic = dfIndic.drop(['id_comptag', 'id_cpteur_asso'], axis=1, errors='ignore')
-    dfIndic = dfIndic.merge(recupererIdUniqComptageAssoc(dfIndic.id_cptag_ref.tolist()), on='id_cptag_ref'
+    dfIndic = dfIndic.merge(recupererIdUniqComptageAssoc(dfIndic.id_cptag_ref.tolist()), on=['id_cptag_ref', 'id_cpteur_asso']
                             ).drop(['id_cptag_ref', 'annee'], axis=1, errors='ignore')
     #si valeur vide on vire la ligne
     if typeIndic in ('agrege','mensuel'):
@@ -522,7 +522,7 @@ def ventilerNouveauComptageRef(df, nomAttrtypePosteGest, nomAttrtypePosteBdd, no
     return dfCorrespIdComptag, dfCreationComptageAssocie, dfModifTypePoste, dfCreationCompteur
 
 
-def modifierVentilationComptageAssocies(dfCorrespIdComptag, cptRefSectHomoNew, dfCreationComptageAssocie, cptAssocMultiSectHomo,
+def modifierVentilation(dfCorrespIdComptag, cptRefSectHomoNew, dfCreationComptageAssocie, cptAssocMultiSectHomo,
                                         listeDepuisAssociesVersCorresp=None,
                                         listeDepuisCorrespVersAssocies=None, 
                                         dicoDepuisNewCompteurVersAssocies=None):
@@ -611,21 +611,6 @@ def modifierVentilationComptageAssocies(dfCorrespIdComptag, cptRefSectHomoNew, d
     
     return (dfCreationComptageAssocie_MaJMano, dfCorrespIdComptag_MajMano, cptAssocMultiSectHomo_MajMano, cptRefSectHomoNew_MajMano)      
 
-
-def modifierVentilationCorrespIdComptag(dfCreationComptageAssocie, cptAssocMultiSectHomo,
-                                        dfCorrespIdComptag, listeDepuisCorrespVersAssocies):
-    """
-    à partir des elements crees par ventilerCompteurIdComptagExistant(), ventilerNouveauComptageRef(), ventilerCompteurIdComptagExistant()
-    et de liste ou de dico de transfert de d'un resultats vers un autre, redefinir les dataframe de correspondances d'id_comptag
-    in : 
-        dfCreationComptageAssocie : dataframe des compatge associes. issu de ventilerNouveauComptageRef()
-        listeDepuisAssociesVersCorresp : liste des comptages a transferer depuis les comptages associes vers les correspondance de comptage
-        cptAssocMultiSectHomo : dataframe des comptages associes issue de ventilerCompteurRefAssoc
-        dfCorrespIdComptag : dataframe isse de ventilerNouveauComptageRef()
-        listeDepuisAssociesVersCorresp : liste des comptages a transferer depuis les comptages associes vers les correspondance de comptage
-    """
-    
-    # return dfCorrespIdComptag_MajMano
 
 def rassemblerNewCompteur(dep, reseau, gestionnai, concession, srcGeo, sensCpt, *tupleDfGeom):
     """
