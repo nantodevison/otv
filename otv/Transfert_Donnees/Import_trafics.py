@@ -2829,14 +2829,15 @@ class Comptage_Limoges_Metropole(Comptage):
         """
         je me base sur un fichier shape généré à partir de qgis, depuis le service arcgis ici : https://siglm.agglo-limoges.fr/servernf/rest/services/_TRANSPORTS/transports_consult/featureServer
         """
-        df_trafic=gp.read_file(fichiers_shape, encoding='UTF8').set_index('objectid')
+        self.fichiers_shape = fichiers_shape
+        df_trafic = gp.read_file(fichiers_shape, encoding='UTF8').set_index('objectid')
         df_trafic.drop_duplicates(['date_deb', 'date_fin','tv_moyjour','position','direction','type','nom_voie','codcomm' ], inplace=True)
-        self.df_trafic=df_trafic.loc[(df_trafic.geometry!=None) & (~df_trafic.tv_moyjour.isna()) & 
+        self.df_trafic = df_trafic.loc[(df_trafic.geometry!=None) & (~df_trafic.tv_moyjour.isna()) & 
                                      (df_trafic['type_capt']!='Manuel')].copy()
-        self.fichier_zone=fichier_zone
-        self.df_trafic['geom_wgs84']=self.df_trafic.geometry.to_crs(epsg='4326')
-        self.df_trafic['geom_wgs84_x']=self.df_trafic.geom_wgs84.apply(lambda x : str(round(x.x, 4)))
-        self.df_trafic['geom_wgs84_y']=self.df_trafic.geom_wgs84.apply(lambda x : str(round(x.y, 4)))
+        self.fichier_zone = fichier_zone
+        self.df_trafic['geom_wgs84'] = self.df_trafic.geometry.to_crs(epsg='4326')
+        self.df_trafic['geom_wgs84_x'] = self.df_trafic.geom_wgs84.apply(lambda x : str(round(x.x, 4)))
+        self.df_trafic['geom_wgs84_y'] = self.df_trafic.geom_wgs84.apply(lambda x : str(round(x.y, 4)))
         
         
     #fonction de recherche des points regroupable
@@ -2848,7 +2849,7 @@ class Comptage_Limoges_Metropole(Comptage):
         """
         zone_grp=gp.read_file(self.fichier_zone)
         #jointure
-        self.df_trafic=gp.sjoin(self.df_trafic,zone_grp, op='within')
+        self.df_trafic=gp.sjoin(self.df_trafic,zone_grp, predicate='within')
     
     def isoler_zone(self, num_zone):
         """
@@ -2860,9 +2861,9 @@ class Comptage_Limoges_Metropole(Comptage):
         zone_cbl=self.df_trafic.loc[self.df_trafic['id_groupe']==num_zone][['type', 'geometry', 'date_deb','date_fin', 'tv_moyjour',
                 'pl_pourcen', 'id_groupe', 'nom_voie', 'position','geom_wgs84_x', 'geom_wgs84_y']].sort_values(['type', 'date_deb']).copy()
         zone_cbl['annee']=zone_cbl.date_deb.apply(lambda x : x[:4])
-        #filtre vacances
-        zone_cbl=zone_cbl.loc[(zone_cbl.apply(lambda x : pd.to_datetime(x.date_deb).month not in [7,8] if not pd.isnull(x.date_deb) else True, axis=1)) & 
-                    (zone_cbl.apply(lambda x : pd.to_datetime(x.date_fin).month not in [7,8] if not pd.isnull(x.date_fin) else True, axis=1))].copy()
+        #filtre vacances DEPRECATED depuis nouvelle structure donnees
+        """zone_cbl=zone_cbl.loc[(zone_cbl.apply(lambda x : pd.to_datetime(x.date_deb).month not in [7,8] if not pd.isnull(x.date_deb) else True, axis=1)) & 
+                    (zone_cbl.apply(lambda x : pd.to_datetime(x.date_fin).month not in [7,8] if not pd.isnull(x.date_fin) else True, axis=1))].copy()"""
         zone_cbl_grp_type=zone_cbl.groupby('type')
         carac_geom_type=zone_cbl_grp_type.geometry.unique().apply(lambda x : len(x))
         return zone_cbl, zone_cbl_grp_type, carac_geom_type
@@ -2871,7 +2872,7 @@ class Comptage_Limoges_Metropole(Comptage):
         #geometry
         format_cpt=gp.GeoDataFrame(format_cpt, geometry=[geom])
         format_cpt['src_geo']='export Webservice, cf atribut fichier'
-        format_cpt['fichier']='Q:\DAIT\TI\DREAL33\2020\OTV\Doc_travail\Donnees_source\LIMOGES\Limoge_Web_service.shp'
+        format_cpt['fichier']=os.path.basename(self.fichiers_shape)
         #reference au fichier cree et à la geolocalisation
         format_cpt['obs_supl']=f'numero de zone dans fichier geoloc : {num_zone}'
         format_cpt['id_comptag']=f'LimMet-{nom_voie.lower()}-{wgs84_geom_x};{wgs84_geom_y}' if nom_voie else f'LimMet-??-{wgs84_geom_x};{wgs84_geom_y}'
@@ -3025,18 +3026,26 @@ class Comptage_Limoges_Metropole(Comptage):
         """
         ajouter à la df creee par df_regroupee() les attributs généraux. creer le fichier self.df_attr
         """
-        def type_compteur(ligne):
-            if all([not pd.isnull(ligne[f'tmja_{annee}']) for annee in (str(i) for i in range(2015,2020))]) : 
+        def type_compteur(ligne, list_colonnes):
+            date_range = range(2015, 2021)
+            if (all([f'tmja_{annee}' in list_colonnes for annee in date_range]) and 
+                all([not pd.isnull(ligne[f'tmja_{annee}']) for annee in (str(i) for i in date_range)]))  : 
                 return 'permanent'
-            elif ((Counter([not pd.isnull(ligne[f'tmja_{annee}']) for annee in (str(i) for i in range(2010,2020))])[True]>=3) and 
-                  any([not pd.isnull(ligne[f'tmja_{annee}']) for annee in (str(i) for i in range(2015,2020))]) ): 
-                return 'tournant'
+            elif any([f'tmja_{annee}' in list_colonnes for annee in date_range]): 
+                i = 0
+                for col in [f'tmja_{annee}' for annee in date_range if f'tmja_{annee}' in list_colonnes] : 
+                    if not pd.isnull(ligne[col]) : 
+                        i += 1
+                if i >= 3 :
+                    return 'tournant'
+                else : 
+                    return 'ponctuel'
             else :
                 return 'ponctuel'
-        gdf=gp.GeoDataFrame(pd.concat(list_dfs, axis=0, sort=False))
-        gdf['route']=gdf.id_comptag.apply(lambda x : x.split('-')[1])
-        gdf['type_poste']=gdf.apply(lambda x : type_compteur(x), axis=1)
-        self.df_attr=gdf.assign(dep='87',reseau='VC', gestionnai='Limoges Metropole',concession='N',
+        gdf = gp.GeoDataFrame(pd.concat(list_dfs, axis=0, sort=False))
+        gdf['route'] = gdf.id_comptag.apply(lambda x : x.split('-')[1])
+        gdf['type_poste'] = gdf.apply(lambda x : type_compteur(x, gdf.columns), axis=1)
+        self.df_attr = gdf.assign(dep='87',reseau='VC', gestionnai='Limoges Metropole',concession='N',
                        x_l93=lambda x : round(x.geometry.x,3),y_l93=lambda x : round(x.geometry.y,3))
         
 class Comptage_LaRochelle(Comptage):  
