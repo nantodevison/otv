@@ -2889,11 +2889,11 @@ class Comptage_Limoges_Metropole(Comptage):
         """
         def conversion_date(date_deb, date_fin):
             if date_deb and date_fin : 
-                return f"{pd.to_datetime(date_deb).strftime('%d/%m/%Y')}-{pd.to_datetime(date_fin).strftime('%d/%m/%Y')}"
+                return f"{pd.to_datetime(date_deb).strftime('%Y/%m/%d')}-{pd.to_datetime(date_fin).strftime('%Y/%m/%d')}"
             elif date_deb : 
-                return f"{pd.to_datetime(date_deb).strftime('%d/%m/%Y')}-??"
+                return f"{pd.to_datetime(date_deb).strftime('%Y/%m/%d')}-??"
             elif date_fin : 
-                return f"??-{pd.to_datetime(date_fin).strftime('%d/%m/%Y')}"
+                return f"??-{pd.to_datetime(date_fin).strftime('%Y/%m/%d')}"
             else : 
                 return "pas de date de mesure connues"
             

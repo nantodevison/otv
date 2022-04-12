@@ -109,9 +109,7 @@ def ventilerParSectionHomogene(tableCptNew, tableSectionHomo, codeDept, distance
                                                            WHEN c.type_poste = 'tournant' THEN 2
                                                            WHEN c.type_poste = 'ponctuel' THEN 3 
                                                            ELSE 4 
-                                                           end, CASE WHEN c.id_comptag IS NULL THEN 1
-                                                                     WHEN comptage.verif_periode_vacance(c.id_comptag, c.annee_tmja) THEN 2
-                                                                     ELSE 1 END, 
+                                                           end, CASE WHEN c.vacances_zone_b IS NULL OR NOT c.vacances_zone_b THEN 1 ELSE 2 END, 
                                                                          c.tmja DESC
                                      """, c.sqlAlchemyConn)
     # on en déduit le plus proche voisin entre les points et la linauto
@@ -440,6 +438,9 @@ def ventilerDoublons(df):
     if not doublonsNatifs.empty:  # si c'est le cas, il faut néttoyer la donnees et creer des comptages associés (a reprendre en natif dans les fonctions)
         ref, assoc = ventilerCompteurRefAssoc(df.loc[df.duplicated('id_comptag', keep=False)].assign(
             id_comptag2=df.loc[df.duplicated('id_comptag', keep=False)].id_comptag).rename(columns={'id_comptag2': 'gid'}))
+    else:
+        ref = df
+        assoc = None
     return ref, assoc
 
 def ventilerCompteurRefAssoc(cptMultiSectHomo):
@@ -490,7 +491,8 @@ def ventilerCompteurIdComptagExistant(cptSimpleSectHomo, cptRefMultiSectHomo):
     return cptRefSectHomoNew, cptRefSectHomoOld
 
 
-def ventilerNouveauComptageRef(df, nomAttrtypePosteGest, nomAttrtypePosteBdd, nomAttrperiode):
+def ventilerNouveauComptageRef(df, nomAttrtypePosteGest, nomAttrtypePosteBdd, nomAttrperiode,  
+                               dep, tableTroncHomo, tableRefLineaire,  distancePlusProcheVoisin=20 ):
     """
     depuis une df des comptage de référence situé sur des tronçons avec un id_comptag existant dans la base, 
     séparer en 4 groupe selon le type de poste dans la bdd et le type de poste du hestionnaire.
@@ -499,17 +501,38 @@ def ventilerNouveauComptageRef(df, nomAttrtypePosteGest, nomAttrtypePosteBdd, no
         nomAttrtypePosteGest : string : nom de l'attribut supportant le type de poste fourni par le gest 
         nomAttrtypePosteBdd : string : nom de l'attribut supportant le type de poste dans la bdd
         nomAttrperiode : string : nom de l'attribut décrivant la période de mesure
+        tableTronconHomogeneTrafic : table ou vue dans bdd OTV qui contientid_ign, id_groupe de troncon homogene de trafic et compteur associe si il existe
+        dep :string sur 2 caractères
+        tableTroncHomo : table du schema linauto qui contient le regroupement en tronçons homogène des trafic
+        tableRefLineaire : table qui contient le lineaire epuree, avec un id integer
+        distancePlusProcheVoisin : distance au plus proche voisin pour recherche de corresp_id_comptag
     out : 
         dfCorrespIdComptag : dataframe des points qui vont simplelnet faire l'objet d'une correspondance d'id_comptage
         dfCreationComptageAssocie : dataframe de spoint qui vont de suite devenir des comptages associes
         dfModifTypePoste : dataframe des points existant dont on va modifier le type de poste
         dfCreationCompteur : dataframe des points qui vont faire l'objet d'un  nouveau compteur
     """
-    dfCorrespIdComptag = df.loc[((df[nomAttrtypePosteGest] == df[nomAttrtypePosteBdd]) &
-                                 (df[nomAttrtypePosteGest] != 'ponctuel')) |
-                                ((df[nomAttrtypePosteGest] == df[nomAttrtypePosteBdd]) &
-                                 (df[nomAttrtypePosteGest] == 'ponctuel') &
-                                 (~df[nomAttrperiode].apply(lambda x: O.verifVacanceRange(x))))].copy()
+    rqtTronconHomogene = f"""SELECT DISTINCT ON (s.gid) s.gid, s.geom, c.id_comptag, c.type_poste type_poste_bdd
+     FROM (SELECT DISTINCT t.gid, t.geom
+     FROM (SELECT unnest(list_id) id, gid, geom FROM {tableTroncHomo}) t JOIN {tableRefLineaire} r ON r.id = t.id
+     WHERE r.dept = '{dep}') s LEFT JOIN comptage.{vueLastAnnKnow} c ON st_dwithin(s.geom, c.geom, 30)
+     ORDER BY s.gid, CASE WHEN c.type_poste = 'permanent' THEN 1 
+                           WHEN c.type_poste = 'tournant' THEN 2
+                           WHEN c.type_poste = 'ponctuel' THEN 3 
+                           ELSE 4 
+                           end, CASE WHEN c.vacances_zone_b IS NULL OR NOT c.vacances_zone_b THEN 1
+                                     ELSE 2 END, c.tmja DESC ;"""
+        # récuperer depuis la bdd la listedes tronçons homogenes de trafic, avec le compteur le plus proche
+    with ct.ConnexionBdd(nomConnBddOtv) as c:
+        tronconsHomogeneTrafic = gp.read_postgis(rqtTronconHomogene, c.sqlAlchemyConn).rename(columns={'gid': 'id_tronc_homo'})
+        # associer les comptages que l'on chreche a qualifier aux tronçons qui supportent (ou non) un compteur, au sein d'un tronçon homogene
+    ppvtronconsHomogeneTrafic = O.plus_proche_voisin(gp.GeoDataFrame(df, geometry='geom_x', crs='epsg:2154').rename(columns={'id_comptag': 'id_comptag_gest'})
+                                                     , tronconsHomogeneTrafic, distancePlusProcheVoisin,'id_comptag_gest', 'id_tronc_homo')
+        # trouver les nouveaux compteurs situés sur des tronçons homogènes qui ont déjà un compteur dans la base
+    dfCorrespIdComptag = ppvtronconsHomogeneTrafic.merge(tronconsHomogeneTrafic, on='id_tronc_homo').rename(
+        columns={'id_comptag_gest': 'id_comptag','id_comptag':'id_comptag_bdd' }).merge(df.drop(['id_comptag_bdd', 'type_poste_bdd'], axis=1),
+                                                                                       on='id_comptag')
+    dfCorrespIdComptag = dfCorrespIdComptag[dfCorrespIdComptag['id_comptag_bdd'].notna()]
     dfCreationComptageAssocie = df.loc[((df[nomAttrtypePosteGest] == 'ponctuel') &
                                         (df[nomAttrtypePosteBdd].isin(('permanent', 'tournant')))) |
                                        ((df[nomAttrtypePosteGest] == df[nomAttrtypePosteBdd]) &
@@ -608,6 +631,14 @@ def modifierVentilation(dfCorrespIdComptag, cptRefSectHomoNew, dfCreationComptag
     listeEntree = [dfCreationComptageAssocie, dfCorrespIdComptag, cptAssocMultiSectHomo, cptRefSectHomoNew]
     if sum([len(a) for a in listeEntree]) != sum([len(b) for b in listeSortie]):
         raise ValueError('la somme des élémenst en entrée est différente de la somem des éléments en sortie. vérifier les transferts')
+    
+    # mise en forme des résultats : si les données d'entrée n'étaient pas présentes on les cope dans les données de sortie
+    for k, v in {dfCreationComptageAssocie_MaJMano: dfCreationComptageAssocie,
+                 dfCorrespIdComptag_MajMano: dfCorrespIdComptag,
+                 cptAssocMultiSectHomo_MajMano: cptAssocMultiSectHomo,
+                 cptRefSectHomoNew_MajMano : cptRefSectHomoNew}:
+        if not k:
+            k = v.copy()
     
     return (dfCreationComptageAssocie_MaJMano, dfCorrespIdComptag_MajMano, cptAssocMultiSectHomo_MajMano, cptRefSectHomoNew_MajMano)      
 
