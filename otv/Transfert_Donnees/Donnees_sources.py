@@ -842,6 +842,30 @@ class FIM():
         else : 
             verifNbJour(self.dfHeureTypeSens)
         return 
+
+   
+    class fim_TailleBlocDonneesError(Exception):
+        """
+        Exception levee si la taile des blocs de donnees entre fichiers fim, varie
+        """     
+        def __init__(self, taille_donnees):
+            Exception.__init__(self,f'taille multiple de blocs de donnees dans le fichier : {taille_donnees} ')
+
+
+    class fim_TypeModeError(Exception):
+        """
+        Exception levee si le mode n'a pas pu etre detreminé
+        """     
+        def __init__(self):
+            Exception.__init__(self,f'le mode n\'est pas reconnu, cf focntion params_fim()')
+
+    
+    class fimNbBlocDonneesError(Exception):
+        """
+        Exception levee si le  nb de blocs du fihchier est égal à 1
+        """     
+        def __init__(self, mode):
+            Exception.__init__(self,f'le fichier ne comporte qu\'un seul bloc en mode {mode} ')
         
 class ComptageFim(object):
     """
@@ -1224,6 +1248,7 @@ class DataSensError(Exception):
     Exception levee pour classe MHCorbin si le fichier comporte des sens dans la table hshdr mais que  les tables a ou c ou v ne sont pas présentes
     """     
     def __init__(self, nbjours):
-        Exception.__init__(self,f'Il manque la table a, c ou v dans le fichier.mdb')     
+        Exception.__init__(self,f'Il manque la table a, c ou v dans le fichier.mdb')  
+           
         
         
