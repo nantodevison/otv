@@ -434,12 +434,16 @@ def ventilerDoublons(df):
         ref : dataframe des id_comptag de reference
         assoc : dataframe des id_comptag associe, avec champs id_comptag_ref
     """
-    doublonsNatifs = df.loc[df.duplicated('id_comptag', keep=False)]
+    doublonsNatifs = df.loc[df.duplicated('id_comptag', keep=False)].copy().drop('gid', axis=1, errors='ignore')
+    notDoublonsNatifs = df.loc[~df.duplicated('id_comptag', keep=False)].copy()
     if not doublonsNatifs.empty:  # si c'est le cas, il faut néttoyer la donnees et creer des comptages associés (a reprendre en natif dans les fonctions)
-        ref, assoc = ventilerCompteurRefAssoc(df.loc[df.duplicated('id_comptag', keep=False)].assign(
-            id_comptag2=df.loc[df.duplicated('id_comptag', keep=False)].id_comptag).rename(columns={'id_comptag2': 'gid'}))
+        ref, assoc = ventilerCompteurRefAssoc(doublonsNatifs.assign(
+            id_comptag2=doublonsNatifs.id_comptag).rename(columns={'id_comptag2': 'gid'}))
+        ref = pd.concat([notDoublonsNatifs, ref])
+        if len(ref) + len(assoc) != len(df):
+            raise ValueError("pb de répartition des doublons, vérifier manuellement")
     else:
-        ref = df
+        ref = df.copy()
         assoc = None
     return ref, assoc
 
@@ -494,6 +498,11 @@ def ventilerCompteurIdComptagExistant(cptSimpleSectHomo, cptRefMultiSectHomo):
 def ventilerNouveauComptageRef(df, nomAttrtypePosteGest, nomAttrtypePosteBdd, nomAttrperiode,  
                                dep, tableTroncHomo, tableRefLineaire,  distancePlusProcheVoisin=20 ):
     """
+    A REPRENDRE AVEC LE SCHEMA DE VENTILATION DES COMPTAGES REF : IL Y A BCP DE CAS ET TOUT EST DANS la doc. IL FAUT FAIRE COLLER LES 
+    CAS DANS LE CODE A CEUX DE LA DOC.
+    IL FAUT AUSSI PREVOIR LE CAS DES COMPTAGES QUI VONT AMENER A DEVOIR MODIFIER DES COMPTAGE DE LA BDD EN LES PASSANT EN COMPTAGES
+    ASSOCIES. IL MANQUE UN OUT POUR CA
+    
     depuis une df des comptage de référence situé sur des tronçons avec un id_comptag existant dans la base, 
     séparer en 4 groupe selon le type de poste dans la bdd et le type de poste du hestionnaire.
     in : 
@@ -566,15 +575,16 @@ def modifierVentilation(dfCorrespIdComptag, cptRefSectHomoNew, dfCreationComptag
         cptAssocMultiSectHomo_MajMano : dataframe des comptages associes, avec les corresp transferees dedans et si besoin les comptages vers corrsp sortis. Si pas concerne, renvoi none
     """
     # initialisation des variables finales   
-    dfCreationComptageAssocie_MaJMano = None
-    dfCorrespIdComptag_MajMano = None
-    cptAssocMultiSectHomo_MajMano = None
-    cptRefSectHomoNew_MajMano = None
+    dfCreationComptageAssocie_MaJMano = dfCreationComptageAssocie.copy()
+    dfCorrespIdComptag_MajMano = dfCorrespIdComptag.copy()
+    cptAssocMultiSectHomo_MajMano = cptAssocMultiSectHomo.copy()
+    cptRefSectHomoNew_MajMano = cptRefSectHomoNew.copy()
     
     # FUSION DES DONNEES
     # transfert des comptages depuis la correspondance d'id_comptage vers les comptages associés (dfCreationComptageAssocie)
     # verif que tious les comptages a transfere ont bien une valeur de id_comptag_bdd
     if listeDepuisCorrespVersAssocies:
+        print(listeDepuisCorrespVersAssocies)
         dfCptCorrespVersAssocie = dfCorrespIdComptag.loc[dfCorrespIdComptag.id_comptag.isin(listeDepuisCorrespVersAssocies)]
         if not dfCptCorrespVersAssocie.loc[dfCptCorrespVersAssocie.id_comptag_bdd.isna()].empty:
             raise AttributeError("un des objets n'a pas de valeuyr pour id_comptag_bdd ; vérifier puis corriger")
@@ -596,11 +606,7 @@ def modifierVentilation(dfCorrespIdComptag, cptRefSectHomoNew, dfCreationComptag
     elif listeDepuisCorrespVersAssocies:
         dfCreationComptageAssocie_MaJMano = pd.concat([dfCreationComptageAssocie, dfCptCorrespVersAssocie])
     elif dicoDepuisNewCompteurVersAssocies:
-        dfCreationComptageAssocie_MaJMano = pd.concat([dfCreationComptageAssocie, dfNewCompteurVersAssocie])
-    # si besoin retrait des comptages associes qui vont etre envoyes dans les corres_id_comptag
-    if listeDepuisAssociesVersCorresp:
-        dfCreationComptageAssocie_MaJMano = dfCreationComptageAssocie_MaJMano.drop(dfCreationComptageAssocie_MaJMano.loc[
-            dfCreationComptageAssocie_MaJMano.id_comptag.isin(listeDepuisAssociesVersCorresp)].index)    
+        dfCreationComptageAssocie_MaJMano = pd.concat([dfCreationComptageAssocie, dfNewCompteurVersAssocie])    
     # transfert des données depuis les comptages associes vers les correspondances d'id_comptag
     if listeDepuisAssociesVersCorresp:
         depuisDfCreationComptageAssocieVersCorresp = dfCreationComptageAssocie.loc[dfCreationComptageAssocie.id_comptag.isin(listeDepuisAssociesVersCorresp)]
@@ -614,7 +620,7 @@ def modifierVentilation(dfCorrespIdComptag, cptRefSectHomoNew, dfCreationComptag
 
     # EVIDER LES DONNEES EN TROP
     # retrait des comptages associes qui vont etre envoyes dans les corres_id_comptag
-    if listeDepuisCorrespVersAssocies:
+    if listeDepuisAssociesVersCorresp:
         dfCreationComptageAssocie_MaJMano = dfCreationComptageAssocie_MaJMano.loc[
             ~dfCreationComptageAssocie_MaJMano.id_comptag.isin(listeDepuisAssociesVersCorresp)].copy()
         cptAssocMultiSectHomo_MajMano = cptAssocMultiSectHomo.loc[
@@ -627,18 +633,13 @@ def modifierVentilation(dfCorrespIdComptag, cptRefSectHomoNew, dfCreationComptag
         dfCorrespIdComptag_MajMano = dfCorrespIdComptag_MajMano.loc[~dfCorrespIdComptag_MajMano.id_comptag.isin(listeDepuisCorrespVersAssocies)].copy()
         
     # verifs finales de coherence
-    listeSortie = [dfCreationComptageAssocie_MaJMano, dfCorrespIdComptag_MajMano, cptAssocMultiSectHomo_MajMano, cptRefSectHomoNew_MajMano]
-    listeEntree = [dfCreationComptageAssocie, dfCorrespIdComptag, cptAssocMultiSectHomo, cptRefSectHomoNew]
+    listeSortie = [e for e in (dfCreationComptageAssocie_MaJMano, dfCorrespIdComptag_MajMano, cptAssocMultiSectHomo_MajMano, 
+                               cptRefSectHomoNew_MajMano) if isinstance(e, pd.DataFrame)]
+    listeEntree = [e for e in (dfCreationComptageAssocie, dfCorrespIdComptag, cptAssocMultiSectHomo, cptRefSectHomoNew) 
+                   if isinstance(e, pd.DataFrame)]
     if sum([len(a) for a in listeEntree]) != sum([len(b) for b in listeSortie]):
+        print(sum([len(a) for a in listeEntree]), sum([len(b) for b in listeSortie]))
         raise ValueError('la somme des élémenst en entrée est différente de la somem des éléments en sortie. vérifier les transferts')
-    
-    # mise en forme des résultats : si les données d'entrée n'étaient pas présentes on les cope dans les données de sortie
-    for k, v in {dfCreationComptageAssocie_MaJMano: dfCreationComptageAssocie,
-                 dfCorrespIdComptag_MajMano: dfCorrespIdComptag,
-                 cptAssocMultiSectHomo_MajMano: cptAssocMultiSectHomo,
-                 cptRefSectHomoNew_MajMano : cptRefSectHomoNew}:
-        if not k:
-            k = v.copy()
     
     return (dfCreationComptageAssocie_MaJMano, dfCorrespIdComptag_MajMano, cptAssocMultiSectHomo_MajMano, cptRefSectHomoNew_MajMano)      
 
@@ -665,17 +666,22 @@ def rassemblerNewCompteur(dep, reseau, gestionnai, concession, srcGeo, sensCpt, 
         df['src_cpt'] = df.type_poste.apply(lambda x: 'convention gestionnaire' if x == 'permanent' else 'gestionnaire')
         df['convention'] = df.type_poste.apply(lambda x: True if x == 'permanent' else False)
         # RUSTINE A REPRENDRE : 
-        if 'id_cpt' in df.columns:
+        if 'id_cpt' in df.columns and 'obs_supl' in df.columns:
+            listCpteurNew.append(creerCompteur(df, c[1], dep, reseau, gestionnai, concession, id_cpt=df.id_cpt.tolist(), obs_supl=df.obs_supl.tolist()))
+        elif 'id_cpt' in df.columns:
             listCpteurNew.append(creerCompteur(df, c[1], dep, reseau, gestionnai, concession, id_cpt=df.id_cpt.tolist()))
+            listCpteurNew.append(creerCompteur(df, c[1], dep, reseau, gestionnai, concession, obs_supl=df.obs_supl.tolist()))
         else: 
-            listCpteurNew.append(creerCompteur(df, c[1], dep, reseau, gestionnai, concession, id_cpt=df.id_cpt.tolist()))
-    return pd.concat(listCpteurNew)
-
+            listCpteurNew.append(creerCompteur(df, c[1], dep, reseau, gestionnai, concession))
+    dfNewCompteur = pd.concat(listCpteurNew)      
+    if not dfNewCompteur.loc[dfNewCompteur.duplicated('id_comptag')].empty:
+        raise ValueError('des identifiants de comptages sont en doublons, a verifier avant insertion. utilisation possible de ventilerCompteurRefAssoc()')
+    return dfNewCompteur
 
 def rassemblerNewComptage(annee, type_veh, dfComptageCompteurConnu, *dfComptageCompteurNew):
     """
     regrouper les dataframes des comptages, selon qu'elle proviennentde compteurs deja connus ou de compteurs que l'on vient d'insérer
-    grace a rassemblerNewCompteur
+    grace a rassemblerNewCompteur. en sortie on obtiens les comptages et les comptages associes issus 
     in :
         annee : caractères 4 string l'annee des comptages
         type_veh : tring, cf enum_type_veh dans la bdd
@@ -686,13 +692,13 @@ def rassemblerNewComptage(annee, type_veh, dfComptageCompteurConnu, *dfComptageC
     O.checkAttributsinDf(dfComptageCompteurConnu, attrComptageMano)
     for d in dfComptageCompteurNew:
         O.checkAttributsinDf(d, attrComptageMano)
-    # pour la partie des nouveaux compteurs
-    dfComptageNew = pd.concat(dfComptageCompteurNew)[attrComptageMano].assign(annee=annee)
+    # on va fusionner les sources de données
+    concatSources = pd.concat([pd.concat(dfComptageCompteurNew), dfComptageCompteurConnu])
+    # puis on vérifie les doublons
+    ref, assoc =ventilerDoublons(concatSources)    
     # association avec la partie des compteurs deja connus
-    dfComptageNewTot = pd.concat([creer_comptage(dfComptageNew.id_comptag.tolist(), annee, dfComptageNew.src, type_veh, periode=dfComptageNew.periode),
-                             creer_comptage(dfComptageCompteurConnu.id_comptag.tolist(), annee, dfComptageCompteurConnu.src.tolist(), 
-                                            type_veh, periode=dfComptageCompteurConnu.periode.tolist())])
-    return dfComptageNewTot
+    dfComptageNewTot = creer_comptage(ref.id_comptag.tolist(), annee, ref.src, type_veh, periode=ref.periode)
+    return dfComptageNewTot, assoc
     
 def rassemblerIndics(annee, dfComptageNewTot, dfTraficAgrege, dfTraficMensuel=None, dfTraficHoraire=None):
     """
@@ -720,6 +726,14 @@ def rassemblerIndics(annee, dfComptageNewTot, dfTraficAgrege, dfTraficMensuel=No
         dfIndicHoraireNew = structureBddOld2NewForm(dfAttrIndicHoraireNew.assign(annee=annee), '2020', ['id_comptag', 'annee'], ['tata'], 'horaire')
     else:
         dfIndicHoraireNew = None
+    if not dfIndicAgregeNew.loc[dfIndicAgregeNew.duplicated(['id_comptag_uniq', 'indicateur'])].empty:
+        raise ValueError("des comptages agreges sont en doublons, corrigez")
+    elif dfIndicMensNew and not dfIndicMensNew.loc[dfIndicMensNew.duplicated(['id_comptag_uniq', 'indicateur'])].empty:
+        raise ValueError("des comptages mensuels sont en doublons, corrigez")
+    elif dfIndicHoraireNew and not dfIndicHoraireNew.loc[dfIndicHoraireNew.duplicated(['id_comptag_uniq', 'indicateur'])].empty:
+        raise ValueError("des comptages hioraires sont en doublons, corrigez")
+    else : 
+        pass
     return dfIndicAgregeNew, dfIndicMensNew, dfIndicHoraireNew
     
     
