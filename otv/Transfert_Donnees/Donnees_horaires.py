@@ -202,16 +202,16 @@ def mensuelDepuisHoraire(dfHoraire):
     out : 
         dfTmjaPcpl : dataframe agrege eu format id_comptag, annee, indicaeur,mois, valeur
     """
-    dfHoraireConcat=dfHoraire.copy()
-    dfHoraireConcat['mois']=dfHoraireConcat.jour.dt.month
-    dfMeltInconnus=pd.melt(dfHoraireConcat, value_vars=[c for c in dfHoraireConcat.columns if c[0]=='h'], id_vars=['id_comptag', 'annee','indicateur', 'mois', 'jour'],
+    dfHoraireConcat = dfHoraire.copy()
+    dfHoraireConcat['mois'] = dfHoraireConcat.jour.dt.month
+    dfMeltInconnus = pd.melt(dfHoraireConcat, value_vars=[c for c in dfHoraireConcat.columns if c[0]=='h'], id_vars=['id_comptag', 'annee','indicateur', 'mois', 'jour'],
                        value_name='valeur')
     dfTmja=dfMeltInconnus.groupby(['id_comptag','annee','indicateur', 'mois']).agg({'valeur':'sum', 'jour':lambda x : int(len(x)/24)}).reset_index()
-    dfTmja['valeur']=(dfTmja.valeur/dfTmja.jour).astype(int)
-    dfTmjaPcpl=dfTmja.loc[dfTmja.indicateur.str.upper()=='TV'].merge(dfTmja.loc[dfTmja.indicateur.str.upper()=='PL'][['id_comptag', 'valeur','mois']], on=['id_comptag', 'mois'])
-    dfTmjaPcpl['pc_pl']=round(dfTmjaPcpl.valeur_y/dfTmjaPcpl.valeur_x*100, 2)
+    dfTmja['valeur'] = (dfTmja.valeur/dfTmja.jour).astype(int)
+    dfTmjaPcpl = dfTmja.loc[dfTmja.indicateur.str.upper()=='TV'].merge(dfTmja.loc[dfTmja.indicateur.str.upper()=='PL'][['id_comptag', 'valeur','mois']], on=['id_comptag', 'mois'])
+    dfTmjaPcpl['pc_pl'] = round(dfTmjaPcpl.valeur_y/dfTmjaPcpl.valeur_x*100, 2)
     dfTmjaPcpl.rename(columns={'valeur_x':'tmja'}, inplace=True)
-    dfTmjaPcpl=pd.melt(dfTmjaPcpl, value_vars=['pc_pl', 'tmja'], id_vars=['id_comptag', 'annee', 'mois'], value_name='valeur', var_name='indicateur')
+    dfTmjaPcpl = pd.melt(dfTmjaPcpl, value_vars=['pc_pl', 'tmja'], id_vars=['id_comptag', 'annee', 'mois'], value_name='valeur', var_name='indicateur')
     dfTmjaPcpl.mois.replace({v[0]:k for k, v in dico_mois.items()}, inplace=True)
     return dfTmjaPcpl
     

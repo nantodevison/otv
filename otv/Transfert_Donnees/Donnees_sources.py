@@ -655,42 +655,45 @@ class FIM():
     """
     def __init__(self, fichier, gest=None, verifQualite='Bloque'):
         O.checkParamValues(verifQualite, ('Bloque', 'Message'))
-        self.verifQualite=verifQualite
-        self.fichier_fim=fichier
-        self.dico_corresp_type_veh={'TV':('1.T','2.','1.'),'VL':('2.V','4.V'),'PL':('3.P','2.P','4.P')}
-        self.dico_corresp_type_fichier={'mode3' : ('1.T','3.P'), 'mode4' : ('2.V','2.P','4.V', '4.P'), 'mode2':('2.',), 'mode1' : ('1.',)}
-        self.gest=gest
-        self.lignes=self.ouvrir_fim()
-        self.pas_temporel,self.date_debut,self.mode, self.geoloc, self.geom_l93=self.params_fim(self.lignes)
-        self.liste_lign_titre,self.sens_uniq,self.sens_uniq_nb_blocs=self.liste_carac_fichiers(self.lignes)
-        self.taille_donnees=self.taille_bloc_donnees()
+        self.verifQualite = verifQualite
+        self.fichier_fim = fichier
+        self.dico_corresp_type_veh = {'TV': ('1.T','2.','1.'),'VL': ('2.V','4.V'),'PL': ('3.P','2.P','4.P')}
+        self.dico_corresp_type_fichier = {'mode3': ('1.T','3.P'), 'mode4': ('2.V','2.P','4.V', '4.P'), 'mode2': ('2.',), 'mode1' : ('1.',)}
+        self.gest = gest
+        self.lignes = self.ouvrir_fim()
+        self.pas_temporel, self.date_debut, self.mode, self.geoloc, self.geom_l93 = self.params_fim(self.lignes)
+        self.liste_lign_titre, self.sens_uniq, self.sens_uniq_nb_blocs = self.liste_carac_fichiers(self.lignes)
+        self.taille_donnees = self.taille_bloc_donnees()
         self.isoler_bloc(self.lignes, self.liste_lign_titre)
-        self.dfHeureTypeSens,self.dfHoraire2Sens, self.periode = self.traficsHoraires()
+        self.dfHeureTypeSens, self.dfHoraire2Sens, self.periode = self.traficsHoraires()
+        self.date_fin = self.dfHeureTypeSens.date_heure.max()
         self.qualiteComptage()
-        self.dfSemaineMoyenne,self.tmja,self.pc_pl, self.pl =self.calcul_indicateurs_agreges()
+        self.dfSemaineMoyenne, self.tmja, self.pc_pl, self.pl = self.calcul_indicateurs_agreges()
+        
 
     def ouvrir_fim(self):
         """
         ouvrir le fichier txt et en sortir la liste des lignes
         """
         with open(self.fichier_fim) as f :
-            lignes=[e.strip() for e in f.readlines()]
+            lignes = [e.strip() for e in f.readlines()]
         return lignes
+    
     
     def corriger_mode(self,mode):
         """
         correction du fichier fim si mode = 4. dans le fichiers, pour pouvoir diiférencier VL et PL
         """
-        i=0
+        i = 0
         for e,l in enumerate(self.lignes) :
-            if mode=='4.' : #porte ouvert pour d'auter corrections si beoisn
+            if mode == '4.' : #porte ouvert pour d'auter corrections si beoisn
                 if '   4.   ' in l : 
-                    if i% 2==0 :
-                        self.lignes[e]=l.replace('   4.   ','   4.V   ')
-                        i+=1
+                    if i% 2 == 0 :
+                        self.lignes[e] = l.replace('   4.   ','   4.V   ')
+                        i += 1
                     else : 
-                        self.lignes[e]=l.replace('   4.   ','   4.P   ') 
-                        i+=1
+                        self.lignes[e] = l.replace('   4.   ','   4.P   ') 
+                        i += 1
 
     def params_fim(self,lignes):
         """
@@ -827,6 +830,7 @@ class FIM():
         else : 
             pl,pc_pl=np.NaN, np.NaN
         return dfSemaineMoyenne,tmja,pc_pl, pl
+    
     
     def qualiteComptage(self):
         """

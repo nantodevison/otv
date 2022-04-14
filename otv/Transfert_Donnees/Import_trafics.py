@@ -23,7 +23,7 @@ from openpyxl import load_workbook
 import Connexion_Transfert as ct
 from Donnees_horaires import (comparer2Sens,verifValiditeFichier,concatIndicateurFichierHoraire,SensAssymetriqueError,
                               verifNbJoursValidDispo, tmjaDepuisHoraire, periodeDepuisHoraire, attributsHoraire)
-from Donnees_sources import FIM, MHCorbin, DataSensError
+from Donnees_sources import FIM, MHCorbin, DataSensError, PasAssezMesureError
 from Integration_nouveau_comptage import (corresp_nom_id_comptag, structureBddOld2NewForm)
 from Import_export_comptage import (comptag_existant_bdd)
 import Outils as O
@@ -1430,39 +1430,41 @@ class Comptage_cd87(Comptage):
         """
         ajouter eu dico issu de dico_pt_cptg les données de tmja, pc_pl, date_debut, date_fin
         """
-        for v in self.dico_voie.values() : 
+        for v in self.dico_voie.values(): 
             for e in v : 
                 if 'tmja' in e.keys() : #pour pouvoir relancer le traitement sans refaire ce qui estdeja traite
                     print(f"fichier {e['fichiers']} deja traites")
                     continue
-                if len(e['fichiers'])==1 : 
+                if len(e['fichiers']) == 1: 
                     print(e['fichiers'][0])
-                    obj_fim=FIM(os.path.join(self.dossier,e['fichiers'][0]))
-                    try : 
-                        obj_fim.resume_indicateurs()
-                    except PasAssezMesureError : 
+                    try:
+                        obj_fim=FIM(os.path.join(self.dossier,e['fichiers'][0]), verifQualite='Message')
+                    except PasAssezMesureError: 
                         continue
                     except Exception as ex : 
                         print(f"erreur : {ex} \n dans fichier : {e['fichiers'][0]}")
-                    e['tmja'], e['pc_pl'], e['date_debut'], e['date_fin']=obj_fim.tmja, obj_fim.pc_pl, obj_fim.date_debut,obj_fim.date_fin
-                elif len(e['fichiers'])>1 :
-                    list_tmja=[]
-                    list_pc_pl=[]
-                    for f in e['fichiers'] : 
-                        obj_fim=FIM(os.path.join(self.dossier,f))
-                        print(f)
-                        try : 
-                            obj_fim.resume_indicateurs()
+                    e['tmja'], e['pc_pl'], e['date_debut'], e['date_fin'], e[
+                        'periode'], e['horaire'] = (obj_fim.tmja, obj_fim.pc_pl, obj_fim.date_debut,obj_fim.date_fin, obj_fim.periode,
+                                                    obj_fim.dfHoraire2Sens)
+                elif len(e['fichiers'])>1:
+                    list_tmja = []
+                    list_pc_pl = []
+                    list_dfHoraire = []
+                    for f in e['fichiers']:
+                        try :  
+                            obj_fim=FIM(os.path.join(self.dossier,f))
+                            print(f)
                         except (PasAssezMesureError,obj_fim.fimNbBlocDonneesError)  : 
                             continue
                         except Exception as ex : 
                             print(f"erreur : {ex} \n dans fichier : {f}")
                         list_tmja.append(obj_fim.tmja)
                         list_pc_pl.append(obj_fim.pc_pl)
-                    #pour faire les moyennes et gérer les valeurs NaN de pc_pl
+                        list_dfHoraire.append(obj_fim.dfHoraire2Sens)                  #pour faire les moyennes et gérer les valeurs NaN de pc_pl
                     list_pc_pl=[p for p in list_pc_pl if p>0]
-                    e['tmja'], e['date_debut'], e['date_fin']=int(statistics.mean(list_tmja)),np.NaN, np.NaN
-                    e['pc_pl']=round(statistics.mean([p for p in list_pc_pl if p>0]),2) if list_pc_pl else np.NaN
+                    e['tmja'], e['date_debut'], e['date_fin'] = int(statistics.mean(list_tmja)), np.NaN, np.NaN
+                    e['pc_pl'] = round(statistics.mean([p for p in list_pc_pl if p>0]), 2) if list_pc_pl else np.NaN
+                    e['horaire'] = pd.concat(list_dfHoraire).drop_duplicates(['jour', 'indicateur'])
     
     def remplir_type_poste_dico(self):
         """
@@ -1483,9 +1485,9 @@ class Comptage_cd87(Comptage):
         """
         obtenir une df à partir du dico issu de remplir_type_poste_dico
         """
-        self.df_attr=pd.DataFrame([[k, e['pr'], e['abs'], e['tmja'], e['pc_pl'], e['type_poste'],
-                      e['date_debut'],e['date_fin']] for k, v in self.dico_voie.items() for e in v if 'tmja' in e.keys()], 
-             columns=['route','pr','absc','tmja','pc_pl','type_poste','date_debut','date_fin'])
+        self.df_attr = pd.DataFrame([[k, e['pr'], e['abs'], e['tmja'], e['pc_pl'], e['type_poste'],
+                                      e['date_debut'],e['date_fin']] for k, v in self.dico_voie.items() for e in v if 'tmja' in e.keys()],
+                                      columns=['route','pr','absc','tmja','pc_pl','type_poste','date_debut','date_fin'])
         self.df_attr['id_comptag']=self.df_attr.apply(lambda x :'87-'+x['route']+'-'+str(x['pr'])+'+'+str(x['absc']), axis=1)
         
     def filtrer_periode_ponctuels(self):
