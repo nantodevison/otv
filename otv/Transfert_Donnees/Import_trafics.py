@@ -15,22 +15,21 @@ from pathlib import PureWindowsPath
 from unidecode import unidecode
 import datetime as dt
 from geoalchemy2 import Geometry,WKTElement
-from shapely.geometry import Point, LineString
+from shapely.geometry import LineString
 from shapely.ops import transform
 from collections import Counter
 from openpyxl import load_workbook
 
 import Connexion_Transfert as ct
 from Donnees_horaires import (comparer2Sens,verifValiditeFichier,concatIndicateurFichierHoraire,SensAssymetriqueError,
-                              verifNbJoursValidDispo, tmjaDepuisHoraire, periodeDepuisHoraire, attributsHoraire)
+                              verifNbJoursValidDispo, tmjaDepuisHoraire, periodeDepuisHoraire, attributsHoraire, mensuelDepuisHoraire)
 from Donnees_sources import FIM, MHCorbin, DataSensError, PasAssezMesureError
-from Integration_nouveau_comptage import (corresp_nom_id_comptag, structureBddOld2NewForm)
+from Integration_nouveau_comptage import (corresp_nom_id_comptag)
 from Import_export_comptage import (comptag_existant_bdd)
 import Outils as O
 from Params.Mensuel import dico_mois, renommerMois
 from Params.Bdd_OTV import (attBddCompteur, nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, 
-                            tableCompteur, tableIndicAgrege, tableIndicHoraire, tableCorrespIdComptag,
-                            tableEnumTypeVeh)     
+                            tableCompteur, tableIndicAgrege, tableIndicHoraire)     
               
               
 class Comptage():
@@ -1497,6 +1496,17 @@ class Comptage_cd87(Comptage):
                                       e['date_debut'],e['date_fin']] for k, v in self.dico_voie.items() for e in v if 'tmja' in e.keys()],
                                       columns=['route','pr','absc','tmja','pc_pl','type_poste','date_debut','date_fin'])
         self.df_attr['id_comptag']=self.df_attr.apply(lambda x :'87-'+x['route']+'-'+str(x['pr'])+'+'+str(x['absc']), axis=1)
+        dfHoraire = pd.concat([e['horaire'].assign(id_comptag=f"87-{k}-{e['pr']}+{e['abs']}") 
+                                          for k, v in self.dico_voie.items() for e in v if 'tmja' in e.keys()])
+        # verif que pour chaque jour et id_comptage, je n'ai pas plus de 2 type d'indicateur
+        dfHoraire['nb_occ'] = dfHoraire.groupby(['jour', 'id_comptag']).indicateur.transform(lambda x: x.count())
+        if not dfHoraire.loc[dfHoraire.nb_occ > 2].empty:
+            raise ValueError(f" il y a des id_comptage avec plus de 2 indicateurs sur certaines journées. verifiez")
+        # verif que les identifiants de comptage entre les données horaire et agreges correspondent:
+        if not len(dfHoraire.id_comptag.unique()) == len(self.df_attr.id_comptag.unique()):
+            raise ValueError("le nombre d'iuddentifiant de comptage entre les données horaire et agregee n'est pas équivalent. verifiez")
+        self.df_attr_horaire = dfHoraire.drop('nb_occ', axis=1, errors='ignore')
+        self.df_attr_mensuel = mensuelDepuisHoraire(self.df_attr_horaire.assign(annee=self.annee))
         
     def filtrer_periode_ponctuels(self):
         """
