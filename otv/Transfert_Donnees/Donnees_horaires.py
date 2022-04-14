@@ -204,15 +204,24 @@ def mensuelDepuisHoraire(dfHoraire):
     """
     dfHoraireConcat = dfHoraire.copy()
     dfHoraireConcat['mois'] = dfHoraireConcat.jour.dt.month
-    dfMeltInconnus = pd.melt(dfHoraireConcat, value_vars=[c for c in dfHoraireConcat.columns if c[0]=='h'], id_vars=['id_comptag', 'annee','indicateur', 'mois', 'jour'],
-                       value_name='valeur')
-    dfTmja=dfMeltInconnus.groupby(['id_comptag','annee','indicateur', 'mois']).agg({'valeur':'sum', 'jour':lambda x : int(len(x)/24)}).reset_index()
+    dfMeltInconnus = pd.melt(dfHoraireConcat, value_vars=[c for c in dfHoraireConcat.columns if c[0] == 'h'], id_vars=['id_comptag', 'annee','indicateur', 'mois', 'jour', 'fichier'],
+                             value_name='valeur')
+    dfTmja = dfMeltInconnus.groupby(['id_comptag', 'annee', 'indicateur', 'mois']).agg({'valeur': 'sum', 
+                                                                                        'jour': lambda x: int(len(x)/24),
+                                                                                        'fichier': lambda x: ' ; '.join(set(list(x)))}).reset_index()
     dfTmja['valeur'] = (dfTmja.valeur/dfTmja.jour).astype(int)
-    dfTmjaPcpl = dfTmja.loc[dfTmja.indicateur.str.upper()=='TV'].merge(dfTmja.loc[dfTmja.indicateur.str.upper()=='PL'][['id_comptag', 'valeur','mois']], on=['id_comptag', 'mois'])
-    dfTmjaPcpl['pc_pl'] = round(dfTmjaPcpl.valeur_y/dfTmjaPcpl.valeur_x*100, 2)
-    dfTmjaPcpl.rename(columns={'valeur_x':'tmja'}, inplace=True)
+    dfTmjaVlPl = dfTmja.loc[dfTmja.indicateur.str.upper() == 'VL'].merge(dfTmja.loc[dfTmja.indicateur.str.upper() == 'PL'
+                                                                                    ][['id_comptag', 'valeur', 'mois', 'fichier']], on=['id_comptag', 'mois'])
+    dfTmjaVlPlForm = dfTmjaVlPl.assign(indicateur='TV', valeur_x=dfTmjaVlPl.valeur_x + dfTmjaVlPl.valeur_y)
+    dfTmjaTvPlForm = dfTmja.loc[dfTmja.indicateur.str.upper() == 'TV'].merge(dfTmja.loc[dfTmja.indicateur.str.upper() == 'PL'
+                                                                                    ][['id_comptag', 'valeur', 'mois', 'fichier']], on=['id_comptag', 'mois', 'fichier'])
+    dfTmjaPcpl = pd.concat([dfTmjaVlPlForm, dfTmjaTvPlForm]) 
+    if not dfTmjaPcpl.loc[dfTmjaPcpl.duplicated(['id_comptag', 'annee', 'indicateur', 'mois'], keep=False)].empty:
+        raise ValueError(f"des doublons ['id_comptag', 'annee', 'indicateur', 'mois'] sont présents dans la df des comptages mensuels avant calcuil du pc_pl. vérifiez")
+    dfTmjaPcpl['pc_pl'] = round(dfTmjaPcpl. valeur_y/dfTmjaPcpl.valeur_x*100, 2)
+    dfTmjaPcpl.rename(columns={'valeur_x': 'tmja'}, inplace=True)
     dfTmjaPcpl = pd.melt(dfTmjaPcpl, value_vars=['pc_pl', 'tmja'], id_vars=['id_comptag', 'annee', 'mois'], value_name='valeur', var_name='indicateur')
-    dfTmjaPcpl.mois.replace({v[0]:k for k, v in dico_mois.items()}, inplace=True)
+    dfTmjaPcpl.mois.replace({v[0]: k for k, v in dico_mois.items()}, inplace=True)
     return dfTmjaPcpl
     
 

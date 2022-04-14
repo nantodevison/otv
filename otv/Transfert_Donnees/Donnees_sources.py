@@ -667,8 +667,8 @@ class FIM():
         self.isoler_bloc(self.lignes, self.liste_lign_titre)
         self.dfHeureTypeSens, self.dfHoraire2Sens, self.periode = self.traficsHoraires()
         self.date_fin = self.dfHeureTypeSens.date_heure.max()
-        self.qualiteComptage()
         self.dfSemaineMoyenne, self.tmja, self.pc_pl, self.pl = self.calcul_indicateurs_agreges()
+        self.qualiteComptage()
         
 
     def ouvrir_fim(self):

@@ -1438,29 +1438,37 @@ class Comptage_cd87(Comptage):
                 if len(e['fichiers']) == 1: 
                     print(e['fichiers'][0])
                     try:
-                        obj_fim=FIM(os.path.join(self.dossier,e['fichiers'][0]), verifQualite='Message')
+                        obj_fim=FIM(os.path.join(self.dossier,e['fichiers'][0]), 'Message')
+                        if obj_fim.date_debut.year != int(self.annee):
+                            print(f"le fichier {e['fichiers'][0]} ne contient pas des données de l'année {self.annee}")
+                            continue
+                        else :
+                            e['tmja'], e['pc_pl'], e['date_debut'], e['date_fin'], e[
+                            'periode'], e['horaire'] = (obj_fim.tmja, obj_fim.pc_pl, obj_fim.date_debut,obj_fim.date_fin, obj_fim.periode,
+                                                        obj_fim.dfHoraire2Sens)
                     except PasAssezMesureError: 
                         continue
                     except Exception as ex : 
-                        print(f"erreur : {ex} \n dans fichier : {e['fichiers'][0]}")
-                    e['tmja'], e['pc_pl'], e['date_debut'], e['date_fin'], e[
-                        'periode'], e['horaire'] = (obj_fim.tmja, obj_fim.pc_pl, obj_fim.date_debut,obj_fim.date_fin, obj_fim.periode,
-                                                    obj_fim.dfHoraire2Sens)
+                        print(f"erreur : {ex} \n dans fichier : {e['fichiers'][0]}")   
                 elif len(e['fichiers'])>1:
                     list_tmja = []
                     list_pc_pl = []
                     list_dfHoraire = []
                     for f in e['fichiers']:
                         try :  
-                            obj_fim=FIM(os.path.join(self.dossier,f))
+                            obj_fim=FIM(os.path.join(self.dossier,f), 'Message')
+                            if obj_fim.date_debut.year != int(self.annee):
+                                print(obj_fim.date_debut, f"le fichier {f} ne contient pas des données de l'année {self.annee}")
+                            else:
+                                list_tmja.append(obj_fim.tmja)
+                                list_pc_pl.append(obj_fim.pc_pl)
+                                list_dfHoraire.append(obj_fim.dfHoraire2Sens)
                             print(f)
                         except (PasAssezMesureError,obj_fim.fimNbBlocDonneesError)  : 
+                            print('dans except')
                             continue
                         except Exception as ex : 
                             print(f"erreur : {ex} \n dans fichier : {f}")
-                        list_tmja.append(obj_fim.tmja)
-                        list_pc_pl.append(obj_fim.pc_pl)
-                        list_dfHoraire.append(obj_fim.dfHoraire2Sens)                  #pour faire les moyennes et gérer les valeurs NaN de pc_pl
                     list_pc_pl=[p for p in list_pc_pl if p>0]
                     e['tmja'], e['date_debut'], e['date_fin'] = int(statistics.mean(list_tmja)), np.NaN, np.NaN
                     e['pc_pl'] = round(statistics.mean([p for p in list_pc_pl if p>0]), 2) if list_pc_pl else np.NaN
