@@ -22,6 +22,10 @@ attrCompteurAssoc = ['id_cpteur_asso', 'geom', 'route', 'pr', 'abs', 'type_poste
 attrIndicHoraireAssoc = ['jour', 'indicateur', 'h0_1', 'h1_2', 'h2_3', 'h3_4', 'h4_5', 'h5_6','h6_7', 'h7_8', 'h8_9', 'h9_10', 
                          'h10_11', 'h11_12', 'h12_13', 'h13_14','h14_15', 'h15_16', 'h16_17', 'h17_18', 'h18_19', 'h19_20',
                          'h20_21','h21_22', 'h22_23', 'h23_24', 'fichier', 'id_comptag_uniq']
+attrIndicHoraire = ['jour', 'id_comptag_uniq', 'indicateur', 'h0_1', 'h1_2', 'h2_3', 'h3_4', 'h4_5', 'h5_6','h6_7', 'h7_8', 'h8_9', 'h9_10', 
+                         'h10_11', 'h11_12', 'h12_13', 'h13_14','h14_15', 'h15_16', 'h16_17', 'h17_18', 'h18_19', 'h19_20',
+                         'h20_21','h21_22', 'h22_23', 'h23_24', 'fichier']
+attrIndicAgregeAssoc = ['id_comptag_uniq', 'indicateur', 'valeur', 'fichier']
 schemaComptage = 'comptage'
 schemaComptageAssoc = 'comptage_assoc'
 tableComptage = 'comptage'

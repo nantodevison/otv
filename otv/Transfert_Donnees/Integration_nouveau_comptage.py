@@ -12,8 +12,8 @@ import Outils as O
 import pandas as pd
 import Connexion_Transfert as ct
 from Params.Bdd_OTV import (nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, tableEnumTypeVeh, 
-                            tableCompteur, tableCorrespIdComptag,attrCompteurAssoc, attBddCompteur, attrComptageMano,
-                            attrCompteurValeurMano, attrComptageAssoc, enumTypePoste, vueLastAnnKnow)
+                            tableCompteur, tableCorrespIdComptag,attrCompteurAssoc, attBddCompteur, attrComptageMano, attrIndicAgregeAssoc,
+                            attrCompteurValeurMano, attrComptageAssoc, enumTypePoste, vueLastAnnKnow, attrIndicHoraireAssoc)
 from Import_export_comptage import (recupererIdUniqComptage, recupererIdUniqComptageAssoc, comptag_existant_bdd)
 from Params.Mensuel import dico_mois
 import geopandas as gp
@@ -46,8 +46,8 @@ def classer_comptage_update_insert(dfAClasser, departement):
     """
     corresp_nom_id_comptag(dfAClasser)
     existant = comptag_existant_bdd(dep=departement)
-    df_attr_update = dfAClasser.loc[dfAClasser.id_comptag.isin(existant.id_comptag.tolist())].copy()
-    df_attr_insert = dfAClasser.loc[~dfAClasser.id_comptag.isin(existant.id_comptag.tolist())].copy()
+    df_attr_update = dfAClasser.loc[dfAClasser.id_comptag.isin(existant.id_comptag.tolist())].copy().drop_duplicates()
+    df_attr_insert = dfAClasser.loc[~dfAClasser.id_comptag.isin(existant.id_comptag.tolist())].copy().drop_duplicates()
     # ajout d'une vérif sur les longueurs resectives de donnees
     if len(df_attr_update) + len(df_attr_insert) != len(dfAClasser):
         raise ValueError('la separation enetre comptage a mettre a jour et comptage a inserer ne correspond pas a la taille des donnees sources')
@@ -76,7 +76,7 @@ def localiser_comptage_a_inserer(df, schema_temp,nom_table_temp, table_ref, tabl
                          set geom=(select geom_out  from comptage.geoloc_pt_comptag('{table_ref}','{table_pr}',id_comptag))
                          where geom is null"""
         c.sqlAlchemyConn.execute(rqt_maj_geom)
-        points_a_inserer=gp.GeoDataFrame.from_postgis(f'select * from {schema_temp}.{nom_table_temp}', c.sqlAlchemyConn, geom_col='geom',crs='epsg:2154')
+        points_a = _inserer=gp.GeoDataFrame.from_postgis(f'select * from {schema_temp}.{nom_table_temp}', c.sqlAlchemyConn, geom_col='geom',crs='epsg:2154')
     return points_a_inserer
     
     
@@ -245,12 +245,12 @@ def structureBddOld2NewFormAssoc(dfAConvertir, annee, listAttrFixe,listAttrIndic
     if typeIndic not in ('agrege', 'mensuel', 'horaire'):
         raise ValueError ("le type d'indicateur doit etre parmi 'agrege', 'mensuel', 'horaire'" )
     if any([e not in listAttrFixe for e in ['id_cptag_ref', 'annee', 'id_cpteur_asso']]):
-        raise AttributeError('les attributs id_comptag, id_cpteur_asso et annee sont obligatoire dans listAttrFixe')
+        raise AttributeError('les attributs id_comptag_ref, id_cpteur_asso et annee sont obligatoire dans listAttrFixe')
     if typeIndic == 'agrege':
         dfIndic = pd.melt(dfAConvertir.assign(annee=dfAConvertir.annee.astype(str)), id_vars=listAttrFixe, value_vars=listAttrIndics, 
                               var_name='indicateur', value_name='valeur')
         columns = [c for c in ['id_cptag_ref', 'indicateur', 'valeur', 'fichier', 'obs', 'annee', 'id_cpteur_asso'] if c in dfIndic.columns]
-        dfIndic = dfIndic[columns].rename(columns={'id':'id_comptag_uniq'})
+        dfIndic = dfIndic[columns].rename(columns={'id':'id_comptag_uniq'})  # [attrIndicAgregeAssoc]
     #elif typeIndic == 'mensuel':
     #    dfIndic = pd.melt(dfAConvertir.assign(annee=dfAConvertir.annee.astype(str)), id_vars=listAttrFixe, value_vars=listAttrIndics, 
     #                         var_name='mois', value_name='valeur')
@@ -258,9 +258,11 @@ def structureBddOld2NewFormAssoc(dfAConvertir, annee, listAttrFixe,listAttrIndic
     #    dfIndic = dfIndic[columns].rename(columns={'donnees_type':'indicateur'})
     elif typeIndic == 'horaire': 
         dfIndic = dfAConvertir.rename(columns={'type_veh':'indicateur'})
-        dfIndic = dfIndic.drop(['id_comptag', 'id_cpteur_asso'], axis=1, errors='ignore')
+        dfIndic = dfIndic.drop(['id_comptag']+[
+            c for c in dfIndic.columns if c not in attrIndicHoraireAssoc + ['id_cptag_ref', 'annee', 'id_cpteur_asso'
+                                                                            ]], axis=1, errors='ignore')
     dfIndic = dfIndic.merge(recupererIdUniqComptageAssoc(dfIndic.id_cptag_ref.tolist()), on=['id_cptag_ref', 'id_cpteur_asso']
-                            ).drop(['id_cptag_ref', 'annee'], axis=1, errors='ignore')
+                            ).drop(['id_cptag_ref', 'annee', 'id_cpteur_asso'], axis=1, errors='ignore')
     #si valeur vide on vire la ligne
     if typeIndic in ('agrege','mensuel'):
         dfIndic.dropna(subset=['valeur'], inplace=True)
@@ -460,6 +462,8 @@ def ventilerCompteurRefAssoc(cptMultiSectHomo):
         cptRefMultiSectHomo : dfdes comptages de references
         cptAssocMultiSectHomo : df des comptages associes
     """
+    if cptMultiSectHomo.empty:
+        return pd.DataFrame([]), pd.DataFrame([])
     O.checkAttributsinDf(cptMultiSectHomo, ['gid', 'type_poste', 'periode', 'pc_pl', 'tmja'])
     cptMultiSectHomo['note_hierarchise'] = cptMultiSectHomo.apply(lambda x: hierarchisationCompteur(x.type_poste, x.periode, x.tmja, x.pc_pl), axis=1)
     cptRefMultiSectHomo = cptMultiSectHomo.loc[cptMultiSectHomo.groupby('gid').note_hierarchise.transform('max') == cptMultiSectHomo.note_hierarchise].sort_values('gid').copy()
@@ -485,11 +489,15 @@ def ventilerCompteurIdComptagExistant(cptSimpleSectHomo, cptRefMultiSectHomo):
     out : 
         cptRefSectHomoNew : dataframe des comptages de reference sur section homogene sans id_comptag
         cptRefSectHomoOld : dataframe des comptages de reference sur section homogene avec id_comptag
-    """
-    cptRefMultiSectHomoNew = cptRefMultiSectHomo.loc[cptRefMultiSectHomo.id_comptag_bdd.isna()].copy()
-    cptRefMultiSectHomoOld = cptRefMultiSectHomo.loc[~cptRefMultiSectHomo.id_comptag_bdd.isna()].copy()
-    cptSimpleSectHomoNew = cptSimpleSectHomo.loc[cptSimpleSectHomo.id_comptag_bdd.isna()].copy()
-    cptSimpleSectHomoOld = cptSimpleSectHomo.loc[~cptSimpleSectHomo.id_comptag_bdd.isna()].copy()
+    """  
+    cptRefMultiSectHomoNew = (cptRefMultiSectHomo.loc[cptRefMultiSectHomo.id_comptag_bdd.isna()].copy() 
+                              if not cptRefMultiSectHomo.empty else pd.DataFrame([]))
+    cptRefMultiSectHomoOld = (cptRefMultiSectHomo.loc[~cptRefMultiSectHomo.id_comptag_bdd.isna()].copy()
+                              if not cptRefMultiSectHomo.empty else pd.DataFrame([]))
+    cptSimpleSectHomoNew = (cptSimpleSectHomo.loc[cptSimpleSectHomo.id_comptag_bdd.isna()].copy()
+                            if not cptSimpleSectHomo.empty else pd.DataFrame([]))
+    cptSimpleSectHomoOld = (cptSimpleSectHomo.loc[~cptSimpleSectHomo.id_comptag_bdd.isna()].copy()
+                            if not cptSimpleSectHomo.empty else pd.DataFrame([]))
     cptRefSectHomoNew = pd.concat([cptRefMultiSectHomoNew, cptSimpleSectHomoNew])
     cptRefSectHomoOld = pd.concat([cptRefMultiSectHomoOld, cptSimpleSectHomoOld])
     return cptRefSectHomoNew, cptRefSectHomoOld

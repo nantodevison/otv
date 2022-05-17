@@ -10,7 +10,7 @@ module d'importation des données de trafics forunies par les gestionnaires
 import pandas as pd
 import geopandas as gp
 import numpy as np
-import os, re, csv,statistics,filecmp
+import os, re, csv,statistics,filecmp, warnings
 from pathlib import PureWindowsPath
 from unidecode import unidecode
 import datetime as dt
@@ -1498,13 +1498,15 @@ class Comptage_cd87(Comptage):
         self.df_attr['id_comptag']=self.df_attr.apply(lambda x :'87-'+x['route']+'-'+str(x['pr'])+'+'+str(x['absc']), axis=1)
         dfHoraire = pd.concat([e['horaire'].assign(id_comptag=f"87-{k}-{e['pr']}+{e['abs']}") 
                                           for k, v in self.dico_voie.items() for e in v if 'tmja' in e.keys()])
+        #suppression des doublons entier sauf fichiers
+        dfHoraire = dfHoraire.drop_duplicates([c for c in dfHoraire.columns if c != 'fichier'])
         # verif que pour chaque jour et id_comptage, je n'ai pas plus de 2 type d'indicateur
         dfHoraire['nb_occ'] = dfHoraire.groupby(['jour', 'id_comptag']).indicateur.transform(lambda x: x.count())
         if not dfHoraire.loc[dfHoraire.nb_occ > 2].empty:
-            raise ValueError(f" il y a des id_comptage avec plus de 2 indicateurs sur certaines journées. verifiez")
+            warnings.warn(f" il y a des id_comptage avec plus de 2 indicateurs sur certaines journées. verifiez dfHoraire")
         # verif que les identifiants de comptage entre les données horaire et agreges correspondent:
         if not len(dfHoraire.id_comptag.unique()) == len(self.df_attr.id_comptag.unique()):
-            raise ValueError("le nombre d'iuddentifiant de comptage entre les données horaire et agregee n'est pas équivalent. verifiez")
+            raise ValueError(f"le nombre d'iuddentifiant de comptage entre les données horaire ({len(dfHoraire.id_comptag.unique())}) et agregee ({len(self.df_attr.id_comptag.unique())}) n'est pas équivalent. verifiez")
         self.df_attr_horaire = dfHoraire.drop('nb_occ', axis=1, errors='ignore')
         self.df_attr_mensuel = mensuelDepuisHoraire(self.df_attr_horaire.assign(annee=self.annee))
         
