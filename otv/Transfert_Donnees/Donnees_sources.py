@@ -443,12 +443,13 @@ class Viking(object):
         pour chaque sens, les regrouper et mettre ne form les attributs
         """
         with open(self.fichier) as f :
-                entete=[e.strip() for e in f.readlines()][0]
-        anneeDeb,moisDeb,jourDeb=(entete.split('.')[i].strip() for i in range(5,8)) 
+            entete = [e.strip() for e in f.readlines()][0]
+        anneeDeb, moisDeb, jourDeb = (entete.split('.')[i].strip() for i in range(5,8)) 
         print(entete)
-        dfFichier=pd.read_csv(self.fichier,delimiter=' ',skiprows=1, 
-                                 names=['sens', 'jour', 'heureMin','secCent', 'vts', 'ser', 'type_veh'],dtype={'heureMin':str,'secCent':str})
-        return dfFichier,anneeDeb,moisDeb,jourDeb
+        dfFichier = pd.read_csv(self.fichier,delimiter=' ',skiprows=1,
+                                names=['sens', 'jour', 'heureMin','secCent', 'vts', 'ser', 'type_veh'],
+                                dtype={'heureMin':str,'secCent':str})
+        return dfFichier, anneeDeb, moisDeb, jourDeb
     
     
     def creerDate(self):
@@ -491,7 +492,7 @@ class Viking(object):
             else:
                 anneeModif = anneeDeb
                 moisModif = moisDeb
-            return pd.to_datetime(f'20{anneeModif}-{moisModif}-{jourMesure} {str(heureMin)[:2]}:{str(heureMin)[2:]}:{str(secCent)[:2]}.{str(secCent)[2:]}')
+            return pd.to_datetime(f'20{anneeModif}-{moisModif}-{jourMesure} {str(heureMin)[:-2]}:{str(heureMin)[2:]}:{str(secCent)[:-2]}.{str(secCent)[2:]}')
         
         
         self.dfFichier['date_heure']=self.dfFichier.apply(lambda x : creer_date(self.jourDeb,self.moisDeb,self.anneeDeb, 
@@ -634,6 +635,7 @@ class FIM():
     """
     classe dedié aux fichiers FIM de comptage brut
     attributs : 
+        typeVeh : si le type de vehicule est connu ont le mis ici parmis 'NC', 'velo', 'tv', 'vl/pl'
         verifQualite ; value parmi 'Bloque' ou 'Message : la verif de qualite fait remonter une erreur et bloque la fonction ou la verif qualite affiche un message seulement
         dico_corresp_type_veh : dico poutr determiner le type de vehicule selon en-tete
         dico_corresp_type_fichier : dico poutr determiner le mode de comptag selon en-tete
@@ -653,13 +655,16 @@ class FIM():
         dfSemaineMoyenne : 
         periode : de forme YYYY/MM/DD-YYYY/MM/DD
     """
-    def __init__(self, fichier, gest=None, verifQualite='Bloque'):
+    def __init__(self, fichier, gest=None, verifQualite='Bloque', typeVeh='NC'):
         O.checkParamValues(verifQualite, ('Bloque', 'Message'))
+        O.checkParamValues(typeVeh, ('NC', 'velo', 'tv', 'vl/pl'))
         self.verifQualite = verifQualite
         self.fichier_fim = fichier
-        self.dico_corresp_type_veh = {'TV': ('1.T','2.','1.'),'VL': ('2.V','4.V'),'PL': ('3.P','2.P','4.P')}
-        self.dico_corresp_type_fichier = {'mode3': ('1.T','3.P'), 'mode4': ('2.V','2.P','4.V', '4.P'), 'mode2': ('2.',), 'mode1' : ('1.',)}
+        self.dico_corresp_type_veh = {'TV': ('1.T','2.','1.'),'VL': ('2.V','4.V'),'PL': ('3.P','2.P','4.P'), 'Velo': ('05.',)}
+        self.dico_corresp_type_fichier = {'mode3': ('1.T','3.P'), 'mode4': ('2.V','2.P','4.V', '4.P'), 'mode2': ('2.',), 'mode1' : ('1.',),
+                                          'mode5': ('5.', )}
         self.gest = gest
+        self.typVeh = typeVeh
         self.lignes = self.ouvrir_fim()
         self.pas_temporel, self.date_debut, self.mode, self.geoloc, self.geom_l93 = self.params_fim(self.lignes)
         self.liste_lign_titre, self.sens_uniq, self.sens_uniq_nb_blocs = self.liste_carac_fichiers(self.lignes)
@@ -699,37 +704,40 @@ class FIM():
         """
         obtenir les infos générales du fichier : date_debut(anne, mois, jour, heure, minute), mode, geolocalisation
         """
-        lign0Splitpoint=self.lignes[0].split('.')
-        annee,mois,jour,heure,minute,pas_temporel=(int(lign0Splitpoint[i].strip()) for i in range(5,11))
+        lign0Splitpoint = self.lignes[0].split('.')
+        annee,mois,jour,heure,minute,pas_temporel = (int(lign0Splitpoint[i].strip()) for i in range(5,11))
         #particularite CD16 : l'identifiant route et section est present dans le FIM
-        if self.gest=='CD16' : 
-            self.section_cp='_'.join([str(int(lign0Splitpoint[a].strip())) for a in (2,3)])
-        date_debut=pd.to_datetime(f'{jour}-{mois}-{annee} {heure}:{minute}', dayfirst=True)
-        mode=self.lignes[0].split()[9]
+        if self.gest == 'CD16' : 
+            self.section_cp = '_'.join([str(int(lign0Splitpoint[a].strip())) for a in (2,3)])
+        date_debut = pd.to_datetime(f'{jour}-{mois}-{annee} {heure}:{minute}', dayfirst=True)
+        mode = self.lignes[0].split()[9]
         if mode in ['4.',] : #correction si le mode est de type 4. sans distinction exlpicite de VL TV PL. porte ouvert à d'autre cas si besoin 
             self.corriger_mode(mode)
-            mode=self.lignes[0].split()[9]
-        mode=[k for k,v in self.dico_corresp_type_fichier.items() if any([e == mode for e in v])][0]
+            mode = self.lignes[0].split()[9]
+        if self.typVeh == 'velo':
+            mode = 'mode5'
+        else:
+            mode = [k for k,v in self.dico_corresp_type_fichier.items() if any([e == mode for e in v])][0]
         if not mode : 
             raise self.fim_TypeModeError
         
-        geoloc=re.search('(?P<lat>(\-|\+)[0-9]{1,3}\.([0-9]{4}\.){2})(?P<long>(\-|\+)[0-9]{1,3}\.([0-9]{4}\.){2})', self.lignes[0].split()[-1])
+        geoloc = re.search('(?P<lat>(\-|\+)[0-9]{1,3}\.([0-9]{4}\.){2})(?P<long>(\-|\+)[0-9]{1,3}\.([0-9]{4}\.){2})', self.lignes[0].split()[-1])
         wgs84Proj = pyproj.CRS('EPSG:4326')
         l93Proj = pyproj.CRS('EPSG:2154')
         project = pyproj.Transformer.from_crs(wgs84Proj, l93Proj, always_xy=True).transform
         if geoloc: 
             longitude = geoloc.group('long')
             latitude = geoloc.group('lat')
-            x_wgs84=float(re.sub('(\+|-)(.*\.)(.*)(\.)(.*)(\.)', '\g<1>\g<2>\g<3>\g<5>', longitude))
-            y_wgs84=float(re.sub('(\+|-)(.*\.)(.*)(\.)(.*)(\.)', '\g<1>\g<2>\g<3>\g<5>', latitude))
-            geom_wgs84=Point(x_wgs84, y_wgs84)
+            x_wgs84 = float(re.sub('(\+|-)(.*\.)(.*)(\.)(.*)(\.)', '\g<1>\g<2>\g<3>\g<5>', longitude))
+            y_wgs84 = float(re.sub('(\+|-)(.*\.)(.*)(\.)(.*)(\.)', '\g<1>\g<2>\g<3>\g<5>', latitude))
+            geom_wgs84 = Point(x_wgs84, y_wgs84)
             geom_l93 = transform(project, geom_wgs84)
-            geoloc=True
+            geoloc = True
         else : 
-            geoloc=False 
-            geom_l93=None
+            geoloc = False 
+            geom_l93  =None
         
-        return pas_temporel,date_debut,mode, geoloc, geom_l93
+        return pas_temporel, date_debut, mode, geoloc, geom_l93
         
 
     def fim_type_veh(self, ligne):
@@ -739,9 +747,12 @@ class FIM():
             ligne : ligne du fichier
         """
 
-        for k,v  in self.dico_corresp_type_veh.items() : 
+        for k, v in self.dico_corresp_type_veh.items() : 
             if any([e+' ' in ligne for e in v]) :
-                return [cle for cle, value in self.dico_corresp_type_veh.items() for e in value  if e==ligne.split()[9]][0]
+                if self.typVeh != 'velo':
+                    return [cle for cle, value in self.dico_corresp_type_veh.items() for e in value if e == ligne.split()[9]][0]
+                else:
+                    return 'Velo'
     
     def liste_carac_fichiers(self,lignes):
         """
@@ -775,7 +786,7 @@ class FIM():
         isoler les blocs de données des lignes de titre,en fonction du mode de comptage
         """
         for i,e in enumerate(liste_lign_titre) :
-            if self.mode in ('mode3','mode1') :
+            if self.mode in ('mode3', 'mode1', 'mode5') :
                 e.append([int(b) for c in [a.split('.') for a in [a.strip() for a in lignes[e[0]+1:e[0]+1+self.taille_donnees]]] for b in c if b])
             elif self.mode in ('mode4', 'mode2') :
                 e.append([sum([int(e) for e in b if e]) for b in [a.split('.') for a in [a.strip() for a in lignes[e[0]+2:e[0]+1+self.taille_donnees]]]])

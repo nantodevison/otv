@@ -831,89 +831,96 @@ class Comptage_cd40(Comptage):
     """
     Les donnees du CD40 sont habituelement fournies au format B152, i.e u dossier par site, chaque dossier contenant des sous dossiers qui menent a un fihcier xls
     """
-    def __init__(self,dossier, annee, donneesType='B152') : 
+    def __init__(self,dossier, annee, donneesType='B152'): 
         """
         attributs : 
             dossier : chemin complet du dossier des fichiers
             donneesType : texte : valeur parmis B152, B153. par défaut : B152
             annee : string : annee sur 4 caracteres
+            liste_fichier : liste de paths vers les fichiers
         """
-        self.dossier=dossier
-        self.liste_fichier=[os.path.join(chemin,fichier) for chemin, dossier, files in os.walk(dossier) for fichier in files if fichier.endswith('.xls')]
-        if donneesType not in ('B152', 'B153') : 
+        self.dossier = dossier
+        self.liste_fichier = [os.path.join(chemin, fichier) for chemin, dossier, files in os.walk(dossier) 
+                              for fichier in files if fichier.endswith('.xls')]
+        if donneesType not in ('B152', 'B153'): 
             raise ValueError('le type de données n\'est pas parmi B152, B153')
-        self.donneesType=donneesType
-        self.annee=annee
+        self.donneesType = donneesType
+        self.annee = annee
     
-    def type_fichier(self,fichier) : 
+    def type_fichier(self,fichier): 
         """
         récupérer le type de fichier selon la case A5
         """
-        return pd.read_excel(fichier,header=None, skiprows=1).iloc[3,0]
+        return pd.read_excel(fichier, header=None, skiprows=1).iloc[3,0]
     
     def verif_liste_fichier(self):
         """
         trier la liste des fichiers fournis pour ne garder que le B152
         """
-        return [fichier for fichier in self.liste_fichier if self.type_fichier(fichier)==self.donneesType]
+        return [fichier for fichier in self.liste_fichier if self.type_fichier(fichier) == self.donneesType]
             
     def extraire_donnees_annuelles(self, fichier):
         """
         recuperer les donnes annuelles et de caract des comptage
         """
-        df=pd.read_excel(fichier,header=None, skiprows=1) #les 1eres lignes mettent le bordel dans la definition des colonnes
-        df2=df.dropna(how='all').dropna(axis=1,how='all')
-        dep,gest, reseau,concession,type_poste='40','CD40','D','N','permanent'
-        if self.donneesType=='B152' :
-            compteur='040.'+df2.loc[0,'Unnamed: 125'].split(' ')[1]
-            vma=int(df2.loc[4,'Unnamed: 0'].split(' : ')[1][:2])
-            voie=O.epurationNomRoute(df2.loc[4,'Unnamed: 141'].split(' ')[1])
-            pr,absice=df2.loc[4,'Unnamed: 125'].split(' ')[1],df2.loc[4,'Unnamed: 125'].split(' ')[2]
-            tmja=df2.loc[18,'Unnamed: 107']
-            pc_pl=round(df2.loc[19,'Unnamed: 107'],2)
-        elif self.donneesType=='B153' :
-            compteur=df2.loc[1,125].split(' ')[2]
-            vma=int(df2.loc[5,0].split(' : ')[1][:2])
-            voie=O.epurationNomRoute(df2.loc[5,125].split(' ')[1])
-            pr,absice=df2.loc[5,141].split(' ')[1],df2.loc[5,141].split(' ')[3]
-            tmja=df2.loc[df2[0]==int(self.annee)][114].values[0]
-            pc_pl=float(df2.loc[df2[0]==int(self.annee)][149].values[0].split('\n')[1].replace(' ','') .replace(',','.'))
-            tmje=df2.loc[df2[0]==int(self.annee)][123].values[0]
-            tmjhe=df2.loc[df2[0]==int(self.annee)][132].values[0]
-        id_comptag=dep+'-'+voie+'-'+pr+'+'+absice    
-        return compteur,vma, voie, pr, absice,dep,gest, reseau,concession,type_poste,id_comptag,tmja,pc_pl,tmje, tmjhe,df2
+        dep,gest, reseau, concession, type_poste='40','CD40','D','N','permanent'
+        if self.donneesType == 'B152' :
+            df = pd.read_excel(fichier, header=None, skiprows=2) #les 1eres lignes mettent le bordel dans la definition des colonnes
+            df2 = df.dropna(how='all').dropna(axis=1, how='all')
+            compteur = '040.'+df2.loc[0,125].split(' ')[1]
+            vma = int(df2.loc[4 ,0].split(' : ')[1][:2])
+            voie = O.epurationNomRoute(df2.loc[4, 141].split(' ')[1])
+            pr,absice = df2.loc[4, 125].split(' ')[1],df2.loc[4,125].split(' ')[2]
+            tmja = df2.loc[18, 107]
+            pc_pl = round(df2.loc[19, 107],2)
+            tmje = np.nan
+            tmjhe = np.nan
+        elif self.donneesType == 'B153' :
+            df = pd.read_excel(fichier, header=None, skiprows=1) #les 1eres lignes mettent le bordel dans la definition des colonnes
+            compteur = df2.loc[1 ,125].split(' ')[2]
+            vma = int(df2.loc[5, 0].split(' : ')[1][:2])
+            voie = O.epurationNomRoute(df2.loc[5, 125].split(' ')[1])
+            pr,absice = df2.loc[5, 141].split(' ')[1],df2.loc[5, 141].split(' ')[3]
+            tmja = df2.loc[df2[0] == int(self.annee)][114].values[0]
+            pc_pl = float(df2.loc[df2[0] == int(self.annee)][149].values[0].split('\n')[1].replace(' ', '') .replace(',', '.'))
+            tmje = df2.loc[df2[0] == int(self.annee)][123].values[0]
+            tmjhe = df2.loc[df2[0] == int(self.annee)][132].values[0]
+        id_comptag = dep + '-' + voie + '-' + pr + '+' + absice    
+        return compteur, vma, voie, pr, absice, dep, gest, reseau, concession, type_poste, id_comptag, tmja, pc_pl, tmje, tmjhe, df2
     
     def remplir_dico(self, dico,datalist, *donnees):
-        for t, d in zip(datalist, donnees) : 
+        for t, d in zip(datalist, donnees): 
             dico[t].append(d)
     
-    def donnees_mensuelles(self, df2,id_comptag):
+    def donnees_mensuelles(self, df2, id_comptag):
         """
         extraire les donnes mens d'un fichiere te les mettre ne forme
         """
-        if self.donneesType=='B152' :
-            donnees_mens=df2.loc[[7,18,19],['Unnamed: 13', 'Unnamed: 23', 'Unnamed: 30',
-                           'Unnamed: 37', 'Unnamed: 44', 'Unnamed: 51', 'Unnamed: 58',
-                           'Unnamed: 65', 'Unnamed: 72', 'Unnamed: 79', 'Unnamed: 86',
-                           'Unnamed: 93', 'Unnamed: 100', 'Unnamed: 107']].dropna(axis=1,how='all')
+        if self.donneesType == 'B152' :
+            donnees_mens = df2.loc[[7, 18, 19],[13, 23, 30,
+                           37, 44, 51, 58,
+                           65, 72, 79, 86,
+                           93, 100, 107]].dropna(axis=1, how='all')
             #renommer les colonnes
-            donnees_mens.columns=[element.replace('é','e').replace('.','').lower() for element in list(donnees_mens.loc[7])]
+            donnees_mens.columns = [element.replace('é', 'e').replace('.', '').lower() for element in list(donnees_mens.loc[7])]
                 #remplacer l'annee en string et ne conserver 
-            donnees_mens=donnees_mens.drop(7).replace(['D.Moy.Jour', '% PL'],['tmja','pc_pl'])
-            donnees_mens['annee']=self.annee
-            donnees_mens['id_comptag']=id_comptag
-                #r�arranger les colonnes
-            cols=donnees_mens.columns.tolist()
-            cols_arrangees=cols[-1:]+cols[:1]+cols[-2:-1]+cols[1:-2]
-            donnees_mens=donnees_mens[cols_arrangees]
-            donnees_mens.columns=['id_comptag','donnees_type','annee','janv','fevr','mars','avri','mai','juin','juil','aout','sept','octo','nove','dece']
-        elif self.donneesType=='B153' :
+            donnees_mens = donnees_mens.drop(7).replace(['D.Moy.Jour', '% PL'],['tmja', 'pc_pl'])
+            donnees_mens['annee'] = self.annee
+            donnees_mens['id_comptag'] = id_comptag
+                #rearranger les colonnes
+            cols = donnees_mens.columns.tolist()
+            cols_arrangees = cols[-1:]+cols[:1]+cols[-2:-1]+cols[1:-2]
+            donnees_mens = donnees_mens[cols_arrangees]
+            donnees_mens.columns = ['id_comptag', 'donnees_type', 'annee', 'janv', 'fevr', 'mars', 'avri', 'mai', 'juin',
+                                    'juil', 'aout', 'sept', 'octo', 'nove', 'dece']
+        elif self.donneesType == 'B153':
             #inserer les valeusr qui vont bien
-            donnees_mens=df2.loc[df2[0]==2020][[6,15,24,33,42,51,60,69,78,87,96,105]]
-            donnees_mens['annee']=self.annee
-            donnees_mens['id_comptag']=id_comptag
-            donnees_mens.columns=['janv','fevr','mars','avri','mai','juin','juil','aout','sept','octo','nove','dece','annee','id_comptag']   
-            donnees_mens['donnees_type']='tmja'
+            donnees_mens = df2.loc[df2[0] == 2020][[6, 15, 24, 33, 42, 51, 60, 69, 78, 87, 96, 105]]
+            donnees_mens['annee'] = self.annee
+            donnees_mens['id_comptag'] = id_comptag
+            donnees_mens.columns = ['janv', 'fevr', 'mars', 'avri', 'mai', 'juin', 'juil', 'aout', 'sept', 'octo', 
+                                    'nove', 'dece', 'annee', 'id_comptag']   
+            donnees_mens['donnees_type'] = 'tmja'
             donnees_mens.replace('Panne', np.NaN, inplace=True)
         return donnees_mens
     
@@ -931,12 +938,17 @@ class Comptage_cd40(Comptage):
         dico_annee={k:[] for k in dataList}
         for i,fichier in enumerate(self.verif_liste_fichier()) :
             #traitement des donnees agregee a l'annee
+            print (fichier)
             if self.donneesType=='B152' :
-                compteur,vma, voie, pr, absice,dep,gest, reseau,concession,type_poste,id_comptag,tmja,pc_pl,df2=self.extraire_donnees_annuelles(fichier)
-                self.remplir_dico(dico_annee,dataList,compteur,vma, voie, pr, absice,dep,gest, reseau,concession,type_poste,self.annee,id_comptag,tmja,pc_pl, os.path.basename(fichier))
+                (compteur, vma, voie, pr, absice, dep, gest, reseau, concession, type_poste,
+                 id_comptag, tmja, pc_pl, tmje, tmjhe, df2) = self.extraire_donnees_annuelles(fichier)
+                self.remplir_dico(dico_annee, dataList, compteur, vma, voie, pr, absice, dep, gest, reseau, concession, 
+                                  type_poste, self.annee, id_comptag, tmja, pc_pl, os.path.basename(fichier))
             elif self.donneesType=='B153' :
-                compteur,vma, voie, pr, absice,dep,gest, reseau,concession,type_poste,id_comptag,tmja,pc_pl,tmje, tmjhe,df2=self.extraire_donnees_annuelles(fichier)
-                self.remplir_dico(dico_annee,dataList, compteur,vma, voie, pr, absice,dep,gest, reseau,concession,type_poste,self.annee,id_comptag,tmja,pc_pl, os.path.basename(fichier), tmje, tmjhe)
+                (compteur, vma, voie, pr, absice, dep, gest, reseau, concession, type_poste,
+                 id_comptag, tmja, pc_pl, tmje, tmjhe, df2) = self.extraire_donnees_annuelles(fichier)
+                self.remplir_dico(dico_annee, dataList, compteur, vma, voie, pr, absice, dep, gest, 
+                                  reseau, concession, type_poste, self.annee, id_comptag, tmja, pc_pl, os.path.basename(fichier), tmje, tmjhe)
             #traiteent des donnees mensuelles
             donnees_mens=self.donnees_mensuelles(df2,id_comptag)
             donnees_mens['fichier']=os.path.basename(fichier)
@@ -946,21 +958,21 @@ class Comptage_cd40(Comptage):
                 donnees_mens_tot=pd.concat([donnees_mens_tot,donnees_mens], sort=False, axis=0)
             #print(voie, pr, absice, fichier)
         #attributs finaux
-        self.df_attr=pd.DataFrame(dico_annee)
-        self.df_attr_mens=donnees_mens_tot.copy()
+        self.df_attr = pd.DataFrame(dico_annee)
+        self.df_attr_mens = donnees_mens_tot.copy()
     
-    def classer_comptage_insert_update(self,table, schema):
+    def classer_comptage_insert_update(self):
         """
         repartir les donnes selon si les comptages sont a insrere ou mette a jour
         là c'est un peu biaisé car on a que des comptages permanents sans nouveaux
         """
         #creation de l'existant
-        self.existant = comptag_existant_bdd(table, schema=schema,dep='40', type_poste=False)
+        self.existant = comptag_existant_bdd(dep='40', type_poste=False)
         #mise a jour des noms selon la table de corresp existnate
-        self.corresp_nom_id_comptag(self.df_attr)
-        self.corresp_nom_id_comptag(self.df_attr_mens)
+        corresp_nom_id_comptag(self.df_attr)
+        corresp_nom_id_comptag(self.df_attr_mens)
         #classement
-        self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        self.df_attr_update = self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         
     def update_bdd_40(self, schema, table):
