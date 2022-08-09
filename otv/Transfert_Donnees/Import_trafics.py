@@ -24,12 +24,12 @@ import Connexion_Transfert as ct
 from Donnees_horaires import (comparer2Sens,verifValiditeFichier,concatIndicateurFichierHoraire,SensAssymetriqueError,
                               verifNbJoursValidDispo, tmjaDepuisHoraire, periodeDepuisHoraire, attributsHoraire, mensuelDepuisHoraire)
 from Donnees_sources import FIM, MHCorbin, DataSensError, PasAssezMesureError
-from Integration_nouveau_comptage import (corresp_nom_id_comptag)
+from Integration_nouveau_comptage import (corresp_nom_id_comptag, scinderComptagExistant)
 from Import_export_comptage import (comptag_existant_bdd)
 import Outils as O
 from Params.Mensuel import dico_mois, renommerMois
 from Params.Bdd_OTV import (attBddCompteur, nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, 
-                            tableCompteur, tableIndicAgrege, tableIndicHoraire)     
+                            tableIndicAgrege, tableIndicHoraire)     
               
               
 class Comptage():
@@ -49,35 +49,6 @@ class Comptage():
             df = pd.DataFrame(data=fichier[1:], columns=fichier[0])
             df.replace('', np.NaN, inplace=True)
         return  df
-
-            
-    def scinderComptagExistant(self, dfATester, annee, table=tableCompteur, schema=schemaComptage, dep=False, type_poste=False, gest=False):
-        """
-        utiliser la fonction comptag_existant_bdd pour comparer une df avec les donnees de comptage dans la base
-        si la table utilisée est compteur, on compare avec id_comptag, si c'est comptag on recherche les id null
-        in: 
-            dfATester : df avec un champs id_comptag et annee,
-            annee : string 4 : des donnees de comptag
-            le reste des parametres de la fonction comptag_existant_bdd
-        out : 
-            dfIdsConnus : dataframe testee dont les id_comptag sont dabs la bdd
-            dfIdsInconnus : dataframe testee dont les id_comptag ne sont pas dabs la bdd
-        """
-        #verifier que la colonne id_comptag est presente
-        O.checkAttributsinDf(dfATester, 'id_comptag')
-        dfATester['annee']=annee
-        self.corresp_nom_id_comptag(dfATester)
-        existant = comptag_existant_bdd(tableCompteur, nomConnBddOtv, schema,dep, type_poste, gest)
-        dfIdCptUniqs = self.recupererIdUniqComptage(dfATester.id_comptag.tolist(), annee)
-        dfTest = dfATester.merge(dfIdCptUniqs, on=['id_comptag', 'annee'], how='left').rename(columns={'id':'id_comptag_uniq'})
-
-        if table == tableCompteur :
-            dfIdsConnus = dfATester.loc[dfATester.id_comptag.isin(existant.id_comptag)].copy()
-            dfIdsInconnus = dfATester.loc[~dfATester.id_comptag.isin(existant.id_comptag)].copy()
-        elif table == tableComptage : 
-            dfIdsConnus = dfTest.loc[~dfTest.id_comptag_uniq.isna()].copy()
-            dfIdsInconnus = dfTest.loc[dfTest.id_comptag_uniq.isna()].copy()
-        return dfIdsConnus, dfIdsInconnus
     
         
     def maj_geom(self, schema, table, nom_table_ref,nom_table_pr,dep=False):
@@ -1632,10 +1603,9 @@ class Comptage_cd87(Comptage):
 
 class Comptage_cd16(Comptage):
     """
-    les données fournies par le CD16 sont des fichiers excel pour les compteurs permanents, et des fichiers FIM pour les comptages temporaires.
+    les données fournies par le CD16 sont des fichiers excel (jusqu'a 2021) ou geoloc filaire (a partir de 2021)
+    pour les compteurs permanents , et des fichiers FIM pour les comptages temporaires.
     il y a aussi des données sur PIGMA qu'il a tout prix télécharger, car les données FIM ne sont géolocalisable que par PIGMA
-    en 2018 on ne traite pas les FIM mais ils permettront d'obtenir des données horaires plus tard.
-    Normalement dans ce dept on a que des comptage en update
         fichier_b15_perm : nom complet du fichier des comptages permanents
         fichier_cpt_lgn : nom complet du fihcier de ligne contenant tous les comptages issu de pigma
         fichier_station_cpt : nom complet du fihcier de points contenant tous les points comptages issu de pigma
@@ -1695,27 +1665,29 @@ class Comptage_cd16(Comptage):
         df_compt_perm['src']='tableau B15'
         return df_compt_perm, donnees_mens
     
-    def cpt_tmp_pigma(self):
+    def cpt_pigma(self):
         """
-        mettre en forme les comptages temporaires issu de pigma
+        mettre en forme les comptages issu de pigma
         """
-        donnees_brutes_tmp_lgn=gp.read_file(self.fichier_cpt_lgn)
-        donnees_brutes_tmp_pt=gp.read_file(self.fichier_station_cpt)
+        donnees_brutes_lgn = gp.read_file(self.fichier_cpt_lgn)
+        donnees_brutes_pt = gp.read_file(self.fichier_station_cpt)
         
-        donnees_brutes_tmp=donnees_brutes_tmp_pt[['AXE','PLOD','ABSD','SECTION']].merge(donnees_brutes_tmp_lgn[['AXE','TRAFIC_PL','TMJA','ANNEE_COMP', 'PRC','ABC','TYPE_COMPT','SECTION_CP']], 
-                                                                                        left_on=['AXE','PLOD','ABSD'],right_on=['AXE','PRC','ABC'])
-        donnees_tmp_liees=donnees_brutes_tmp.loc[donnees_brutes_tmp['TYPE_COMPT']!='Per'].copy()
-        donnees_tmp_filtrees=donnees_tmp_liees.rename(columns={'AXE':'route','PRC':'pr','ABC':'absc','TMJA':'tmja','TRAFIC_PL':'pc_pl','TYPE_COMPT':'type_poste'}).drop(['PLOD','ABSD','SECTION','ANNEE_COMP'], axis=1)
-        donnees_tmp_filtrees['id_comptag']=donnees_tmp_filtrees.apply(lambda x : f"16-{x['route']}-{x['pr']}+{x['absc']}", axis=1)
-        donnees_tmp_filtrees['src']='sectionnement'
-        return donnees_tmp_filtrees
+        donnees_brutes = donnees_brutes_pt[['AXE','PLOD','ABSD','SECTION']].merge(
+            donnees_brutes_lgn[['AXE','TRAFIC_PL','TMJA','ANNEE_COMP', 'PRC','ABC','TYPE_COMPT','SECTION_CP']],
+            left_on=['AXE','PLOD','ABSD'], right_on=['AXE','PRC','ABC'])
+        donnees_liees = donnees_brutes.loc[donnees_brutes['TYPE_COMPT']!='Per'].copy()
+        donnees_filtrees = donnees_liees.rename(columns={'AXE':'route','PRC':'pr','ABC':'absc','TMJA':'tmja','TRAFIC_PL':'pc_pl',
+                                                         'TYPE_COMPT':'type_poste'}).drop(['PLOD','ABSD','SECTION','ANNEE_COMP'], axis=1)
+        donnees_filtrees['id_comptag'] = donnees_filtrees.apply(lambda x : f"16-{x['route']}-{x['pr']}+{x['absc']}", axis=1)
+        donnees_filtrees['src'] = 'sectionnement'
+        return donnees_filtrees
     
     def donnees_horaires(self, donnees_tmp_filtrees):
         """
         A REPRENDRE SUITE A MODIF DE donnees_sources.FIM(object)
         à partir des FIM et du fichier geolocalise des comptages, creer le fichier horaire par pt de comptag
         in : 
-            donnees_tmp_filtrees : donnees deconcatenation des comptages issu des fichier PIGMA.issu de cpt_tmp_pigma()
+            donnees_tmp_filtrees : donnees de concatenation des comptages issu des fichier PIGMA.issu de cpt_pigma()
         """
         listDfHoraire=[]
         with os.scandir(self.dossierCptTemp) as it:
@@ -1736,15 +1708,15 @@ class Comptage_cd16(Comptage):
     
     def comptage_forme(self, skiprows, cpt_a_ignorer, dossier_cpt_fim):
         """
-        fusion des données de cpt_tmp_pigma() et cpt_perm_xls()
+        fusion des données de cpt_pigma() et cpt_perm_xls()
         in : 
             cf fonction cpt_perm_xls
         """
         df_compt_perm, donnees_mens=self.cpt_perm_xls(skiprows, cpt_a_ignorer)
-        donnees_tmp_filtrees=self.cpt_tmp_pigma()
-        self.df_attr=pd.concat([df_compt_perm,donnees_tmp_filtrees],sort=False, axis=0)
+        donnees_filtrees=self.cpt_pigma()
+        self.df_attr=pd.concat([df_compt_perm,donnees_filtrees],sort=False, axis=0)
         self.df_attr_mens=donnees_mens
-        self.donnees_horaires(donnees_tmp_filtrees)
+        self.donnees_horaires(donnees_filtrees)
         
     def extraireEnteteIRIS(self, fichier) : 
         """
@@ -1795,11 +1767,34 @@ class Comptage_cd16(Comptage):
                 listeDf.append(data)
         return pd.concat(listeDf)
     
-    def creerDTtjoursttIndicIris(self):
+    def creerDfsTtjoursTtIndicIris(self):
         """
-        creer la df contenant tout les jours et tout les indicateurs des données IRIS
+        creer les dfs de comptage, indic_agrege, indic_mensuel, indic_horaire contenant tout les jours et tout les indicateurs des données IRIS
         """
-        return pd.concat([self.creerDfTtJoursIris(self.dossierIrisTv, 'TV'), self.creerDfTtJoursIris(self.dossierIrisPl, 'PL')])
+        # réation des données Horaires completes
+        dataHoraireCompelete = pd.concat([self.creerDfTtJoursIris(self.dossierIrisTv, 'TV'), self.creerDfTtJoursIris(self.dossierIrisPl, 'PL')])
+        # filtre des jours non conforme
+        dfHoraireFichierFiltre = verifValiditeFichier(dataHoraireCompelete, 24)[0]
+        # verif sur la concordance des 2 sens de circulation
+        comparer2Sens(dfHoraireFichierFiltre, attributSens='sens' )[1]
+        # concatener les deux sens
+        dfHoraireConcat = concatIndicateurFichierHoraire(dfHoraireFichierFiltre,
+                                                         'indicateur')
+        # calcul des TMJAs
+        indic_agrege = tmjaDepuisHoraire(dfHoraireConcat.assign(annee=self.annee))
+        # calcul du mensuel
+        tmjMens = mensuelDepuisHoraire(dfHoraireConcat.assign(annee=self.annee))
+        tmjMens = tmjMens.loc[~tmjMens.valeur.isna()].copy()
+        # verif que tous les id_comptag existent deja en bdd
+        dfIdsConnus, dfIdsInconnus = scinderComptagExistant(indic_agrege, self.annee,dep='16')
+        if not dfIdsInconnus.empty : 
+            raise ValueError(f"""les compteurs {', '.join(dfIdsInconnus.id_comptag.tolist())} ne sont pas présent dans la BDD. 
+                                                          ils doivent l'etre pour pouvoir inserer les donnees IRIS""")
+        # creation dela dataframe des comptages finale
+        dfComptage = dfIdsConnus.drop_duplicates(['id_comptag', 'annee'])[['id_comptag', 'annee']].assign(
+            src='donnees horaire IRIS', type_veh='tv/pl') 
+        return dfComptage, indic_agrege, tmjMens, dfHoraireConcat
+
 
     def classer_comptage_update_insert(self,table_cpt):
         """

@@ -33,6 +33,35 @@ def corresp_nom_id_comptag(df):
                                                     if x['id_comptag'] in corresp_comptg.id_gest.tolist() else x['id_comptag'], axis=1)
     return 
 
+
+def scinderComptagExistant(dfATester, annee, table=tableCompteur, schema=schemaComptage, dep=False, type_poste=False, gest=False):
+    """
+    utiliser la fonction comptag_existant_bdd pour comparer une df avec les donnees de comptage dans la base
+    si la table utilisée est compteur, on compare avec id_comptag, si c'est comptag on recherche les id null
+    in: 
+        dfATester : df avec un champs id_comptag
+        annee : string 4 : des donnees de comptag
+        le reste des parametres de la fonction comptag_existant_bdd
+    out : 
+        dfIdsConnus : dataframe testee dont les id_comptag sont dabs la bdd
+        dfIdsInconnus : dataframe testee dont les id_comptag ne sont pas dabs la bdd
+    """
+    #verifier que la colonne id_comptag est presente
+    O.checkAttributsinDf(dfATester, 'id_comptag')
+    dfATester['annee'] = annee
+    corresp_nom_id_comptag(dfATester)
+    existant = comptag_existant_bdd(table, schema, dep, type_poste, gest)
+    dfIdCptUniqs = recupererIdUniqComptage(dfATester)
+    dfTest = dfATester.merge(dfIdCptUniqs, on=['id_comptag', 'annee'], how='left').rename(columns={'id':'id_comptag_uniq'})
+    if table == tableCompteur :
+        dfIdsConnus = dfATester.loc[dfATester.id_comptag.isin(existant.id_comptag)].copy()
+        dfIdsInconnus = dfATester.loc[~dfATester.id_comptag.isin(existant.id_comptag)].copy()
+    elif table == tableComptage : 
+        dfIdsConnus = dfTest.loc[~dfTest.id_comptag_uniq.isna()].copy()
+        dfIdsInconnus = dfTest.loc[dfTest.id_comptag_uniq.isna()].copy()
+    return dfIdsConnus, dfIdsInconnus
+
+
 def classer_comptage_update_insert(dfAClasser, departement):
     """
     vérifier les comptages existants, et les correspondances, et séparer une df entre les compteurs déjà présents dans la base
@@ -148,6 +177,7 @@ def creerCompteur(cptRef, attrGeom, dep, reseau, gestionnai, concession, techno=
     """
     df = cptRef.copy()
     O.checkAttributsinDf(df, [attrGeom] + attrCompteurValeurMano)
+
     df = df[[attrGeom]  + attrCompteurValeurMano].assign(
         dep=dep, reseau=reseau, gestionnai=gestionnai, concession=concession, techno=techno, obs_geo=obs_geo,
         obs_supl=obs_supl, id_cpt=id_cpt, id_sect=id_sect, fictif=fictif, en_service=en_service)
