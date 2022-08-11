@@ -8,6 +8,7 @@ encoding//Transfert_Donnees/Linearisation.py=utf-8
 encoding//Transfert_Donnees/Params/Bdd_OTV.py=utf-8
 encoding//Transfert_Donnees/Params/DonneesGestionnaires.py=utf-8
 encoding//Transfert_Donnees/Params/DonneesSourcesParams.py=utf-8
+encoding//Transfert_Donnees/Params/DonneesVitesse.py=utf-8
 encoding//Transfert_Donnees/Params/Mensuel.py=utf-8
 encoding//Transfert_Donnees/Tests/Test_ImportTrafic.py=utf-8
 encoding//Transfert_Donnees/Tests/Tests_DonneesSources.py=utf-8

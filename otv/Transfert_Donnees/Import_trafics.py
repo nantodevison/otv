@@ -29,7 +29,10 @@ from Import_export_comptage import (comptag_existant_bdd)
 import Outils as O
 from Params.Mensuel import dico_mois, renommerMois
 from Params.Bdd_OTV import (attBddCompteur, nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, 
-                            tableIndicAgrege, tableIndicHoraire)     
+                            tableIndicAgrege, tableIndicHoraire, attrComptage)   
+from Params.DonneesGestionnaires import (cd16_columnsFichierPtPigma, cd16_columnsFichierLgnPigma, cd16_dicoCorrespTypePoste, cd16_dicoCorrespTechno,
+                                         cd16_dicoCorrespNomColums, cd16_columnsASuppr, cd16_attrIndicAgregePigma)
+from Params.DonneesVitesse import valeursVmaAdmises, correspVmaVlVmaPl  
               
               
 class Comptage():
@@ -1613,6 +1616,8 @@ class Comptage_cd16(Comptage):
         dossierIrisPl : dossier contenant les csv au format IRIS pour les PL
         dossierCptTemp : dossier contenant les fichiers FIM des comptages temporaires
     """
+    
+    
     def __init__(self,fichier_b15_perm,fichier_cpt_lgn,fichier_station_cpt,annee, dossierIrisTv, dossierIrisPl, dossierCptTemp):
         self.fichier_b15_perm=fichier_b15_perm
         self.fichier_cpt_lgn=fichier_cpt_lgn
@@ -1621,6 +1626,7 @@ class Comptage_cd16(Comptage):
         self.dossierIrisTv=dossierIrisTv
         self.dossierIrisPl=dossierIrisPl
         self.dossierCptTemp=dossierCptTemp
+        
         
     def cpt_perm_xls(self, skiprows, cpt_a_ignorer=()):
         """
@@ -1665,29 +1671,59 @@ class Comptage_cd16(Comptage):
         df_compt_perm['src']='tableau B15'
         return df_compt_perm, donnees_mens
     
+    
     def cpt_pigma(self):
         """
         mettre en forme les comptages issu de pigma
         """
+        
+        
+        def trouverVmas(vma):
+            """
+            fonction permettant de déduireles vitesses maximales autorisées depuis l'attributqui va bien
+            """
+            # déduire les valeusr de vitesse
+            if '/' in vma and vma[-1] != '/':
+                vma_vl = int(vma.split('/')[0])
+            else: 
+                vma_vl = int(vma)
+            # vérif et corrections des valeurs
+            if vma_vl in valeursVmaAdmises:
+                vma_pl = correspVmaVlVmaPl[vma_vl]
+            else:
+                raise ValueError(f"La vitesse VL {vma_vl} n'est pas présente dans la liste des valeurs de VMA admise dans le dictionnaire de correspondace vma_vl-vma_pl")
+            return vma_vl, vma_pl
+        
+        
         donnees_brutes_lgn = gp.read_file(self.fichier_cpt_lgn)
         donnees_brutes_pt = gp.read_file(self.fichier_station_cpt)
         
-        donnees_brutes = donnees_brutes_pt[['AXE','PLOD','ABSD','SECTION']].merge(
-            donnees_brutes_lgn[['AXE','TRAFIC_PL','TMJA','ANNEE_COMP', 'PRC','ABC','TYPE_COMPT','SECTION_CP']],
-            left_on=['AXE','PLOD','ABSD'], right_on=['AXE','PRC','ABC'])
-        donnees_liees = donnees_brutes.loc[donnees_brutes['TYPE_COMPT']!='Per'].copy()
-        donnees_filtrees = donnees_liees.rename(columns={'AXE':'route','PRC':'pr','ABC':'absc','TMJA':'tmja','TRAFIC_PL':'pc_pl',
-                                                         'TYPE_COMPT':'type_poste'}).drop(['PLOD','ABSD','SECTION','ANNEE_COMP'], axis=1)
-        donnees_filtrees['id_comptag'] = donnees_filtrees.apply(lambda x : f"16-{x['route']}-{x['pr']}+{x['absc']}", axis=1)
+        donnees_brutes = donnees_brutes_pt[cd16_columnsFichierPtPigma].merge(donnees_brutes_lgn[cd16_columnsFichierLgnPigma],
+                                                                left_on=['AXE','PLOD','ABSD'], right_on=['AXE','PRC','ABC'])
+        donnees_filtrees = donnees_brutes.loc[donnees_brutes.ANNEE_COMP.astype(str) == self.annee].rename(
+            columns=cd16_dicoCorrespNomColums).replace({'type_poste': cd16_dicoCorrespTypePoste,'techno': cd16_dicoCorrespTechno})
+        donnees_filtrees['id_comptag'] = donnees_filtrees.apply(lambda x : f"16-{x['route']}-{x['pr']}+{x['abs']}", axis=1)
         donnees_filtrees['src'] = 'sectionnement'
-        return donnees_filtrees
+        donnees_filtrees['periode'] = donnees_filtrees.apply(lambda x: f"{x.PERIODE_DE.replace('-', '/')}-{x.PERIODE_FI.replace('-', '/')}" if 
+                                                     not pd.isnull(x.PERIODE_DE) and not pd.isnull(x.PERIODE_FI) else None, axis=1)
+        donnees_filtrees['type_veh'] = 'tv/pl'
+        # recuperation des vitesse maximales autorisées
+        donnees_filtrees[['vma_vl', 'vma_pl']] = donnees_filtrees.apply(lambda x: trouverVmas(x.vma), axis=1, result_type='expand')
+        # remplacement des valeurs à 0 par du None
+        donnees_filtrees.replace({'tmja': {0: np.nan}, 'tmje': {0: np.nan}, 'pc_pl_e': {0: np.nan}, 'tmjhe': {0: np.nan}, 'pc_pl_he': {0: np.nan},
+                                  'vmoy': {0: np.nan}, 'v85': {0: np.nan}}, inplace=True)
+        donnees_filtrees.drop(cd16_columnsASuppr, errors='ignore', axis=1, inplace=True)
+        dfCompteurPigma = donnees_filtrees[[c for c in donnees_filtrees.columns if c in attBddCompteur]]
+        dfComptagePigma = donnees_filtrees[[c for c in donnees_filtrees.columns if c in attrComptage]]
+        dfIndicAgregePigma = donnees_filtrees[['id_comptag']+cd16_attrIndicAgregePigma]
+        return dfCompteurPigma, dfComptagePigma, dfIndicAgregePigma
     
-    def donnees_horaires(self, donnees_tmp_filtrees):
+    
+    def donnees_horaires(self, donnees_pigma):
         """
-        A REPRENDRE SUITE A MODIF DE donnees_sources.FIM(object)
         à partir des FIM et du fichier geolocalise des comptages, creer le fichier horaire par pt de comptag
         in : 
-            donnees_tmp_filtrees : donnees de concatenation des comptages issu des fichier PIGMA.issu de cpt_pigma()
+            donnees_pigma : donnees de concatenation des comptages issu des fichier PIGMA.issu de cpt_pigma()
         """
         listDfHoraire=[]
         with os.scandir(self.dossierCptTemp) as it:
@@ -1699,12 +1735,21 @@ class Comptage_cd16(Comptage):
                                                                    qualite=cpt.qualite, 
                                                                    periode=cpt.periode,
                                                                    sens_cpt='sens unique' if cpt.sens_uniq else 'double sens'))
-        dfHoraire = pd.concat(listDfHoraire)        dfHoraireId = donnees_tmp_filtrees[['SECTION_CP', 'id_comptag']].merge(dfHoraire, left_on='SECTION_CP', right_on='section_cp')
-        # verif 
+        dfHoraire = pd.concat(listDfHoraire)        dfHoraireId = donnees_pigma[['id_sect', 'id_comptag']].merge(dfHoraire, left_on='id_sect', right_on='section_cp', how='right')
+        # verif si des fichiers de comptages temporaires sont inconnues dans la bdd
         if dfHoraireId.id_comptag.isna().any() : 
-            raise ValueError('un comptage n\'a ps d\'id_comptag')
-        dfHoraireId.drop(['SECTION_CP','section_cp'], axis=1, errors='ignore', inplace=True)
-        self.df_attr_horaire = dfHoraireId
+            warnings.warn("au moins un comptage temporaire n'est pas présent dans le fihcier pigma. recherche dans la bdd...")
+            with ct.ConnexionBdd(nomConnBddOtv) as c:
+                refIdComptag = pd.read_sql("select id_comptag, id_sect from comptage.compteur where gestionnai = 'CD16'", c.sqlAlchemyConn)
+            dfIdComptagInconnus = refIdComptag.merge(dfHoraireId.loc[dfHoraireId.id_comptag.isna()]
+                                                     [[c for c in dfHoraireId.columns if c not in ('id_comptag', 'id_sect')]], 
+                                                     left_on='id_sect', right_on='section_cp', how='right')
+            if dfIdComptagInconnus.id_comptag.empty:
+                warnings.warn("au moins un comptage temporaire n'est pas présent dans la bdd. créer les compteurs avant toute insertion")
+            dfHoraireId = pd.concat([dfHoraireId.loc[dfHoraireId.id_comptag.notna()], dfIdComptagInconnus])   
+        #dfHoraireId.drop(['id_sect','section_cp'], axis=1, errors='ignore', inplace=True)
+        return dfHoraireId
+        
     
     def comptage_forme(self, skiprows, cpt_a_ignorer, dossier_cpt_fim):
         """
@@ -1733,6 +1778,7 @@ class Comptage_cd16(Comptage):
         sens=f'sens {entete.loc[2,22][-1:]}'
         return entete, id_comptag, sens
     
+    
     def creerDataIris(self, fichier, indicateur) : 
         """
         a partir d'un fichier format IRIS, creer les donnees selon le type de fichier PL ou TV
@@ -1748,6 +1794,7 @@ class Comptage_cd16(Comptage):
         data['indicateur']=indicateur
         data['fichier']=os.path.basename(fichier)
         return data
+    
     
     def creerDfTtJoursIris(self, dossier, indicateur):
         """
@@ -1767,6 +1814,7 @@ class Comptage_cd16(Comptage):
                 listeDf.append(data)
         return pd.concat(listeDf)
     
+    
     def creerDfsTtjoursTtIndicIris(self):
         """
         creer les dfs de comptage, indic_agrege, indic_mensuel, indic_horaire contenant tout les jours et tout les indicateurs des données IRIS
@@ -1776,7 +1824,7 @@ class Comptage_cd16(Comptage):
         # filtre des jours non conforme
         dfHoraireFichierFiltre = verifValiditeFichier(dataHoraireCompelete, 24)[0]
         # verif sur la concordance des 2 sens de circulation
-        comparer2Sens(dfHoraireFichierFiltre, attributSens='sens' )[1]
+        comparer2Sens(dfHoraireFichierFiltre, attributSens='sens')[1]
         # concatener les deux sens
         dfHoraireConcat = concatIndicateurFichierHoraire(dfHoraireFichierFiltre,
                                                          'indicateur')
@@ -1786,7 +1834,7 @@ class Comptage_cd16(Comptage):
         tmjMens = mensuelDepuisHoraire(dfHoraireConcat.assign(annee=self.annee))
         tmjMens = tmjMens.loc[~tmjMens.valeur.isna()].copy()
         # verif que tous les id_comptag existent deja en bdd
-        dfIdsConnus, dfIdsInconnus = scinderComptagExistant(indic_agrege, self.annee,dep='16')
+        dfIdsConnus, dfIdsInconnus = scinderComptagExistant(indic_agrege, self.annee, dep='16')
         if not dfIdsInconnus.empty : 
             raise ValueError(f"""les compteurs {', '.join(dfIdsInconnus.id_comptag.tolist())} ne sont pas présent dans la BDD. 
                                                           ils doivent l'etre pour pouvoir inserer les donnees IRIS""")
@@ -1794,26 +1842,6 @@ class Comptage_cd16(Comptage):
         dfComptage = dfIdsConnus.drop_duplicates(['id_comptag', 'annee'])[['id_comptag', 'annee']].assign(
             src='donnees horaire IRIS', type_veh='tv/pl') 
         return dfComptage, indic_agrege, tmjMens, dfHoraireConcat
-
-
-    def classer_comptage_update_insert(self,table_cpt):
-        """
-        faire le tri entre les comptages à mettre a jour et ceux à inserer. Pour arppel dans le 16 normalement on a que du update
-        in :
-            table_cpt : string : nom e la table des compatges que l'on va chercher a modifer
-        """
-        self.existant = comptag_existant_bdd(table_cpt, dep='16')
-        self.corresp_nom_id_comptag(self.df_attr)
-        self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
-        self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
-
-    def update_bdd_16(self, schema, table):
-        """
-        mettre à jour la table des comptages dans le 16
-        """
-        valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag','tmja','pc_pl','src'])
-        dico_attr_modif={'tmja_'+str(self.annee):'tmja', 'pc_pl_'+str(self.annee):'pc_pl','src_'+str(self.annee):'src'}
-        self.update_bdd(schema, table, valeurs_txt,dico_attr_modif)
     
 
 class Comptage_cd86(Comptage):

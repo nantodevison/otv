@@ -39,7 +39,7 @@ def scinderComptagExistant(dfATester, annee, table=tableCompteur, schema=schemaC
     utiliser la fonction comptag_existant_bdd pour comparer une df avec les donnees de comptage dans la base
     si la table utilisée est compteur, on compare avec id_comptag, si c'est comptag on recherche les id null
     in: 
-        dfATester : df avec un champs id_comptag
+        dfTest : df avec un champs id_comptag
         annee : string 4 : des donnees de comptag
         le reste des parametres de la fonction comptag_existant_bdd
     out : 
@@ -47,15 +47,16 @@ def scinderComptagExistant(dfATester, annee, table=tableCompteur, schema=schemaC
         dfIdsInconnus : dataframe testee dont les id_comptag ne sont pas dabs la bdd
     """
     #verifier que la colonne id_comptag est presente
-    O.checkAttributsinDf(dfATester, 'id_comptag')
-    dfATester['annee'] = annee
-    corresp_nom_id_comptag(dfATester)
+    dfTest = dfATester.copy()
+    O.checkAttributsinDf(dfTest, 'id_comptag')
+    dfTest['annee'] = annee
+    corresp_nom_id_comptag(dfTest)
     existant = comptag_existant_bdd(table, schema, dep, type_poste, gest)
-    dfIdCptUniqs = recupererIdUniqComptage(dfATester)
-    dfTest = dfATester.merge(dfIdCptUniqs, on=['id_comptag', 'annee'], how='left').rename(columns={'id':'id_comptag_uniq'})
+    dfIdCptUniqs = recupererIdUniqComptage(dfTest)
+    dfTest = dfTest.merge(dfIdCptUniqs, on=['id_comptag', 'annee'], how='left').rename(columns={'id':'id_comptag_uniq'})
     if table == tableCompteur :
-        dfIdsConnus = dfATester.loc[dfATester.id_comptag.isin(existant.id_comptag)].copy()
-        dfIdsInconnus = dfATester.loc[~dfATester.id_comptag.isin(existant.id_comptag)].copy()
+        dfIdsConnus = dfTest.loc[dfTest.id_comptag.isin(existant.id_comptag)].copy()
+        dfIdsInconnus = dfTest.loc[~dfTest.id_comptag.isin(existant.id_comptag)].copy()
     elif table == tableComptage : 
         dfIdsConnus = dfTest.loc[~dfTest.id_comptag_uniq.isna()].copy()
         dfIdsInconnus = dfTest.loc[dfTest.id_comptag_uniq.isna()].copy()
@@ -239,6 +240,8 @@ def structureBddOld2NewForm(dfAConvertir, annee, listAttrFixe,listAttrIndics,typ
         raise ValueError ("le type d'indicateur doit etre parmi 'agrege', 'mensuel', 'horaire'" )
     if any([e not in listAttrFixe for e in ['id_comptag', 'annee']]):
         raise AttributeError('les attributs id_comptag et annee sont obligatoire dans listAttrFixe')
+    if dfAConvertir.annee.isna().any():
+        raise ValueError ("certaines lignes de la df a convertir ont une valeur d'annee nulle, ce qui peut fausser les jointures. Corriger" )
     if typeIndic == 'agrege':
         dfIndic = pd.melt(dfAConvertir.assign(annee=dfAConvertir.annee.astype(str)), id_vars=listAttrFixe, value_vars=listAttrIndics, 
                               var_name='indicateur', value_name='valeur')
