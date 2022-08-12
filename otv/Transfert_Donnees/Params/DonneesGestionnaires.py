@@ -6,6 +6,13 @@ Created on 9 ao�t 2022
 parametres liés aux gestionniaires
 '''
 
+##########
+# GENERAL
+##########
+denominationSens = ('sens1', 'sens2', 'deportsens1', 'deportsens2', 'sensexter', 'sensinter', 'sens1n137'
+                    , 'sens2n137', 'sens1n11', 'sens2n11', 'sens1n10', 'sens2n10', 'sens1n141', 'sens2n141')
+
+
 #########
 # CD16
 #########

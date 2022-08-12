@@ -12,6 +12,8 @@ import re
 import Outils as O
 from Params.Mensuel import dico_mois
 from Params.Bdd_OTV import attrIndicHoraire
+from Params.DonneesGestionnaires import denominationSens
+
 
 # POUR LES VACANCES PENSER A BESCULER SUR LE MODULE VACANCES_SCOLAIRE_FRANCE !!!!!
 vacances_2019=[j for k in [pd.date_range('2019-01-01','2019-01-06'),pd.date_range('2019-02-16','2019-03-03'),
@@ -102,12 +104,13 @@ def comparer2Sens(dfHoraireFichierFiltre, attributSens='voie', attributIndicateu
         TauxErreur : rapport nblignInvalides/NbligneTot tolere par defaut si nblignInvalides>NbligneTot/10 on bloque
         attributSens : string : nom de l'attribut qui supporte le sens
         attributIndicateur : nom de l'attribut qui supporte le descriptif du type de vehicule
-    """
+    """  
     dfSc = dfHoraireFichierFiltre.loc[dfHoraireFichierFiltre[attributSens].apply(lambda x: re.sub(
-        'ç', 'c', re.sub('(é|è|ê)', 'e', re.sub('( |_)','', x.lower()))) in ('sens1', 'sens2', 'sensexter', 'sensinter'))].copy()
+        'ç', 'c', re.sub('(é|è|ê)', 'e', re.sub('( |_)','', x.lower()))) in denominationSens)].copy()
     senss = dfSc[attributSens].unique()
     
     idComptages = dfSc.id_comptag.unique()
+    print(idComptages)
     listDfComp = []
     for cpt in idComptages: 
         if len(senss) == 2: 
@@ -135,6 +138,8 @@ def concatIndicateurFichierHoraire(dfHoraireFichier, attributIndicateur='type_ve
     """
     O.checkAttributsinDf(dfHoraireFichier, ['jour','id_comptag', 'fichier'] + attributsHoraire)
     O.checkAttributValues(dfHoraireFichier, attributIndicateur, 'TV', 'VL', 'PL')
+    if dfHoraireFichier.empty:
+       raise ValueError('la df horaire est vide, verif a faire en amont') 
     dicoAgg = {'h0_1': 'sum', 'h1_2': 'sum', 'h2_3': 'sum', 'h3_4': 'sum', 'h4_5': 'sum', 'h5_6': 'sum', 'h6_7': 'sum', 'h7_8': 'sum', 'h8_9': 'sum',
                    'h9_10':  'sum', 'h10_11': 'sum', 'h11_12': 'sum', 'h12_13': 'sum', 'h13_14': 'sum', 'h14_15': 'sum', 'h15_16': 'sum', 'h16_17': 'sum',
                    'h17_18': 'sum', 'h18_19': 'sum', 'h19_20': 'sum', 'h20_21': 'sum', 'h21_22': 'sum', 'h22_23': 'sum', 'h23_24': 'sum',

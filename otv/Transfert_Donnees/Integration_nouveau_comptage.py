@@ -106,7 +106,7 @@ def localiser_comptage_a_inserer(df, schema_temp,nom_table_temp, table_ref, tabl
                          set geom=(select geom_out  from comptage.geoloc_pt_comptag('{table_ref}','{table_pr}',id_comptag))
                          where geom is null"""
         c.sqlAlchemyConn.execute(rqt_maj_geom)
-        points_a = _inserer=gp.GeoDataFrame.from_postgis(f'select * from {schema_temp}.{nom_table_temp}', c.sqlAlchemyConn, geom_col='geom',crs='epsg:2154')
+        points_a_inserer=gp.GeoDataFrame.from_postgis(f'select * from {schema_temp}.{nom_table_temp}', c.sqlAlchemyConn, geom_col='geom',crs='epsg:2154')
     return points_a_inserer
     
     
@@ -225,7 +225,7 @@ def creer_comptage(listComptage, annee, src, type_veh,obs=None, periode=None) :
     return pd.DataFrame({'id_comptag':listComptage, 'annee':annee, 'periode':periode,'src':src, 'obs':obs, 'type_veh' : type_veh})
 
 
-def structureBddOld2NewForm(dfAConvertir, annee, listAttrFixe,listAttrIndics,typeIndic):
+def structureBddOld2NewForm(dfAConvertir, listAttrFixe, listAttrIndics, typeIndic):
     """
     convertir les données creer par les classes et issus de la structure de bdd 2010-2019 (wide-form) vers une structure 2020 (long-form) 
     en ajoutant au passage les ids_comptag_uniq
@@ -240,8 +240,8 @@ def structureBddOld2NewForm(dfAConvertir, annee, listAttrFixe,listAttrIndics,typ
         raise ValueError ("le type d'indicateur doit etre parmi 'agrege', 'mensuel', 'horaire'" )
     if any([e not in listAttrFixe for e in ['id_comptag', 'annee']]):
         raise AttributeError('les attributs id_comptag et annee sont obligatoire dans listAttrFixe')
-    if dfAConvertir.annee.isna().any():
-        raise ValueError ("certaines lignes de la df a convertir ont une valeur d'annee nulle, ce qui peut fausser les jointures. Corriger" )
+    if dfAConvertir.annee.isna().any() or not 'annee' in dfAConvertir.columns:
+        raise ValueError ("il manque l'attribut 'annee' ou certaines lignes de la df a convertir ont une valeur d'annee nulle, ce qui peut fausser les jointures. Corriger" )
     if typeIndic == 'agrege':
         dfIndic = pd.melt(dfAConvertir.assign(annee=dfAConvertir.annee.astype(str)), id_vars=listAttrFixe, value_vars=listAttrIndics, 
                               var_name='indicateur', value_name='valeur')
@@ -755,16 +755,16 @@ def rassemblerIndics(annee, dfComptageNewTot, dfTraficAgrege, dfTraficMensuel=No
     # récupérer les données
     listIdComptagIndicNew = dfComptageNewTot.id_comptag.tolist()
     dfAttrIndicAgregeNew = dfTraficAgrege.loc[dfTraficAgrege.id_comptag.isin(listIdComptagIndicNew)]
-    dfIndicAgregeNew = structureBddOld2NewForm(dfAttrIndicAgregeNew.assign(annee=annee), annee, ['id_comptag', 'annee', 'fichier'], ['tmja', 'pc_pl'], 'agrege')
+    dfIndicAgregeNew = structureBddOld2NewForm(dfAttrIndicAgregeNew.assign(annee=annee), ['id_comptag', 'annee', 'fichier'], ['tmja', 'pc_pl'], 'agrege')
     if isinstance(dfTraficMensuel, pd.DataFrame) and not dfTraficMensuel.empty:
         dfAttrIndicMensNew = dfTraficMensuel.loc[dfTraficMensuel.id_comptag.isin(listIdComptagIndicNew)]
-        dfIndicMensNew = structureBddOld2NewForm(dfAttrIndicMensNew.assign(annee=annee), annee, ['id_comptag', 'annee', 'fichier', 'donnees_type'], 
+        dfIndicMensNew = structureBddOld2NewForm(dfAttrIndicMensNew.assign(annee=annee), ['id_comptag', 'annee', 'fichier', 'donnees_type'], 
                                               list(dico_mois.keys()), 'mensuel')
     else :
         dfIndicMensNew = None
     if isinstance(dfTraficHoraire, pd.DataFrame) and not dfTraficHoraire.empty:
         dfAttrIndicHoraireNew = dfTraficHoraire.loc[dfTraficHoraire.id_comptag.isin(listIdComptagIndicNew)]    
-        dfIndicHoraireNew = structureBddOld2NewForm(dfAttrIndicHoraireNew.assign(annee=annee), '2020', ['id_comptag', 'annee'], ['tata'], 'horaire')
+        dfIndicHoraireNew = structureBddOld2NewForm(dfAttrIndicHoraireNew.assign(annee=annee), ['id_comptag', 'annee'], ['tata'], 'horaire')
     else:
         dfIndicHoraireNew = None
     if not dfIndicAgregeNew.loc[dfIndicAgregeNew.duplicated(['id_comptag_uniq', 'indicateur'])].empty:
