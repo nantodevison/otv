@@ -29,19 +29,18 @@ def corresp_nom_id_comptag(df):
     rqt_corresp_comptg = f'select * from {schemaComptage}.{tableCorrespIdComptag}'
     with ct.ConnexionBdd(nomConnBddOtv) as c:
         corresp_comptg = pd.read_sql(rqt_corresp_comptg, c.sqlAlchemyConn)
-    df['id_comptag'] = df.apply(lambda x : corresp_comptg.loc[corresp_comptg['id_gest']==x['id_comptag']].id_gti.values[0] 
-                                                    if x['id_comptag'] in corresp_comptg.id_gest.tolist() else x['id_comptag'], axis=1)
-    return 
+    dfMerge = corresp_comptg.merge(df, left_on='id_gest', right_on='id_comptag', how='right')
+    dfMerge['id_comptag'] = dfMerge.apply(lambda x: x.id_gti if not pd.isnull(x.id_gest) else x.id_comptag, axis=1)
+    dfMerge.drop(['id', 'id_gest', 'id_gti'], axis=1, errors='ignore', inplace=True)
+    return dfMerge
 
 
-def scinderComptagExistant(dfATester, annee, table=tableCompteur, schema=schemaComptage, dep=False, type_poste=False, gest=False):
+def scinderComptagExistant(dfATester, annee):
     """
-    utiliser la fonction compteur_existant_bdd pour comparer une df avec les donnees de comptage dans la base
-    si la table utilisée est compteur, on compare avec id_comptag, si c'est comptag on recherche les id null
+    utiliser la fonction recupererIdUniqComptage pour comparer une df avec les donnees de comptage dans la base
     in: 
         dfTest : df avec un champs id_comptag
         annee : string 4 : des donnees de comptag
-        le reste des parametres de la fonction compteur_existant_bdd
     out : 
         dfIdsConnus : dataframe testee dont les id_comptag sont dabs la bdd
         dfIdsInconnus : dataframe testee dont les id_comptag ne sont pas dabs la bdd
@@ -50,20 +49,14 @@ def scinderComptagExistant(dfATester, annee, table=tableCompteur, schema=schemaC
     dfTest = dfATester.copy()
     O.checkAttributsinDf(dfTest, 'id_comptag')
     dfTest['annee'] = annee
-    corresp_nom_id_comptag(dfTest)
-    existant = compteur_existant_bdd(table, schema, dep, type_poste, gest)
+    dfTest = corresp_nom_id_comptag(dfTest)
     dfIdCptUniqs = recupererIdUniqComptage(dfTest)
-    dfTest = dfTest.merge(dfIdCptUniqs, on=['id_comptag', 'annee'], how='left').rename(columns={'id':'id_comptag_uniq'})
-    if table == tableCompteur :
-        dfIdsConnus = dfTest.loc[dfTest.id_comptag.isin(existant.id_comptag)].copy()
-        dfIdsInconnus = dfTest.loc[~dfTest.id_comptag.isin(existant.id_comptag)].copy()
-    elif table == tableComptage : 
-        dfIdsConnus = dfTest.loc[~dfTest.id_comptag_uniq.isna()].copy()
-        dfIdsInconnus = dfTest.loc[dfTest.id_comptag_uniq.isna()].copy()
+    dfIdsConnus = dfIdCptUniqs.loc[dfIdCptUniqs.id_comptag_uniq.notna()].copy()
+    dfIdsInconnus = dfIdCptUniqs.loc[dfIdCptUniqs.id_comptag_uniq.isna()].copy()
     return dfIdsConnus, dfIdsInconnus
 
 
-def classer_compteur_update_insert(dfAClasser, departement):
+def classer_compteur_update_insert(dfAClasser, departement=False, gest=False):
     """
     vérifier les comptages existants, et les correspondances, et séparer une df entre les compteurs déjà présents dans la base
     et ceux qui doivent être créés
@@ -74,8 +67,8 @@ def classer_compteur_update_insert(dfAClasser, departement):
         df_attr_update : extraction de la données source : identifiant de comptages deja presents dans la base
         df_attr_insert : extraction de la données source : identifiant de comptages non presents dans la base
     """
-    corresp_nom_id_comptag(dfAClasser)
-    existant = compteur_existant_bdd(dep=departement)
+    dfAClasser = corresp_nom_id_comptag(dfAClasser)
+    existant = compteur_existant_bdd(dep=departement, gest=gest)
     df_attr_update = dfAClasser.loc[dfAClasser.id_comptag.isin(existant.id_comptag.tolist())].copy().drop_duplicates()
     df_attr_insert = dfAClasser.loc[~dfAClasser.id_comptag.isin(existant.id_comptag.tolist())].copy().drop_duplicates()
     # ajout d'une vérif sur les longueurs resectives de donnees

@@ -8,6 +8,7 @@ regroupe les fonctions d'import export des donnees de comptages
 
 import Outils as O
 import pandas as pd
+import warnings
 import Connexion_Transfert as ct
 from Params.Bdd_OTV import (nomConnBddOtv, schemaComptage, tableIndicAgrege, tableComptage, 
                             tableCompteur, tableIndicHoraire, schemaComptageAssoc,
@@ -67,7 +68,8 @@ def recupererIdUniqComptage(dfSource, derniereAnnee=False):
         """
         if not derniereAnnee:
             O.checkAttributsinDf(dfSource, ['id_comptag', 'annee'])
-        with ct.ConnexionBdd(nomConnBddOtv) as c  :
+        dfidComptagSource = dfSource.drop_duplicates(['id_comptag', 'annee'])[['id_comptag', 'annee']]
+        with ct.ConnexionBdd(nomConnBddOtv) as c:
             if derniereAnnee:
                 txt = '\'),(\''.join(dfSource.id_comptag.tolist())
                 listIdCpt = f"('{txt}')"
@@ -79,14 +81,17 @@ def recupererIdUniqComptage(dfSource, derniereAnnee=False):
             else:
                 rqt = f"""select distinct on (ca.id_comptag) ca.id id_comptag_uniq, ca.id_comptag, ca.annee
                                          from {schemaComptage}.{tableComptage} ca JOIN (SELECT * from (VALUES  
-                                         {','.join([f'{a, b}' for a, b in zip(dfSource.id_comptag.tolist(), dfSource.annee.tolist())])}) 
+                                         {','.join([f'{a, b}' for a, b in zip(dfidComptagSource.id_comptag.tolist(),
+                                          dfidComptagSource.annee.tolist())])}) 
                                          AS t (id_cpt, ann)) t ON t.id_cpt=ca.id_comptag AND t.ann=ca.annee
                                          order by ca.id_comptag, ca.annee DESC"""
             dfIdCptUniqs = pd.read_sql(rqt, c.sqlAlchemyConn)
-        dfSourceIds = dfSource.merge(dfIdCptUniqs, on=['id_comptag', 'annee']).drop_duplicates() if not derniereAnnee else dfSource.merge(dfIdCptUniqs, on='id_comptag')
+        dfSourceIds = dfSource.merge(dfIdCptUniqs, on=['id_comptag', 'annee'], how='left').drop_duplicates(
+            ) if not derniereAnnee else dfSource.merge(dfIdCptUniqs, on='id_comptag', how='left')
         #verif que tout le monde a un id_comptag_uniq
         if dfSourceIds.id_comptag_uniq.isna().any():
-            raise ValueError("les id_comptag {} n'ont pas d'id_comptag_uniq. Creer un comptage avant ")
+            dfSourceIdsNanList = dfSourceIds.loc[dfSourceIds.id_comptag_uniq.isna()].id_comptag.unique()
+            warnings.warn(f"les id_comptag {dfSourceIdsNanList} n'ont pas d'id_comptag_uniq. Creer un comptage avant ")
         return  dfSourceIds 
   
     

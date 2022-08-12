@@ -934,20 +934,7 @@ class Comptage_cd40(Comptage):
         #attributs finaux
         self.df_attr = pd.DataFrame(dico_annee)
         self.df_attr_mens = donnees_mens_tot.copy()
-    
-    def classer_comptage_insert_update(self):
-        """
-        repartir les donnes selon si les comptages sont a insrere ou mette a jour
-        là c'est un peu biaisé car on a que des comptages permanents sans nouveaux
-        """
-        #creation de l'existant
-        self.existant = compteur_existant_bdd(dep='40', type_poste=False)
-        #mise a jour des noms selon la table de corresp existnate
-        corresp_nom_id_comptag(self.df_attr)
-        corresp_nom_id_comptag(self.df_attr_mens)
-        #classement
-        self.df_attr_update = self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
-        self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
+        
         
     def update_bdd_40(self, schema, table):
         valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag','tmja','pc_pl'])
@@ -1255,20 +1242,6 @@ class Comptage_cd47(Comptage):
                
         return df_agrege,df_horaire_tot, df_mensuel_tot   
     
-    def classer_compteur_update_insert(self):
-        """
-        a prtir du dico tot (regrouper_dico), separer les comptages a mettre a jour et ceux à inserer dans les attributs
-        df_attr_update et df_attr_insert
-        """
-        #creer le dico_tot
-        self.regrouper_dico()
-        self.df_attr, self.df_attr_horaire, self.df_attr_mens=self.dataframe_dico(self.dico_tot)
-        #prende en compte les variation d'id_comptag en gti et le gest
-        corresp_nom_id_comptag(self.df_attr)
-        #comparer avec les donnees existantes
-        self.existant = compteur_existant_bdd(dep='47')
-        self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
-        self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
     
     def update_bdd_47(self,schema,table,df):
         """
@@ -1550,7 +1523,7 @@ class Comptage_cd87(Comptage):
             self.insert_bdd('comptage', 'corresp_id_comptag', 
                df_correspondance.rename(columns={'id_comptag_lin':'id_gti','id_comptag':'id_gest'})[['id_gest','id_gti']])
         #faire la correspondance entre les noms de comptage
-        self.corresp_nom_id_comptag(self.df_attr)
+        self.df_attr = self.corresp_nom_id_comptag(self.df_attr)
         #recalculer les insert et update
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
@@ -1968,12 +1941,6 @@ class Comptage_cd86(Comptage):
             self.df_attr['absc']=self.df_attr.id_comptag.apply(lambda x : int(x.split('-')[2].split('+')[1]))
         self.df_attr['src']='tableur'
     
-    
-    def classer_compteur_update_insert(self, table_cpt):
-        self.existant = compteur_existant_bdd(table_cpt, dep='86')
-        self.corresp_nom_id_comptag(self.df_attr)
-        self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
-        self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         
     def update_bdd_86(self, schema, table):
         """
@@ -4209,11 +4176,11 @@ class Comptage_Dirco(Comptage):
     besoin du TMJA pour faire un premiere jointure entre les points de comptaget lees refereces des fichiers excele horaire
     """ 
     def __init__(self,fichierTmja, fichierTmjm, dossierHoraire, annee):
-        self.fichierTmja=fichierTmja
-        self.fichierTmjm=fichierTmjm
-        self.dossierHoraire=dossierHoraire
-        self.annee=annee
-        self.dfSourceTmjm=pd.read_excel(self.fichierTmjm, skiprows=7, sheet_name=None)
+        self.fichierTmja = fichierTmja
+        self.fichierTmjm = fichierTmjm
+        self.dossierHoraire = dossierHoraire
+        self.annee = annee
+        self.dfSourceTmjm = pd.read_excel(self.fichierTmjm, skiprows=7, sheet_name=None)
 
     def miseEnFormeMJA(self):
         """
@@ -4272,7 +4239,7 @@ class Comptage_Dirco(Comptage):
         """
         dfTouteFeuilles=pd.concat([self.indicateurGlobalFeuilleMJM(self.miseEnFormeMJM(self.dfSourceTmjm[k])) 
                           for k in self.dfSourceTmjm.keys()], axis=0, sort=False).assign(annee=self.annee).reset_index()
-        self.corresp_nom_id_comptag(dfTouteFeuilles)
+        dfTouteFeuilles = self.corresp_nom_id_comptag(dfTouteFeuilles)
         cptARetirer=cptARetirer if isinstance(cptARetirer,list) else [cptARetirer,]
         dfTouteFeuilles=dfTouteFeuilles.loc[~dfTouteFeuilles.id_comptag.isin(cptARetirer)]
         return dfTouteFeuilles
@@ -4328,7 +4295,7 @@ class Comptage_Dirco(Comptage):
         dfFichierTmja.absc=dfFichierTmja.absc.apply(lambda x : int(x) if not pd.isnull(x) else x)
         dfFichierTmja['idFichier']=dfFichierTmja.apply(lambda x : nomIdFichier(x['route'],x['debStation'],x['finStation'],x['nomStation']), axis=1 )
         dfFichierTmja['id_comptag']=dfFichierTmja.apply(lambda x : f"{int(x['dept'])}-{x['route'].replace('RN','N')}-{x['pr']}+{x['absc']}",axis=1)
-        self.corresp_nom_id_comptag(dfFichierTmja)
+        dfFichierTmja = self.corresp_nom_id_comptag(dfFichierTmja)
         self.existant = compteur_existant_bdd('compteur',gest='DIRCO')
         return dfFichierTmja
     

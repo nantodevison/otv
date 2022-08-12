@@ -191,16 +191,17 @@ def tmjaDepuisHoraire(dfHoraire):
         dfTmjaPcpl : dataframe agrege eu format id_comptag, annee, indicaeur, valeur, 
     """
     O.checkAttributsinDf(dfHoraire, ['id_comptag', 'annee','indicateur', 'jour']+attributsHoraire)
-    dfMeltInconnus = pd.melt(dfHoraire, value_vars=[c for c in dfHoraire.columns if c[0]=='h'], id_vars=['id_comptag', 'annee','indicateur', 'jour'],
-                   value_name='valeur')
-    dfTmja = dfMeltInconnus.groupby(['id_comptag','annee','indicateur']).agg({'valeur':'sum', 'jour':'count'}).reset_index()
+    dfMeltInconnus = pd.melt(dfHoraire, value_vars=[c for c in dfHoraire.columns if c[0]=='h'], id_vars=[
+        'id_comptag','annee','indicateur', 'jour', 'fichier'], value_name='valeur')
+    dfTmja = dfMeltInconnus.groupby(['id_comptag','annee','indicateur']).agg({
+        'valeur':'sum', 'jour':'count', 'fichier': lambda x: ';'.join(x.unique())}).reset_index()
     dfTmja2 = dfTmja.assign(jour=dfTmja.jour/24)
     dfTmja2['valeur'] = (dfTmja2.valeur/dfTmja2.jour).astype(int)
     dfTmjaPcpl = dfTmja2.loc[dfTmja2.indicateur.str.upper()=='TV'].merge(dfTmja2.loc[dfTmja2.indicateur.str.upper()=='PL']
                                                                          [['id_comptag', 'valeur']], on=['id_comptag'])
     dfTmjaPcpl['pc_pl'] = round(dfTmjaPcpl.valeur_y/dfTmjaPcpl.valeur_x*100, 2)
     dfTmjaPcpl.rename(columns={'valeur_x':'tmja'}, inplace=True)
-    dfTmjaPcpl = pd.melt(dfTmjaPcpl, value_vars=['pc_pl', 'tmja'], id_vars=['id_comptag', 'annee'], value_name='valeur', var_name='indicateur')
+    dfTmjaPcpl = pd.melt(dfTmjaPcpl, value_vars=['pc_pl', 'tmja'], id_vars=['id_comptag', 'annee', 'fichier'], value_name='valeur', var_name='indicateur')
     return dfTmjaPcpl
 
 def mensuelDepuisHoraire(dfHoraire):
