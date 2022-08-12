@@ -15,9 +15,9 @@ from Params.Bdd_OTV import (nomConnBddOtv, schemaComptage, tableIndicAgrege, tab
 import geopandas as gp
 
 
-def comptag_existant_bdd(table=tableCompteur, schema=schemaComptage,dep=False, type_poste=False, gest=False):
+def compteur_existant_bdd(table=tableCompteur, schema=schemaComptage,dep=False, type_poste=False, gest=False):
     """
-    recup�rer les comptages existants dans une df
+    recuperer les comptages existants dans une df
     en entree : 
         table : string : nom de la table
         schema : string : nom du schema

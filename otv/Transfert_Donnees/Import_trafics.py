@@ -25,7 +25,7 @@ from Donnees_horaires import (comparer2Sens,verifValiditeFichier,concatIndicateu
                               verifNbJoursValidDispo, tmjaDepuisHoraire, periodeDepuisHoraire, attributsHoraire, mensuelDepuisHoraire)
 from Donnees_sources import FIM, MHCorbin, DataSensError, PasAssezMesureError
 from Integration_nouveau_comptage import (corresp_nom_id_comptag, scinderComptagExistant)
-from Import_export_comptage import (comptag_existant_bdd)
+from Import_export_comptage import (compteur_existant_bdd)
 import Outils as O
 from Params.Mensuel import dico_mois, renommerMois
 from Params.Bdd_OTV import (attBddCompteur, nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, 
@@ -326,7 +326,7 @@ class Comptage_cd64(Comptage):
         """
         self.df_attr=self.filtrerAnnee(self.df_attr, '2018')
         #creation de l'existant
-        existant = comptag_existant_bdd(table, schema=schema,dep='64', type_poste=False)
+        existant = compteur_existant_bdd(table, schema=schema,dep='64', type_poste=False)
         #mise a jour des noms selon la table de corresp existnate
         self.corresp_nom_id_comptag(self.df_attr)
         #ajouter une colonne de geometrie
@@ -388,12 +388,12 @@ class Comptage_cd23(Comptage):
         df_excel_filtre['src']='tableur CD23'
         self.df_attr=df_excel_filtre
         
-    def classer_comptage_update_insert(self, table_cpt='compteur'):
+    def classer_compteur_update_insert(self, table_cpt='compteur'):
         """
         separer les donnes a mettre a jour de celles a inserer, selon les correspondances connues et les points existants
         """
         self.corresp_nom_id_comptag(self.df_attr)
-        self.existant  = comptag_existant_bdd(table_cpt, dep='23')
+        self.existant  = compteur_existant_bdd(table_cpt, dep='23')
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         
@@ -685,7 +685,7 @@ class Comptage_cd17(Comptage) :
             df_attr['concession']  ='N'
             df_attr['fichier'] = self.fichier
                 #verif que pas de doublons et seprartion si c'est le cas
-            existant = comptag_existant_bdd(dep, type_poste)
+            existant = compteur_existant_bdd(dep, type_poste)
             self.corresp_nom_id_comptag(df_attr) 
         #ANNEE 2020
         elif self.type_fichier in ('permanent_csv_formatTmjPl'):
@@ -699,7 +699,7 @@ class Comptage_cd17(Comptage) :
             self.fichier_src = renommerMois(self.fichier_src)
             self.fichier_src['fichier'] = os.path.basename(self.fichier)
             #j jointure avec existant
-            existant = comptag_existant_bdd(gest='CD17', type_poste='permanent')[['id_comptag', 'id_cpt']]
+            existant = compteur_existant_bdd(gest='CD17', type_poste='permanent')[['id_comptag', 'id_cpt']]
             existantNotNa = existant.loc[~existant.id_cpt.isna()]
             df_attr = existantNotNa.merge(self.fichier_src, left_on='id_cpt', right_on='idcpt_gest', how='left')
             df_attr = df_attr.loc[df_attr.indicateur.isin(['tmja', 'pc_pl'])].drop(['id_cpt', 'idcpt_gest'], axis=1).copy()
@@ -767,7 +767,7 @@ class Comptage_cd19(Comptage):
         donnees_transfert=donnees_filtrees.loc[donnees_filtrees['tmja']>0].copy()
         self.df_attr= donnees_transfert.copy()
     
-    def classer_comptage_update_insert(self,table_cpt,schema_cpt,
+    def classer_compteur_update_insert(self,table_cpt,schema_cpt,
                                        schema_temp,nom_table_temp,table_linearisation_existante,
                                        schema_graph, table_graph,table_vertex,id_name,table_pr) : 
         """
@@ -777,7 +777,7 @@ class Comptage_cd19(Comptage):
             table_pr : string : schema qualifyed nom de la table de reference des pr
         """
         #creation de l'existant
-        self.existant = comptag_existant_bdd(schema=schema_cpt, table=table_cpt,dep='19', type_poste=False)
+        self.existant = compteur_existant_bdd(schema=schema_cpt, table=table_cpt,dep='19', type_poste=False)
         #mise a jour des noms selon la table de corresp existnate
         self.corresp_nom_id_comptag(self.df_attr)
         #classement
@@ -790,7 +790,7 @@ class Comptage_cd19(Comptage):
         self.insert_bdd(schema_cpt,'corresp_id_comptag',corresp_cd19[['id_comptag','id_comptag_lin']].rename(columns={'id_comptag':'id_gest','id_comptag_lin':'id_gti'}))
         #ajout de correspondance manuelle (3, à cause de nom de voie notamment) et creation d'un unique opint a insert
         #nouvelle mise a jour de l'id comptag suivant correspondance
-        self.existant = comptag_existant_bdd(schema=schema_cpt, table=table_cpt,dep='19', type_poste=False)
+        self.existant = compteur_existant_bdd(schema=schema_cpt, table=table_cpt,dep='19', type_poste=False)
         self.corresp_nom_id_comptag(self.df_attr)
         #puis nouveau classement
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
@@ -941,7 +941,7 @@ class Comptage_cd40(Comptage):
         là c'est un peu biaisé car on a que des comptages permanents sans nouveaux
         """
         #creation de l'existant
-        self.existant = comptag_existant_bdd(dep='40', type_poste=False)
+        self.existant = compteur_existant_bdd(dep='40', type_poste=False)
         #mise a jour des noms selon la table de corresp existnate
         corresp_nom_id_comptag(self.df_attr)
         corresp_nom_id_comptag(self.df_attr_mens)
@@ -1255,7 +1255,7 @@ class Comptage_cd47(Comptage):
                
         return df_agrege,df_horaire_tot, df_mensuel_tot   
     
-    def classer_comptage_update_insert(self):
+    def classer_compteur_update_insert(self):
         """
         a prtir du dico tot (regrouper_dico), separer les comptages a mettre a jour et ceux à inserer dans les attributs
         df_attr_update et df_attr_insert
@@ -1266,7 +1266,7 @@ class Comptage_cd47(Comptage):
         #prende en compte les variation d'id_comptag en gti et le gest
         corresp_nom_id_comptag(self.df_attr)
         #comparer avec les donnees existantes
-        self.existant = comptag_existant_bdd(dep='47')
+        self.existant = compteur_existant_bdd(dep='47')
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
     
@@ -1514,7 +1514,7 @@ class Comptage_cd87(Comptage):
         self.dataframe_dico()
         self.filtrer_periode_ponctuels()
     
-    def classer_comptage_update_insert(self,table_cpt,schema_cpt,
+    def classer_compteur_update_insert(self,table_cpt,schema_cpt,
                                        schema_temp,nom_table_temp,table_linearisation_existante,
                                        schema_graph, table_graph,table_vertex,id_name,table_pr):
         """
@@ -1534,7 +1534,7 @@ class Comptage_cd87(Comptage):
         """
         #fare le tri avec les comptages existants : 
         #recuperer les compmtages existants
-        self.existant = comptag_existant_bdd(table_cpt, schema=schema_cpt,dep='87', type_poste=False)
+        self.existant = compteur_existant_bdd(table_cpt, schema=schema_cpt,dep='87', type_poste=False)
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         #obtenir une cle de correspondace pour les comptages tournants et permanents
@@ -1877,7 +1877,7 @@ class Comptage_cd86(Comptage):
         """
         creer le dico de corresp des compt perm fouri en 2018 avec ceux existants
         """
-        self.existant = comptag_existant_bdd(table, schema='comptage',dep='86')
+        self.existant = compteur_existant_bdd(table, schema='comptage',dep='86')
         corresp=self.existant[['id_comptag','route','pr','abs']].merge(self.ouvrir_cpt_perm_xls(), left_on=['route','pr'], right_on=['route','PLOD'], how='right').sort_values('id_comptag')
         corresp['id_comptag']=corresp.apply(lambda x : x['id_comptag'] if not pd.isnull(x['id_comptag']) else f"86-{x['route']}-{x['pr_y']}+{x['absc']}", axis=1)
         #le dico de correspondance à inserer dans corresp_id_comptage
@@ -1969,8 +1969,8 @@ class Comptage_cd86(Comptage):
         self.df_attr['src']='tableur'
     
     
-    def classer_comptage_update_insert(self, table_cpt):
-        self.existant = comptag_existant_bdd(table_cpt, dep='86')
+    def classer_compteur_update_insert(self, table_cpt):
+        self.existant = compteur_existant_bdd(table_cpt, dep='86')
         self.corresp_nom_id_comptag(self.df_attr)
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
@@ -2058,13 +2058,13 @@ class Comptage_cd24(Comptage):
         self.df_attr_mens = pd.concat([donnees_mens_tour,donnees_mens_perm],axis=0).reset_index(drop=True)
         self.df_attr = donnees_finales[['id_comptag', 'tmja', 'pc_pl','route', 'pr', 'abs','src', 'geometry', 'type_poste', 'fichier', 'periode']].copy()
         
-    def classer_comptage_update_insert(self):
+    def classer_compteur_update_insert(self):
         """
         attention, on aurait pu ajouter un check des comptages deja existant et rechercher les correspondances comme dans le 87,
         mais les données PR de l'IGN sont trop pourries dans ce dept, dc corresp faite à la main en amont
         """
         corresp_nom_id_comptag(self.df_attr)
-        self.existant = comptag_existant_bdd(dep='24')
+        self.existant = compteur_existant_bdd(dep='24')
         self.df_attr_update = self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert = self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         """
@@ -2109,7 +2109,7 @@ class Comptage_cd33(Comptage):
         """
         gdfPerm=self.analysePerm()
         #on va récupérer les données existantes : 
-        self.existant = comptag_existant_bdd(table, schema='comptage',localisation=localisation,dep='33', gest='CD33')
+        self.existant = compteur_existant_bdd(table, schema='comptage',localisation=localisation,dep='33', gest='CD33')
         #et tenter une jointure sur les donnees 2018 :  tous y sont, donc c'est bon
         GdfPerm=gdfPerm[['troncon','route', f'tmja_{self.annee}', f'tmja_{self.annee-1}', f'pc_pl_{self.annee}', 'geometry',
                                   'fichier',f'src_{self.annee}','convention','type_poste']+[k for k in dico_mois.keys()]].merge(
@@ -2282,11 +2282,11 @@ class Comptage_vinci(Comptage):
         self.df_attr_mens['annee']=str(self.annee)
         self.df_attr_mens['fichier']=os.path.basename(self.fichier_perm)
         
-    def classer_comptage_update_insert(self, table_cpt):
+    def classer_compteur_update_insert(self, table_cpt):
         """
         uniquement pour verif, car normalemnet df_attr=df_atr_update et df_attr_insertest vide
         """
-        self.existant = comptag_existant_bdd(table_cpt)
+        self.existant = compteur_existant_bdd(table_cpt)
         self.df_attr_update=self.df_attr.loc[self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         self.df_attr_insert=self.df_attr.loc[~self.df_attr.id_comptag.isin(self.existant.id_comptag.tolist())].copy()
         
@@ -3876,7 +3876,7 @@ class Comptage_Dira(Comptage):
         """
         obtenir une df de correspndance entre l'id_comptag et les valeusr stockées dans obs_supl de la Bdd
         """
-        self.existant = comptag_existant_bdd(table_cpt, schema='comptage', dep=False, type_poste=False, gest='DIRA')
+        self.existant = compteur_existant_bdd(table_cpt, schema='comptage', dep=False, type_poste=False, gest='DIRA')
         return pd.concat([self.decomposeObsSupl(b, c, d) for b, c, d in zip(
             self.existant.obs_supl.tolist(), self.existant.id_comptag.tolist(), self.existant.id_cpt.tolist())], axis=0, sort=False)
     
@@ -4104,11 +4104,12 @@ class Comptage_Dira(Comptage):
                     print(fichier, f'ERREUR {e}')
             continue
         dfTousFichier = pd.concat(listDf, axis=0, sort=False)
-        dblATraiter = dfTousFichier.loc[dfTousFichier.duplicated(['id_comptag', 'jour','type_veh'], keep=False)]
+        dblSupprime = dfTousFichier.loc[dfTousFichier.duplicated(['id_comptag', 'jour','type_veh'], keep=False)]
+        dfTousFichier.drop_duplicates(['id_comptag', 'jour','type_veh'], inplace=True)
         idCptNonAffectes = self.dfCorrespExistant.loc[~self.dfCorrespExistant['id_comptag'].isin(
             dfTousFichier.id_comptag.tolist())].id_comptag.tolist()
         idCptNonAffectes.sort()
-        return dfTousFichier, idCptNonAffectes, dblATraiter
+        return dfTousFichier, idCptNonAffectes, dblSupprime
     
     def cptCartoOuvrir(self):
         """
@@ -4328,7 +4329,7 @@ class Comptage_Dirco(Comptage):
         dfFichierTmja['idFichier']=dfFichierTmja.apply(lambda x : nomIdFichier(x['route'],x['debStation'],x['finStation'],x['nomStation']), axis=1 )
         dfFichierTmja['id_comptag']=dfFichierTmja.apply(lambda x : f"{int(x['dept'])}-{x['route'].replace('RN','N')}-{x['pr']}+{x['absc']}",axis=1)
         self.corresp_nom_id_comptag(dfFichierTmja)
-        self.existant = comptag_existant_bdd('compteur',gest='DIRCO')
+        self.existant = compteur_existant_bdd('compteur',gest='DIRCO')
         return dfFichierTmja
     
     def ouvrirFichierHoraire(self, fichier) : 

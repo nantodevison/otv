@@ -14,7 +14,7 @@ import Connexion_Transfert as ct
 from Params.Bdd_OTV import (nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, tableEnumTypeVeh, 
                             tableCompteur, tableCorrespIdComptag,attrCompteurAssoc, attBddCompteur, attrComptageMano, attrIndicAgregeAssoc,
                             attrCompteurValeurMano, attrComptageAssoc, enumTypePoste, vueLastAnnKnow, attrIndicHoraireAssoc)
-from Import_export_comptage import (recupererIdUniqComptage, recupererIdUniqComptageAssoc, comptag_existant_bdd)
+from Import_export_comptage import (recupererIdUniqComptage, recupererIdUniqComptageAssoc, compteur_existant_bdd)
 from Params.Mensuel import dico_mois
 import geopandas as gp
 
@@ -36,12 +36,12 @@ def corresp_nom_id_comptag(df):
 
 def scinderComptagExistant(dfATester, annee, table=tableCompteur, schema=schemaComptage, dep=False, type_poste=False, gest=False):
     """
-    utiliser la fonction comptag_existant_bdd pour comparer une df avec les donnees de comptage dans la base
+    utiliser la fonction compteur_existant_bdd pour comparer une df avec les donnees de comptage dans la base
     si la table utilisée est compteur, on compare avec id_comptag, si c'est comptag on recherche les id null
     in: 
         dfTest : df avec un champs id_comptag
         annee : string 4 : des donnees de comptag
-        le reste des parametres de la fonction comptag_existant_bdd
+        le reste des parametres de la fonction compteur_existant_bdd
     out : 
         dfIdsConnus : dataframe testee dont les id_comptag sont dabs la bdd
         dfIdsInconnus : dataframe testee dont les id_comptag ne sont pas dabs la bdd
@@ -51,7 +51,7 @@ def scinderComptagExistant(dfATester, annee, table=tableCompteur, schema=schemaC
     O.checkAttributsinDf(dfTest, 'id_comptag')
     dfTest['annee'] = annee
     corresp_nom_id_comptag(dfTest)
-    existant = comptag_existant_bdd(table, schema, dep, type_poste, gest)
+    existant = compteur_existant_bdd(table, schema, dep, type_poste, gest)
     dfIdCptUniqs = recupererIdUniqComptage(dfTest)
     dfTest = dfTest.merge(dfIdCptUniqs, on=['id_comptag', 'annee'], how='left').rename(columns={'id':'id_comptag_uniq'})
     if table == tableCompteur :
@@ -63,7 +63,7 @@ def scinderComptagExistant(dfATester, annee, table=tableCompteur, schema=schemaC
     return dfIdsConnus, dfIdsInconnus
 
 
-def classer_comptage_update_insert(dfAClasser, departement):
+def classer_compteur_update_insert(dfAClasser, departement):
     """
     vérifier les comptages existants, et les correspondances, et séparer une df entre les compteurs déjà présents dans la base
     et ceux qui doivent être créés
@@ -75,7 +75,7 @@ def classer_comptage_update_insert(dfAClasser, departement):
         df_attr_insert : extraction de la données source : identifiant de comptages non presents dans la base
     """
     corresp_nom_id_comptag(dfAClasser)
-    existant = comptag_existant_bdd(dep=departement)
+    existant = compteur_existant_bdd(dep=departement)
     df_attr_update = dfAClasser.loc[dfAClasser.id_comptag.isin(existant.id_comptag.tolist())].copy().drop_duplicates()
     df_attr_insert = dfAClasser.loc[~dfAClasser.id_comptag.isin(existant.id_comptag.tolist())].copy().drop_duplicates()
     # ajout d'une vérif sur les longueurs resectives de donnees
