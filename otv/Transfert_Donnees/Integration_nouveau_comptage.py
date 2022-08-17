@@ -12,8 +12,9 @@ import Outils as O
 import pandas as pd
 import Connexion_Transfert as ct
 from Params.Bdd_OTV import (nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, tableEnumTypeVeh, 
-                            tableCompteur, tableCorrespIdComptag,attrCompteurAssoc, attBddCompteur, attrComptageMano, attrIndicAgregeAssoc,
-                            attrCompteurValeurMano, attrComptageAssoc, enumTypePoste, vueLastAnnKnow, attrIndicHoraireAssoc)
+                            tableCompteur, tableCorrespIdComptag,attrCompteurAssoc, attBddCompteur, attrComptageMano,
+                            attrCompteurValeurMano, attrComptageAssoc, enumTypePoste, vueLastAnnKnow, attrIndicHoraireAssoc,
+                            attrIndicHoraire)
 from Import_export_comptage import (recupererIdUniqComptage, recupererIdUniqComptageAssoc, compteur_existant_bdd)
 from Params.Mensuel import dico_mois
 import geopandas as gp
@@ -247,11 +248,14 @@ def structureBddOld2NewForm(dfAConvertir, listAttrFixe, listAttrIndics, typeIndi
         dfIndic = dfIndic[columns].rename(columns={'donnees_type':'indicateur'})
     elif typeIndic == 'horaire': 
         dfIndic = dfAConvertir.rename(columns={'type_veh':'indicateur'})
-    dfIndic = recupererIdUniqComptage(dfIndic).drop(['id_comptag', 'annee'], axis=1)
-    #si valeur vide on vire la ligne
+    dfIndic = recupererIdUniqComptage(dfIndic).drop(['id_comptag', 'annee'], axis=1, errors='ignore')
+    # si valeur vide on vire la ligne
     if typeIndic in ('agrege','mensuel'):
         dfIndic.dropna(subset=['valeur'], inplace=True)
-    if not dfIndic.loc[dfIndic.id_comptag_uniq.isna()].empty : 
+    # mise en forme des donnees horaires
+    if typeIndic == 'horaire':
+        dfIndic.drop([c for c in dfIndic.columns if c not in attrIndicHoraire], axis=1, errors='ignore', inplace=True)
+    if not dfIndic.loc[dfIndic.id_comptag_uniq.isna()].empty: 
         print(dfIndic.columns)
         raise ValueError(f"certains comptages ne peuvent etre associes a la table des comptages de la Bdd {dfIndic.loc[dfIndic.id_comptag_uniq.isna()].id_comptag_uniq.tolist()}")
     return dfIndic

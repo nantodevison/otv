@@ -10,6 +10,7 @@ module d'importation des donnees de trafics forunies par les gestionnaires
 import pandas as pd
 import re
 import Outils as O
+import warnings
 from Params.Mensuel import dico_mois
 from Params.Bdd_OTV import attrIndicHoraire
 from Params.DonneesGestionnaires import denominationSens
@@ -139,7 +140,7 @@ def concatIndicateurFichierHoraire(dfHoraireFichier, attributIndicateur='type_ve
     O.checkAttributsinDf(dfHoraireFichier, ['jour','id_comptag', 'fichier'] + attributsHoraire)
     O.checkAttributValues(dfHoraireFichier, attributIndicateur, 'TV', 'VL', 'PL')
     if dfHoraireFichier.empty:
-       raise ValueError('la df horaire est vide, verif a faire en amont') 
+        raise ValueError('la df horaire est vide, verif a faire en amont') 
     dicoAgg = {'h0_1': 'sum', 'h1_2': 'sum', 'h2_3': 'sum', 'h3_4': 'sum', 'h4_5': 'sum', 'h5_6': 'sum', 'h6_7': 'sum', 'h7_8': 'sum', 'h8_9': 'sum',
                    'h9_10':  'sum', 'h10_11': 'sum', 'h11_12': 'sum', 'h12_13': 'sum', 'h13_14': 'sum', 'h14_15': 'sum', 'h15_16': 'sum', 'h16_17': 'sum',
                    'h17_18': 'sum', 'h18_19': 'sum', 'h19_20': 'sum', 'h20_21': 'sum', 'h21_22': 'sum', 'h22_23': 'sum', 'h23_24': 'sum',
@@ -148,7 +149,7 @@ def concatIndicateurFichierHoraire(dfHoraireFichier, attributIndicateur='type_ve
         dfTv = dfHoraireFichier[['jour','id_comptag', 'fichier'] +
              attributsHoraire].groupby(['jour','id_comptag']).agg(dicoAgg).reset_index()
         dfTv[attributIndicateur] = 'TV'
-    elif 'TV' in dfHoraireFichier[attributIndicateur].unique() and 'VL' not in dfHoraireFichier[attributIndicateur].unique() : 
+    elif 'TV' in dfHoraireFichier[attributIndicateur].unique() and 'VL' not in dfHoraireFichier[attributIndicateur].unique(): 
         dfTv = dfHoraireFichier.loc[dfHoraireFichier[attributIndicateur] == 'TV'].groupby(['jour','id_comptag']
             ).agg(dicoAgg).assign(type_veh='TV').reset_index().rename(columns={'type_veh': attributIndicateur})
     else : 
@@ -272,7 +273,7 @@ class SensAssymetriqueError(Exception):
     """
     Exception levee si le fichier comport emoins de 7 jours
     """     
-    def __init__(self, dfCompInvalid,dfComp, id_comptag):
+    def __init__(self, dfCompInvalid, dfComp, id_comptag):
         self.dfCompInvalid=dfCompInvalid
         self.dfComp=dfComp
         Exception.__init__(self,f'les 2 sens de section courante {id_comptag} ont des tafics non correles, ou il n\'y a qu\'un seul sens au lieu de 2')  
