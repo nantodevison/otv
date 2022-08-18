@@ -68,6 +68,7 @@ def classer_compteur_update_insert(dfAClasser, departement=False, gest=False):
         df_attr_update : extraction de la données source : identifiant de comptages deja presents dans la base
         df_attr_insert : extraction de la données source : identifiant de comptages non presents dans la base
     """
+    O.checkAttributsinDf(dfAClasser, 'id_comptag')
     dfAClasser = corresp_nom_id_comptag(dfAClasser)
     existant = compteur_existant_bdd(dep=departement, gest=gest)
     df_attr_update = dfAClasser.loc[dfAClasser.id_comptag.isin(existant.id_comptag.tolist())].copy().drop_duplicates()

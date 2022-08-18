@@ -25,14 +25,15 @@ from Donnees_horaires import (comparer2Sens,verifValiditeFichier, concatIndicate
                               verifNbJoursValidDispo, tmjaDepuisHoraire, periodeDepuisHoraire, attributsHoraire, 
                               mensuelDepuisHoraire)
 from Donnees_sources import FIM, MHCorbin, DataSensError, PasAssezMesureError
-from Integration_nouveau_comptage import (corresp_nom_id_comptag, scinderComptagExistant)
-from Import_export_comptage import (compteur_existant_bdd)
+from Integration_nouveau_comptage import (corresp_nom_id_comptag, scinderComptagExistant, creer_comptage, structureBddOld2NewForm)
+from Import_export_comptage import (compteur_existant_bdd, insererSchemaComptage)
 import Outils as O
 from Params.Mensuel import dico_mois, renommerMois
 from Params.Bdd_OTV import (attBddCompteur, nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, 
                             tableIndicAgrege, tableIndicHoraire, attrComptage)   
 from Params.DonneesGestionnaires import (cd16_columnsFichierPtPigma, cd16_columnsFichierLgnPigma, cd16_dicoCorrespTypePoste, cd16_dicoCorrespTechno,
-                                         cd16_dicoCorrespNomColums, cd16_columnsASuppr, cd16_attrIndicAgregePigma, denominationSens)
+                                         cd16_dicoCorrespNomColums, cd16_columnsASuppr, cd16_attrIndicAgregePigma, denominationSens,
+                                         cd79_dicoCorrespMaterielTechno)
 from Params.DonneesVitesse import valeursVmaAdmises, correspVmaVlVmaPl  
               
               
@@ -2202,6 +2203,55 @@ class Comptage_cd33(Comptage):
         dico_attr_modif={f'tmja_{self.annee}':f'tmja_{self.annee}', f'pc_pl_{self.annee}':f'pc_pl_{self.annee}',f'src_{self.annee}':f'src_{self.annee}', 
                          'fichier':'fichier'}
         self.update_bdd(schema, table, valeurs_txt,dico_attr_modif)
+ 
+  
+class Comptage_cd79(Comptage):
+    """
+    données issues d'un fichier SIG et concernant des comptages tournants
+    attributs : 
+        fichier : raw string du nom complet du fichier source
+        annee : sur 4 caractère : année de référence des comptages
+    """
+    
+    
+    def __init__(self, fichier, annee):
+        self.fichier = fichier
+        self.annee = annee
+        self.df_attr = self.ouvertureMiseEnForme()
+    
+    def ouvertureMiseEnForme(self):
+        """
+        ouvrir et mettre en forme les données SIG
+        """
+        gdfBrute = gp.read_file(self.fichier)
+        gdfAnnee = gdfBrute.loc[gdfBrute.Annee_der_ == self.annee].copy()
+        gdfAnnee['pc_pl'] = gdfAnnee.PL / gdfAnnee.TMJA *100
+        gdfAnnee['id_comptag'] = gdfAnnee.apply(lambda x: f"79-{x.Axe}-{x.PR_dernie_.split('.')[0]}+{int(x.PR_dernie_.split('.')[1])}",
+                                                axis=1)
+        gdfAnnee['date_deb'] = gdfAnnee.Semaine.apply(lambda x: dt.datetime.strptime(f"2021-W{int(x)}-1", '%G-W%V-%u'
+                                                                                     ).strftime('%Y/%m/%d'))
+        gdfAnnee['date_fin'] = gdfAnnee.Semaine.apply(lambda x: dt.datetime.strptime(f"2021-W{int(x)}-7", '%G-W%V-%u'
+                                                                                     ).strftime('%Y/%m/%d'))
+        gdfAnnee['periode'] = gdfAnnee.date_deb + '-' + gdfAnnee.date_fin
+        gdfAnnee['fichier'] = os.path.basename(self.fichier)
+        gdfAnnee.Type_mate_.replace(cd79_dicoCorrespMaterielTechno, inplace=True)
+        gdfAnnee.rename(columns={'TMJA': 'tmja', 'Type_mate_': 'techno'}, inplace=True)
+        return gdfAnnee
+    
+    
+    def miseAJourTechno(self, dfSource):
+        """
+        Mettre a jour la table des compteur Bdd, attribut techno, avec les valeurs aclcul lors de l'ouvereture
+        in : 
+            dfSource : la df qui contient les données. Normalement c'est self.df_attr
+        """
+        # mettre à jour la techno
+        with ct.ConnexionBdd() as c:
+            dfSource.drop('geometry', axis=1).to_sql(f'cd79_{self.annee}_temp', c.sqlAlchemyConn, schema='public')
+            rqtMaJTechno = f"update comptage.compteur ce set techno = cd.techno from public.cd79_{self.annee}_temp cd where cd.id_comptag = ce.id_comptag"
+            c.curs.execute(rqtMaJTechno)
+            c.connexionPsy.commit()
+        
     
 class Comptage_vinci(Comptage):
     """
@@ -2379,25 +2429,26 @@ class Comptage_Cofiroute(Comptage):
     def ouvrirMiseEnForme(self):
         dfFichier = pd.read_excel(self.fichier)
         # params mensuel et correction pc_pl
-        colTmjaMens=[f'TMJM {str(i).zfill(2)}' for i in range (1,13)]
-        colPcplMens=[f'Pc PL {str(i).zfill(2)}' for i in range (1,13)]
-        for c in colPcplMens :
-            dfFichier[c]=dfFichier[c]*100
-        dfFichier[f'Pc PL {self.annee}']=dfFichier[f'Pc PL {self.annee}']*100
+        colTmjaMens = [f'TMJM {str(i).zfill(2)}' for i in range (1,13)]
+        colPcplMens = [f'Pc PL {str(i).zfill(2)}' for i in range (1,13)]
+        for c in colPcplMens:
+            dfFichier[c] = dfFichier[c]*100
+        dfFichier[f'Pc PL {self.annee}'] = dfFichier[f'Pc PL {self.annee}'] * 100
         return dfFichier, colTmjaMens, colPcplMens
     
     def insererDonneesComptageBdd(self, inserer=False):
-        dfComptage = self.creer_comptage(self.dfFichier.id_comptag, '2020', 'tableau excel', 'tv/pl')
-        if inserer : 
-            self.insererComptage(dfComptage)
+        dfComptage = creer_comptage(self.dfFichier.id_comptag, self.annee, 'tableau excel', 'tv/pl')
+        if inserer: 
+            insererSchemaComptage(dfComptage, 'comptage')
         return dfComptage
     
     def insererDonneesAgregeBdd(self, inserer=False):
-        dfAgrege=self.structureBddOld2NewForm(self.dfFichier[['id_comptag', f'TMJA {self.annee}', f'Pc PL {self.annee}']].rename(
-            columns={f'TMJA {self.annee}': 'tmja', f'Pc PL {self.annee}': 'pc_pl'}).assign(fichier=os.path.basename(self.fichier), annee=self.annee),
-                            '2020', ['id_comptag', 'fichier', 'annee'], ['tmja', 'pc_pl'], 'agrege')
+        dfAgrege = structureBddOld2NewForm(self.dfFichier.rename(
+            columns={f'TMJA {self.annee}': 'tmja', f'Pc PL {self.annee}': 'pc_pl','Vitesse moyenne annuelle (km/h)': 'vmoy'
+                     }).assign(fichier=os.path.basename(self.fichier), annee=self.annee), 
+            ['id_comptag', 'fichier', 'annee'], ['tmja', 'pc_pl', 'vmoy'], 'agrege')
         if inserer : 
-            self.insererAgrege(dfAgrege)
+            insererSchemaComptage(dfAgrege, 'indicAgrege')
         return dfAgrege
     
     def insererDonneesMensuelleBdd(self, inserer=False):
@@ -2408,9 +2459,11 @@ class Comptage_Cofiroute(Comptage):
         tmjm_pl_mens = tmjm_pl_mens.rename(columns={c: k for c in tmjm_pl_mens.columns if c != 'id_comptag' 
                                                     for k, v in dico_mois.items()  if str(v[0]).zfill(2) == c.split(' ')[-1]}).assign(donnees_type='pc_pl')
         donnees_mens_final = pd.concat([tmjm_tv_mens,tmjm_pl_mens]).sort_values('id_comptag').assign(annee=self.annee, fichier=os.path.basename(self.fichier))
-        dfMensuel = self.structureBddOld2NewForm(donnees_mens_final, '2020', ['id_comptag', 'annee', 'donnees_type', 'fichier'], list(dico_mois.keys()), 'mensuel')
+        dfMensuel = structureBddOld2NewForm(
+            donnees_mens_final, ['id_comptag', 'annee', 'donnees_type', 'fichier'],
+            list(dico_mois.keys()), 'mensuel')
         if inserer : 
-            self.insererAgrege(dfMensuel)
+            insererSchemaComptage(dfMensuel, 'indicMensuel')
         return dfMensuel
         
         
@@ -3950,8 +4003,8 @@ class Comptage_Dira(Comptage):
                 raise self.BoucleNonConnueError(idDira)
             else : 
                 flagVoie = True
-        colonnes = ['jour','type_veh']+['h'+c[:-1].replace('-','_') for c in fichier[feuille].iloc[4,:].values if c[-1]=='h']
-        df_horaire = fichier[feuille].iloc[5:fichier[feuille].loc[fichier[feuille].iloc[:,0] == 'Moyenne Jours'].index.values[0]-1,:26]
+        colonnes = ['jour','type_veh'] + ['h'+c[:-1].replace('-','_') for c in fichier[feuille].iloc[4,:].values if c[-1] == 'h']
+        df_horaire = fichier[feuille].iloc[5:fichier[feuille].loc[fichier[feuille].iloc[:,0] == 'Moyenne Jours'].index.values[0]-1, :26]
         df_horaire.columns = colonnes
         df_horaire.jour.fillna(method='pad', inplace=True)
         if flagVoie:
@@ -4051,7 +4104,7 @@ class Comptage_Dira(Comptage):
                     lambda x : (x['jour'],x['id_comptag']) not in zip(
                         e.dfCompInvalid.jour.tolist(), e.dfCompInvalid.id_comptag.tolist()), axis=1)].copy()
             
-        dfHoraireFichierFiltre = verifNbJoursValidDispo(dfHoraireFichierFiltre,nbJoursValideMin)[0]#tri sur id_comptag avec moins de 15 jours de donnees
+        dfHoraireFichierFiltre = verifNbJoursValidDispo(dfHoraireFichierFiltre, nbJoursValideMin)[0]#tri sur id_comptag avec moins de 15 jours de donnees
         return dfHoraireFichierFiltre.assign(fichier=nomFichier)
     
     

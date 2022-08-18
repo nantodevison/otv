@@ -15,6 +15,7 @@ attBddCompteurNonNull = ['id_comptag', 'reseau', 'dep', 'gestionnai','concession
 attrComptage = ['id_comptag', 'annee', 'periode', 'src', 'obs', 'type_veh']
 attrComptageNonNull = ['id_comptag', 'annee', 'type_veh']
 attrComptageMano = ['id_comptag', 'src', 'periode']
+attrIndicAgrege = ['id_comptag_uniq', 'fichier', 'valeur', 'indicateur']
 attrCompteurValeurMano = ['id_comptag', 'type_poste', 'src_geo', 'periode', 'pr', 'abs', 'route', 'src_cpt', 'convention', 'sens_cpt']
 attrComptageAssoc = ['id_cptag_ref', 'rang', 'periode', 'type_veh', 'src', 'obs', 'id_cpteur_asso']
 attrCompteurAssoc = ['id_cpteur_asso', 'geom', 'route', 'pr', 'abs', 'type_poste', 'techno', 'src_geo', 

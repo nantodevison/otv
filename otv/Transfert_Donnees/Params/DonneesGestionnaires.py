@@ -27,3 +27,9 @@ cd16_dicoCorrespNomColums = {'AXE': 'route', 'PRC': 'pr', 'ABC': 'abs', 'TMJA': 
                         'MJEPPL': 'pc_pl_e', 'MJHE': 'tmjhe', 'MJHEPPL': 'pc_pl_he', 'VMOY': 'vmoy', 'V85': 'v85'}
 cd16_columnsASuppr = ['PLOD', 'ABSD', 'PERIODE_DE', 'PERIODE_FI']
 cd16_attrIndicAgregePigma = ['tmja', 'tmje', 'tmjhe', 'pc_pl', 'pc_pl_e', 'pc_pl_he', 'vmoy', 'vma_vl', 'vma_pl', 'v85']
+
+#########
+# CD79
+#########
+cd79_dicoCorrespMaterielTechno = {'Cigale': 'tube', 'Phoenix': 'boucle_electromagnetique', 'Tubes': 'tube', 'Plaques': 'plaquette',
+             'Major': 'boucle_electromagnetique'}
