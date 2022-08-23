@@ -25,8 +25,7 @@ from Donnees_horaires import (comparer2Sens,verifValiditeFichier, concatIndicate
                               verifNbJoursValidDispo, tmjaDepuisHoraire, periodeDepuisHoraire, attributsHoraire, 
                               mensuelDepuisHoraire)
 from Donnees_sources import FIM, MHCorbin, DataSensError, PasAssezMesureError
-from Integration_nouveau_comptage import (corresp_nom_id_comptag, scinderComptagExistant, creer_comptage, structureBddOld2NewForm,
-                                          geomFromIdComptagCommunal)
+from Integration_nouveau_comptage import (corresp_nom_id_comptag, scinderComptagExistant, creer_comptage, structureBddOld2NewForm)
 from Import_export_comptage import (compteur_existant_bdd, insererSchemaComptage)
 import Outils as O
 from Params.Mensuel import dico_mois, renommerMois
@@ -34,10 +33,7 @@ from Params.Bdd_OTV import (attBddCompteur, nomConnBddOtv, schemaComptage, schem
                             tableIndicAgrege, tableIndicHoraire, attrComptage)   
 from Params.DonneesGestionnaires import (cd16_columnsFichierPtPigma, cd16_columnsFichierLgnPigma, cd16_dicoCorrespTypePoste, cd16_dicoCorrespTechno,
                                          cd16_dicoCorrespNomColums, cd16_columnsASuppr, cd16_attrIndicAgregePigma, denominationSens,
-                                         cd79_dicoCorrespMaterielTechno, niort_formatFichierAccepte, niort_vmoyHoraireVlStartCpev,
-                                         niort_vmoyHoraireVlPasCpev, niort_vmoyHorairePlPasCpev, niort_nbJoursHoraireCpev, niort_ligneDebutDebitHoraireTv,
-                                         niort_ligneDebutDebitHorairePl, niort_colonneDebutDebitHoraire, niort_colonneFinDebitHoraire, niort_colonneVmoyHoraire,
-                                         niort_colonneVmoyHoraireJour)
+                                         cd79_dicoCorrespMaterielTechno)
 from Params.DonneesVitesse import valeursVmaAdmises, correspVmaVlVmaPl  
               
               
@@ -2585,261 +2581,167 @@ class Comptage_Niort(Comptage):
         self.dossier=dossier
         self.annee=annee
         
-    def creer_dico(self, dico_id_comptag, dicoFormat):
+    def creer_dico(self, dico_id_comptag):
         """
         creeru dico avec en cle les id_comptag et en value les fchiers concernes
-        in:
-            dico_id_comptag : dico de correspondance entre les dossier fournis par la ville de Niort et les id_comptag
-            dicoFormat : dico de description des types et format de données dans chaque dossier fournis par la ville de Niort.
-                         format du dico : {dossier: {'type': 'agrege' ou 'horaire', 'format': 'csv' ou 'xls' ou 'mdb'},}
+        dico_id_comptag : dico de correspondance entre les dossier fournis par la ville de Niort et les id_comptag
         """
-        dico_fichier = {}
-        for v in dicoFormat.values():
-            if v['format'] not in niort_formatFichierAccepte:
-                raise FormatError(f"le format {v['format']} n'est pas pris en charge dans le code")
-        for chemin, dossier, files in os.walk(self.dossier):
-            for d in dossier:
-                if d not in dicoFormat:
-                    warnings.warn(f"le dossier {d} n'est pas présent dans le dico des format. A ajouter avant nouvelle itération")
-                else:
-                    dico_fichier[d] = [chemin+os.sep+d+os.sep+f for f in O.ListerFichierDossier(
-                        os.path.join(chemin, d), dicoFormat[d]['format'])]
-                
-            #pour les dossier cotenat plus de 2 fichiers csv (i.e plus de 1 pt de comptage), erreur levee et correction mano
+        dico_fichier={}
+        for chemin, dossier, files in os.walk(self.dossier) : 
+            for d in dossier : 
+                dico_fichier[d]=[chemin+os.sep+d+os.sep+f for f in O.ListerFichierDossier(os.path.join(chemin,d),'csv')]
+        #pour les dossier cotenat plus de 2 fichiers csv (i.e plus de 1 pt de comptage
         dico_fichier_separe={}
-        for k, v in dico_fichier.items():
-            if len(v)>2:
-                raise NotImplementedError(f"""le dossier {k} contient plus de 2 comptages. 
-                    a separer dans deux dossiers differents. 
-                    mettre les id_comptag en cohérence avec les nouveaux nom de dossier""")
-            else:
-                dico_fichier_separe[k] = v  
-        dico_fichiers_final = {}
-        for k, v in dico_fichier_separe.items():
-            for c, val in dico_id_comptag.items():
-                if k == val['dossier']:
-                    dico_fichiers_final[c] = v
+        for k, v in dico_fichier.items() : 
+            if len(v)>2 : 
+                dico_fichier_separe[k+'_1']=[a for a in v if '1.csv' in a or '2.csv' in a]
+                dico_fichier_separe[k+'_2']=[a for a in v if '3.csv' in a or '4.csv' in a]
+            else :
+                dico_fichier_separe[k]=v
+                
+        dico_fichiers_final={}
+        for k, v in dico_fichier_separe.items() : 
+            for c,val in dico_id_comptag.items() : 
+                if k==val :
+                    dico_fichiers_final[c]=v
+        
         return dico_fichiers_final
     
     def formater_fichier_csv(self, fichier):
         """
         à partir des fichiers csv, obtenir une df avec modification de la date si le fichier comporte uniquement 8 jours, i.e : 6 jours plein et 2 demi journée
         """    
-        df_fichier = pd.read_csv(fichier)
-        df_fichier.DateTime = pd.to_datetime(df_fichier.DateTime)
-        nb_jours_mesure = len(df_fichier.set_index('DateTime').resample('D'))
-        jourMin = df_fichier.DateTime.apply(lambda x: x.dayofyear).min()
-        jourMax = df_fichier.DateTime.apply(lambda x: x.dayofyear).max()
-        if nb_jours_mesure == 8: #si le nombre total de jours est inférieur à 9, il faudra regrouper les jours de début et de fin pour avoir une journée complete, ou alors c'est qu'une erreur a ete commise lors de la mesure de trafic (duree < 7 jours)
-            df_fichier.loc[df_fichier.DateTime.apply(
-                lambda x: x.dayofyear == jourMin), 'DateTime'] = df_fichier.loc[df_fichier.DateTime.apply(
-                    lambda x: x.dayofyear == jourMin)].DateTime.apply(lambda x: x + pd.Timedelta('7D'))
-        elif nb_jours_mesure > 8: 
-            df_fichier = df_fichier.loc[df_fichier.DateTime.apply(lambda x: (x.dayofyear != jourMin) & (x.dayofyear != jourMax))].copy()
-        elif nb_jours_mesure == 7: 
-            df_fichier.loc[df_fichier.DateTime.apply(lambda x : x.dayofyear == jourMin), 'DateTime'
-                           ] = df_fichier.loc[df_fichier.DateTime.apply(lambda x: x.dayofyear==jourMin)].DateTime.apply(
-                               lambda x: x + pd.Timedelta('6D'))
+        df_fichier=pd.read_csv(fichier)
+        df_fichier.DateTime=pd.to_datetime(df_fichier.DateTime)
+        nb_jours_mesure=len(df_fichier.set_index('DateTime').resample('D'))
+        jourMin=df_fichier.DateTime.apply(lambda x : x.dayofyear).min()
+        jourMax=df_fichier.DateTime.apply(lambda x : x.dayofyear).max()
+        if nb_jours_mesure==8 : #si le nombre total de jours est inférieur à 9, il faudra regrouper les jours de début et de fin pour avoir une journée complete, ou alors c'est qu'une erreur a ete commise lors de la mesure de trafic (duree < 7 jours)
+            df_fichier.loc[df_fichier.DateTime.apply(lambda x : x.dayofyear==jourMin), 'DateTime']=df_fichier.loc[df_fichier.DateTime.apply(lambda x : x.dayofyear==jourMin)].DateTime.apply(lambda x : x+pd.Timedelta('7D'))
+        elif nb_jours_mesure>8 : 
+            df_fichier=df_fichier.loc[df_fichier.DateTime.apply(lambda x : (x.dayofyear!=jourMin) & (x.dayofyear!=jourMax))].copy()
+        elif nb_jours_mesure==7: 
+            df_fichier.loc[df_fichier.DateTime.apply(lambda x : x.dayofyear==jourMin), 'DateTime']=df_fichier.loc[df_fichier.DateTime.apply(lambda x : x.dayofyear==jourMin)].DateTime.apply(lambda x : x+pd.Timedelta('6D'))
         else : 
-            warnings.warn(f"attention, moins de 7 jours dans le fichier {fichier}")
+            print(f'pas assez de jour de mesure sur {fichier}')
+            raise PasAssezMesureError(nb_jours_mesure)
         return df_fichier
              
     def csv_identifier_type_veh(self,df_brute):
         """
         separer les vl des pl à partir de la df de données brutes creer avec formater_fichier_csv
         """        
-        vl = df_brute.loc[(df_brute['Length']<7.2) & (df_brute['AdviceCode']!=128)].copy()
-        pl = df_brute.loc[(df_brute['Length']>=7.2) & (df_brute['Length']<22) & (df_brute['AdviceCode']!=128) ].copy()
+        vl=df_brute.loc[(df_brute['Length']<7.2) & (df_brute['AdviceCode']!=128)].copy()
+        pl=df_brute.loc[(df_brute['Length']>=7.2) & (df_brute['Length']<22) & (df_brute['AdviceCode']!=128) ].copy()
         return vl,pl
     
     def csv_agrege_donnees_brutes(self,vl,pl):
         """
         prendre les donnees issues de identifier_type_veh et les regrouper par heure et jour
         """
-        vl_agrege_h = vl.set_index('DateTime').resample('H').AdviceCode.count().reset_index().rename(columns={'AdviceCode':'nb_veh'})
-        vl_agrege_j = vl.set_index('DateTime').resample('D').AdviceCode.count().reset_index().rename(columns={'AdviceCode':'nb_veh'})
-        pl_agrege_h = pl.set_index('DateTime').resample('H').AdviceCode.count().reset_index().rename(columns={'AdviceCode':'nb_veh'})
-        pl_agrege_j = pl.set_index('DateTime').resample('D').AdviceCode.count().reset_index().rename(columns={'AdviceCode':'nb_veh'})
-        return vl_agrege_h, vl_agrege_j, pl_agrege_h, pl_agrege_j
+        vl_agrege_h=vl.set_index('DateTime').resample('H').AdviceCode.count().reset_index().rename(columns={'AdviceCode':'nb_veh'})
+        vl_agrege_j=vl.set_index('DateTime').resample('D').AdviceCode.count().reset_index().rename(columns={'AdviceCode':'nb_veh'})
+        pl_agrege_h=pl.set_index('DateTime').resample('H').AdviceCode.count().reset_index().rename(columns={'AdviceCode':'nb_veh'})
+        pl_agrege_j=pl.set_index('DateTime').resample('D').AdviceCode.count().reset_index().rename(columns={'AdviceCode':'nb_veh'})
+        return vl_agrege_h,vl_agrege_j, pl_agrege_h, pl_agrege_j
     
-    def csv_indicateurs_agrege(self, vl_agrege_j, pl_agrege_j ):
+    def csv_indicateurs_agrege(self,vl_agrege_j,pl_agrege_j ):
         """
         calcul des indicateurs tmja et nb_pl
         """
-        nb_vl = round(vl_agrege_j.mean(numeric_only=True).values[0])
-        nb_pl = round(pl_agrege_j.mean(numeric_only=True).values[0])
-        tmja = nb_vl + nb_pl
-        pc_pl = round(nb_pl * 100  /tmja, 2)
-        tmjo = round(vl_agrege_j.loc[vl_agrege_j.DateTime.dt.dayofweek.isin(range(5))].nb_veh.mean()
-                      + pl_agrege_j.loc[pl_agrege_j.DateTime.dt.dayofweek.isin(range(5))].nb_veh.mean())
-        nb_pl_o = pl_agrege_j.loc[pl_agrege_j.DateTime.dt.dayofweek.isin(range(5))].nb_veh.mean()
-        pc_pl_o = nb_pl_o / tmjo * 100
-        
-        return nb_vl, nb_pl, tmja, pc_pl, tmjo, pc_pl_o, nb_pl_o
+        nb_vl=round(vl_agrege_j.mean().values[0])
+        nb_pl=round(pl_agrege_j.mean().values[0])
+        tmja=nb_vl+nb_pl
+        pc_pl=round(nb_pl*100/tmja,2)
+        return nb_vl, nb_pl, tmja, pc_pl
     
-    def csv_donnees_horaires(self, vl_agrege_h, pl_agrege_h):
+    def csv_donnees_horaires(self,vl_agrege_h,pl_agrege_h):
         """
         renvoyer la df des donnees horaires en tv et pl
         """
-        vl_agrege_h['jour'] = vl_agrege_h['DateTime'].apply(lambda x: pd.to_datetime(x.strftime('%Y-%m-%d')))
-        vl_agrege_h['heure'] = vl_agrege_h['DateTime'].apply(lambda x: f"h{x.hour}_{x.hour+1 if x.hour != 24 else 24}")
-        pl_agrege_h['jour'] = pl_agrege_h['DateTime'].apply(lambda x: pd.to_datetime(x.strftime('%Y-%m-%d')))
-        pl_agrege_h['heure'] = pl_agrege_h['DateTime'].apply(lambda x: f'h{x.hour}_{x.hour+1 if x.hour != 24 else 24}')
+        vl_agrege_h['jour']=vl_agrege_h['DateTime'].apply(lambda x : pd.to_datetime(x.strftime('%Y-%m-%d')))
+        vl_agrege_h['heure']=vl_agrege_h['DateTime'].apply(lambda x : f'h{x.hour}_{x.hour+1 if x.hour!=24 else 24}')
+        pl_agrege_h['jour']=pl_agrege_h['DateTime'].apply(lambda x : pd.to_datetime(x.strftime('%Y-%m-%d')))
+        pl_agrege_h['heure']=pl_agrege_h['DateTime'].apply(lambda x : f'h{x.hour}_{x.hour+1 if x.hour!=24 else 24}')
         
-        pl_agrege_h = pl_agrege_h[['jour', 'heure', 'nb_veh']].pivot(index='jour', columns='heure', values='nb_veh')
-        calcul_agreg_h = pd.concat([vl_agrege_h[['jour', 'heure', 'nb_veh']].pivot(index='jour',columns='heure', values='nb_veh'),
+        pl_agrege_h=pl_agrege_h[['jour', 'heure', 'nb_veh']].pivot(index='jour',columns='heure', values='nb_veh')
+        calcul_agreg_h=pd.concat([vl_agrege_h[['jour', 'heure', 'nb_veh']].pivot(index='jour',columns='heure', values='nb_veh'),
                   pl_agrege_h], axis=0, sort=False)
-        tv_agrege_h = calcul_agreg_h.groupby('jour').sum()
-        tv_agrege_h['type_veh'] = 'TV'
-        pl_agrege_h['type_veh'] = 'PL'
-        donnees_horaires = pd.concat([tv_agrege_h,pl_agrege_h], axis=0, sort=False).fillna(0).reset_index()
+        tv_agrege_h=calcul_agreg_h.groupby('jour').sum()
+        tv_agrege_h['type_veh']='TV'
+        pl_agrege_h['type_veh']='PL'
+        donnees_horaires=pd.concat([tv_agrege_h,pl_agrege_h], axis=0, sort=False).fillna(0).reset_index()
         return donnees_horaires
-    
-    def csv_indic_agreg_2sens(self, id_comptag, fichiers):
-        """
-        calculer les indicateurs agreges pour un fichier de type csv horaire
-        """
-        list_resultat=[]
-        for f in fichiers : 
-            try :
-                list_resultat.append(self.traiter_csv_sens_unique(f))
-            except PasAssezMesureError :
-                return pd.DataFrame([])
-        tmja, nb_pl, tmjo, nb_pl_o, dateMin, dateMax = ([list_resultat[i][2] for i in range(len(fichiers))],
-                                                        [list_resultat[i][1] for i in range(len(fichiers))],
-                                                        [list_resultat[i][4] for i in range(len(fichiers))],
-                                                        [list_resultat[i][6] for i in range(len(fichiers))],
-                                                        [list_resultat[i][8] for i in range(len(fichiers))],
-                                                        [list_resultat[i][9] for i in range(len(fichiers))])
-        tmja = sum(tmja)
-        tmjo = sum(tmjo)
-        pc_pl = round(sum(nb_pl) / tmja * 100, 2)
-        pc_pl_o = round(sum(nb_pl_o) / tmjo * 100, 2)
-        periode = f"{min(dateMin).strftime('%Y/%m/%d')}-{max(dateMax).strftime('%Y/%m/%d')}"
-        return gp.GeoDataFrame({'id_comptag':[id_comptag,],'tmja':[tmja,],'pc_pl':pc_pl,
-                                       'tmjo': tmjo, 'pc_pl_o': pc_pl_o, 'geometry': geomFromIdComptagCommunal(id_comptag),
-                                       'fichier': ', '.join([os.path.basename(f) for f in fichiers]),
-                                       'periode': periode})
     
     def traiter_csv_sens_unique(self, fichier):
         """
         concatenation des ofnctions permettant d'aboutir aux donnees agrege et horaire d'un fichier csv de comptage pour un sens
         """
-        f = self.formater_fichier_csv(fichier)
-        vl, pl = self.csv_identifier_type_veh(f)
-        vl_agrege_h, vl_agrege_j, pl_agrege_h, pl_agrege_j = self.csv_agrege_donnees_brutes(vl, pl)
-        nb_vl, nb_pl, tmja, pc_pl, tmjo, pc_pl_o, nb_pl_o = self.csv_indicateurs_agrege(vl_agrege_j, pl_agrege_j)
-        donnees_horaires = self.csv_donnees_horaires(vl_agrege_h, pl_agrege_h)
-        donnees_horaires['fichier'] = os.path.basename(fichier)
-        dateMin = min(pl_agrege_j.DateTime.min(), vl_agrege_j.DateTime.min())
-        dateMax = max(pl_agrege_j.DateTime.max(), vl_agrege_j.DateTime.max())
-        return nb_vl, nb_pl, tmja, pc_pl, tmjo, pc_pl_o, nb_pl_o, donnees_horaires, dateMin, dateMax
+        f=self.formater_fichier_csv(fichier)
+        vl,pl=self.csv_identifier_type_veh(f)
+        vl_agrege_h,vl_agrege_j, pl_agrege_h, pl_agrege_j=self.csv_agrege_donnees_brutes(vl,pl)
+        nb_vl, nb_pl, tmja, pc_pl=self.csv_indicateurs_agrege(vl_agrege_j,pl_agrege_j)
+        donnees_horaires=self.csv_donnees_horaires(vl_agrege_h,pl_agrege_h)
+        return nb_vl, nb_pl, tmja, pc_pl, donnees_horaires
     
-    
-    def xlsCpevAgrege(self, fichier, id_comptag):
-        """
-        à partir du nom de fichier, récupérer les infos des tables compteurs, comptage et indic_agrege de la BDD
-        in :
-            fichier : raw string du nom complet du fichier
-            id_comptag : id_comptage associé
-        out : 
-            gdfAgrege : Geodataframe d'une seule ligne
-        """
-        dfBrute = pd.read_excel(fichier)
-        geom = geomFromIdComptagCommunal(id_comptag)
-        periode = '-'.join([pd.to_datetime(e, dayfirst=True).strftime('%Y/%m/%d') for e in re.findall('[0-9]{1,2}/[0-1][0-9]/20[0-2][0-9]', dfBrute.iloc[1, 16])])
-        vma = int(re.search('([0-9]{2})( km/h)', dfBrute.iloc[6, 0]).group(1))
-        tmjo = round(dfBrute.iloc[7, 12])
-        pc_pl_o = round(dfBrute.iloc[9, 14]*100, 2)
-        tmja = round(dfBrute.iloc[10, 12])
-        pc_pl = round(dfBrute.iloc[12, 14]*100, 2)
-        vmoy = round(dfBrute.iloc[10, 16], 2)
-        v85 = round(dfBrute.iloc[10, 19], 2)
-        gdfAgrege = gp.GeoDataFrame({'periode': periode, 'vma': vma, 'vmoy': vmoy, 'v85': v85, 'tmjo': tmjo, 'pc_pl_o': pc_pl_o, 'tmja': tmja, 'pc_pl': pc_pl,
-                                     'geometry': geom, 'id_comptag': id_comptag, 'fichier': os.path.basename(fichier)},
-                                     crs='EPSG:2154', index=[0])
-        return gdfAgrege
-
-    
-    def horaire_2_sens(self, id_comptag, list_df_sens):
+    def horaire_2_sens(self, id_comptag,list_df_sens):
         """
         creer une df des donnes horaires pour les 2 sens d'un id_comptage
         """
 
-        df_finale = pd.concat(list_df_sens, axis=0, sort=False) 
-        comparer2Sens(df_finale.assign(id_comptag=id_comptag), attributSens='sens', attributIndicateur='type_veh',
-                      facteurComp=10000, TauxErreur=0.00001)
-        df_finale = df_finale.groupby(['jour', 'type_veh']).sum().reset_index()
-        df_finale['id_comptag'] = id_comptag
+        df_finale=pd.concat(list_df_sens, axis=0, sort=False) 
+        df_finale=df_finale.groupby(['jour','type_veh']).sum().reset_index()
+        df_finale['id_comptag']=id_comptag
         return df_finale
     
-    def horaire_tout_cpt(self, dico_fichiers_final, dicoFormat):
+    def horaire_tout_cpt(self,dico_fichiers_final):
         """
         creation de la df horaire pour tout les cpt
         in :
             dico_fichiers_final : dico d'association de l'id_comptag et de sfichiers creer par creer_dico
-            dicoFormat : dico de description des types et format de données dans chaque dossier fournis par la ville de Niort.
-                         format du dico : {dossier: {'type': 'agrege' ou 'horaire', 'format': 'csv' ou 'xls' ou 'mdb'},}
         """
-        list_dfs, list_2sens = [], []
-        for k, v in dico_fichiers_final.items(): 
-            for i, f in enumerate(v, 1): 
-                if dicoFormat[k]['type'] == 'horaire' and dicoFormat[k]['format'] == 'csv':
-                    try : 
-                        list_2sens.append(self.traiter_csv_sens_unique(f)[7].assign(sens=i))
-                    except PasAssezMesureError:
-                        list_2sens = []
-                        break
-            if not list_2sens: 
+        list_dfs,list_2sens=[],[]
+        for k, v in dico_fichiers_final.items() : 
+            for f in v : 
+                try : 
+                    list_2sens.append(self.traiter_csv_sens_unique(f)[4])
+                except PasAssezMesureError:
+                    list_2sens=[]
+                    break
+            if not list_2sens : 
                 continue
-            list_dfs.append(self.horaire_2_sens(k, list_2sens) )
-        self.df_attr_horaire = pd.concat(list_dfs, axis=0, sort=False)
+            list_dfs.append(self.horaire_2_sens(k,list_2sens) )
+        self.df_attr_horaire=pd.concat(list_dfs, axis=0, sort=False)
+        
+        #self.df_attr_horaire=pd.concat([self.horaire_2_sens(k,[self.traiter_csv_sens_unique(f)[4] for f in v]) for k, v in dico_fichiers_final.items()], axis=0, sort=False)
     
-    
-    def xlsCpevHoraireDebit(self, fichier):
-        """
-        à partir d'un fichier CPEV débit/vitesse tout sens confondus, extraire les débits horaires TV et PL
-        """
-        dfBrute = pd.read_excel(fichier)
-        dfBruteHoraire = pd.concat(
-            [dfBrute.iloc[niort_ligneDebutDebitHoraireTv: niort_ligneDebutDebitHoraireTv + niort_nbJoursHoraireCpev,
-                          niort_colonneDebutDebitHoraire: niort_colonneFinDebitHoraire].assign(type_veh='TV'),
-                          dfBrute.iloc[niort_ligneDebutDebitHorairePl: niort_ligneDebutDebitHorairePl + niort_nbJoursHoraireCpev,
-                                       niort_colonneDebutDebitHoraire: niort_colonneFinDebitHoraire].assign(type_veh='PL')])
-        dfBruteHoraire.columns = ['jour'] + attributsHoraire + ['type_veh']
-        dfBruteHoraire['jour'] = dfBruteHoraire.jour.apply(lambda x: pd.to_datetime(f"{x.split('.')[1]}/{self.annee}", dayfirst=True))
-        return dfBruteHoraire
-    
-    
-    def xlsCpevHoraireVitesse(self, fichier):
-        """
-        à partir d'un fichier CPEV débit/vitesse tout sens confondus, extraire les vitesses horaires TV et PL
-        """
-        listVmoyHoraire = []
-        dfBrute = pd.read_excel(fichier)
-        for e in range(niort_vmoyHoraireVlStartCpev, niort_vmoyHoraireVlStartCpev + (niort_vmoyHoraireVlPasCpev * niort_nbJoursHoraireCpev
-                                                                                     ), niort_vmoyHoraireVlPasCpev):
-            dfJourVmoyHoraireVl = dfBrute.iloc[e: e + 24, [niort_colonneVmoyHoraire]].T.copy()
-            dfJourVmoyHorairePl = dfBrute.iloc[e + niort_vmoyHorairePlPasCpev: e + niort_vmoyHorairePlPasCpev + 24,
-                                               [niort_colonneVmoyHoraire]].T.copy()
-            dfJourVmoyHoraireVl.columns = attributsHoraire
-            dfJourVmoyHorairePl.columns = attributsHoraire
-            dfJourVmoyHoraireVl['type_veh'] = 'vmoy_vl'
-            dfJourVmoyHorairePl['type_veh'] = 'vmoy_pl'
-            listVmoyHoraire.append(pd.concat([dfJourVmoyHoraireVl, dfJourVmoyHorairePl]).assign(
-                jour=pd.to_datetime(dfBrute.iloc[e+1, niort_colonneVmoyHoraireJour], dayfirst = True)))
-        return pd.concat(listVmoyHoraire)
-    
-    
-    def xlsCpevHoraire(self, fichier, id_comptag):
-        return pd.concat([self.xlsCpevHoraireDebit(fichier), self.xlsCpevHoraireVitesse(fichier)]
-                         ).assign(fichier = os.path.basename(fichier), id_comptag=id_comptag).reset_index(drop=True)
+
+    def indic_agreg_2sens_1_cpt(self,id_comptag, fichiers):
+        list_resultat=[self.traiter_csv_sens_unique(f)[1:3] for f in fichiers]
+        tmja, nb_pl=[list_resultat[0][1],list_resultat[1][1]], [list_resultat[0][0],list_resultat[1][0]]
+        tmja=sum(tmja)
+        pc_pl=sum(nb_pl)/tmja*100
+        src=list(set([os.path.split(f)[0] for f in fichiers]))[0]
+        return pd.DataFrame.from_dict({'id_comptag':[id_comptag,],'tmja':[tmja,],'pc_pl':pc_pl, 'src':src})
     
     
     def agrege_tout_cpt(self,dico_fichiers_final ):
         """
         creation de la df des donnees agregees pour tout les indicatuers
-        """        
+        """
+        def indic_agreg_2sens(id_comptag, fichiers):
+            list_resultat=[]
+            for f in fichiers : 
+                try :
+                    list_resultat.append(self.traiter_csv_sens_unique(f)[1:3])
+                except PasAssezMesureError :
+                    return pd.DataFrame([])
+            tmja, nb_pl=[list_resultat[i][1] for i in range(len(fichiers))], [list_resultat[i][0] for i in range(len(fichiers))]
+            tmja=sum(tmja)
+            pc_pl=round(sum(nb_pl)/tmja*100,2)
+            src=list(set([os.path.split(f)[0] for f in fichiers]))[0]
+            return pd.DataFrame.from_dict({'id_comptag':[id_comptag,],'tmja':[tmja,],'pc_pl':pc_pl, 'src':src})
+        
         self.df_attr=pd.concat([indic_agreg_2sens(k,v) for k,v in dico_fichiers_final.items()], axis=0,sort=False)
         
     def update_bdd_Niort(self, schema, table):
@@ -4647,7 +4549,6 @@ class PasAssezMesureError(Exception):
     """     
     def __init__(self, nbjours):
         Exception.__init__(self,f'le fichier comporte moins de 7 jours de mesures. Nb_jours: : {nbjours} ')   
-  
         
 class ComptageMultipleSurTronconHomogeneError(Exception):
     """
@@ -4657,15 +4558,4 @@ class ComptageMultipleSurTronconHomogeneError(Exception):
     """
     def __init__(self, refTroncHomo):
         Exception.__init__(self,f"le troncon homogene {','.join(refTroncHomo)} supporte plus que 1 comptage de reference")
-        
-        
-class FormatError(Exception):
-    """
-    Exception levee si un format de donnnees source n'est pas prevu dans les codes 
-    attribut : 
-        formatDonnees : string : format de foichier ou donnees
-    """
-    def __init__(self, formatDonnees):
-        Exception.__init__(self,f"le format {formatDonnees} n'est pas prevu dans le code")
-        
         

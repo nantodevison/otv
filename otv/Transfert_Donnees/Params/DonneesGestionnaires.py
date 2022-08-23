@@ -33,3 +33,18 @@ cd16_attrIndicAgregePigma = ['tmja', 'tmje', 'tmjhe', 'pc_pl', 'pc_pl_e', 'pc_pl
 #########
 cd79_dicoCorrespMaterielTechno = {'Cigale': 'tube', 'Phoenix': 'boucle_electromagnetique', 'Tubes': 'tube', 'Plaques': 'plaquette',
              'Major': 'boucle_electromagnetique'}
+
+#########
+# NIORT
+#########
+niort_formatFichierAccepte = ('xls', 'csv', 'mdb')
+niort_vmoyHoraireVlStartCpev = 162
+niort_vmoyHoraireVlPasCpev = 104
+niort_vmoyHorairePlPasCpev = 52
+niort_nbJoursHoraireCpev = 7
+niort_ligneDebutDebitHoraireTv = 78
+niort_ligneDebutDebitHorairePl = 68
+niort_colonneDebutDebitHoraire = 1
+niort_colonneFinDebitHoraire = 26
+niort_colonneVmoyHoraire = 16
+niort_colonneVmoyHoraireJour = 1

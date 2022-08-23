@@ -10,21 +10,12 @@ module d'importation des donnees de trafics forunies par les gestionnaires
 import pandas as pd
 import re
 import Outils as O
-import warnings
 from Params.Mensuel import dico_mois
-from Params.Bdd_OTV import attrIndicHoraire
+from Params.Bdd_OTV import attrIndicHoraire, enumSensCpt
 from Params.DonneesGestionnaires import denominationSens
 
 
-# POUR LES VACANCES PENSER A BESCULER SUR LE MODULE VACANCES_SCOLAIRE_FRANCE !!!!!
-vacances_2019=[j for k in [pd.date_range('2019-01-01','2019-01-06'),pd.date_range('2019-02-16','2019-03-03'),
-                            pd.date_range('2019-04-13','2019-04-28'),pd.date_range('2019-05-30','2019-06-02'),
-                            pd.date_range('2019-07-06','2019-09-01'),pd.date_range('2019-10-19','2019-11-04'),
-                            pd.date_range('2019-12-21','2019-12-31')] for j in k]
-ferie_2019=['2019-01-01','2019-04-22','2019-05-01','2019-05-08','2019-05-30','2019-06-10',
-                      '2019-07-14','2019-08-15','2019-11-01','2019-11-11','2019-12-25']
-dicoFerieVacance={'2019':pd.to_datetime(vacances_2019+[pd.to_datetime(a) for a in ferie_2019 if pd.to_datetime(a) not in vacances_2019])}
-attributsHoraire=[f'h{i}_{i+1}' for i in range (24)]
+attributsHoraire = [f'h{i}_{i+1}' for i in range (24)]
 
 def statsHoraires(df_horaire,attributHeure, typeVeh,typeJour='semaine'):
     """
@@ -95,7 +86,8 @@ def verifNbJoursValidDispo(df,nbJours):
     dfFinale=df.loc[~df.id_comptag.isin(idCptInvalid)].copy()
     return dfFinale, idCptInvalid,dfCptInvalid
                    
-def comparer2Sens(dfHoraireFichierFiltre, attributSens='voie', attributIndicateur='indicateur', facteurComp=3,TauxErreur=10) : 
+def comparer2Sens(dfHoraireFichierFiltre, attributSens='voie', attributIndicateur='indicateur', attributSensCpt='sens_cpt',
+                  facteurComp=3, TauxErreur=10) : 
     """
     Pour une df horaire d'un ou plusieurs id_comptag regroupant les sections courantes et entree / sortie, comparer les sections courantes et fournir un indicateur 
     si la somme des TV et PL d'un des deux sens est superieur à 3* l'autre
@@ -105,28 +97,39 @@ def comparer2Sens(dfHoraireFichierFiltre, attributSens='voie', attributIndicateu
         TauxErreur : rapport nblignInvalides/NbligneTot tolere par defaut si nblignInvalides>NbligneTot/10 on bloque
         attributSens : string : nom de l'attribut qui supporte le sens
         attributIndicateur : nom de l'attribut qui supporte le descriptif du type de vehicule
+        attributSensCpt : string : décrit le nombre de sens mesuré dans la réalité. valeur parmi 'double sens' et 'sens unique'
     """  
     dfSc = dfHoraireFichierFiltre.loc[dfHoraireFichierFiltre[attributSens].apply(lambda x: re.sub(
         'ç', 'c', re.sub('(é|è|ê)', 'e', re.sub('( |_)','', x.lower()))) in denominationSens)].copy()
-    senss = dfSc[attributSens].unique()
-    
+    O.checkAttributValues(dfHoraireFichierFiltre, attributSensCpt, *enumSensCpt)
     idComptages = dfSc.id_comptag.unique()
     print(idComptages)
     listDfComp = []
     for cpt in idComptages: 
-        if len(senss) == 2: 
-            sens1 = dfSc.loc[(dfSc[attributSens] == senss[0]) & (dfSc.id_comptag == cpt)].copy()
-            sens2 = dfSc.loc[(dfSc[attributSens] == senss[1]) & (dfSc.id_comptag == cpt)].copy()
+        dfCpt = dfSc.loc[dfSc.id_comptag == cpt].copy()
+        senss = dfCpt[attributSens].unique()
+        sensCircu = dfCpt[dfCpt[attributSensCpt].notna()][attributSensCpt].unique()
+        if len(senss) == 2 and sensCircu[0] == 'double sens': 
+            sens1 = dfCpt.loc[(dfCpt[attributSens] == senss[0])].copy()
+            sens2 = dfCpt.loc[(dfCpt[attributSens] == senss[1])].copy()
+            sens1['total'] = sens1[attributsHoraire].sum(axis=1)#.groupby(['jour','type_veh']).sum()
+            sens2['total'] = sens2[attributsHoraire].sum(axis=1)
+            dfComp = sens1[['jour',attributIndicateur, 'id_comptag', 'total']].merge(sens2[['jour', attributIndicateur, 'id_comptag', 'total']], 
+                                                                         on=['jour', attributIndicateur, 'id_comptag'])
+            dfCompInvalid = dfComp.loc[(dfComp['total_x']>facteurComp*dfComp['total_y']) | (dfComp['total_y'] > 3 * dfComp['total_x'])]
+            if len(dfCompInvalid) > len(dfSc) / TauxErreur : 
+                raise SensAssymetriqueError(dfCompInvalid, dfComp, cpt)
+            listDfComp.append(dfComp)
+        elif len(senss) == 2 and sensCircu[0] == 'sens unique':
+            raise ValueError(f'le comptage {cpt} est decrit comme sens unique mais deux valeurs différentes de sens existe dans la donne')
+        elif len(senss) == 1 and senss[0] == 'sens unique':
+            dfComp = dfCpt.copy()
+            dfComp['total'] = dfComp[attributsHoraire].sum(axis=1)
+            listDfComp.append(dfComp[['jour',attributIndicateur, 'id_comptag', 'total']])
+        elif len(senss) == 1 and senss[0] == 'double sens':
+            raise ValueError(f'le comptage {cpt} est decrit comme double sens mais une seule valeur sens existe dans la donne')
         else : 
-            raise SensAssymetriqueError(dfSc,dfSc, cpt)
-        sens1['total'] = sens1[attributsHoraire].sum(axis=1)#.groupby(['jour','type_veh']).sum()
-        sens2['total'] = sens2[attributsHoraire].sum(axis=1)
-        dfComp = sens1[['jour',attributIndicateur, 'id_comptag', 'total']].merge(sens2[['jour', attributIndicateur, 'id_comptag', 'total']], 
-                                                                     on=['jour', attributIndicateur, 'id_comptag'])
-        dfCompInvalid = dfComp.loc[(dfComp['total_x']>facteurComp*dfComp['total_y']) | (dfComp['total_y'] > 3 * dfComp['total_x'])]
-        if len(dfCompInvalid) > len(dfSc) / TauxErreur : 
-            raise SensAssymetriqueError(dfCompInvalid, dfComp, cpt)
-        listDfComp.append(dfComp)
+            raise SensAssymetriqueError(dfSc,dfSc, cpt)    
     return True, pd.concat(listDfComp)   
     
 def concatIndicateurFichierHoraire(dfHoraireFichier, attributIndicateur='type_veh'):

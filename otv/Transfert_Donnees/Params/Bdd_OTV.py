@@ -37,7 +37,9 @@ tableIndicHoraire = 'indic_horaire'
 tableCorrespIdComptag = 'corresp_id_comptag'
 tableEnumTypeVeh = 'enum_type_veh'
 tableEnumTypePoste = 'enum_type_poste'
+tableEnumSensCpt = 'enum_nb_sens_cpt'
 vueLastAnnKnow = 'vue_compteur_last_annee_know_tmja_pc_pl'
 with ct.ConnexionBdd(nomConnBddOtv) as c:
     enumTypePoste = pd.read_sql(f"select code from {schemaComptage}.{tableEnumTypePoste}", c.sqlAlchemyConn).code.tolist()
+    enumSensCpt = pd.read_sql(f"select code from {schemaComptage}.{tableEnumSensCpt}", c.sqlAlchemyConn).code.tolist()
 

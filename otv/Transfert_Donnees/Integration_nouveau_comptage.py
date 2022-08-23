@@ -18,6 +18,7 @@ from Params.Bdd_OTV import (nomConnBddOtv, schemaComptage, schemaComptageAssoc, 
 from Import_export_comptage import (recupererIdUniqComptage, recupererIdUniqComptageAssoc, compteur_existant_bdd)
 from Params.Mensuel import dico_mois
 import geopandas as gp
+from shapely.geometry import Point
 
 
 def corresp_nom_id_comptag(df):
@@ -156,6 +157,18 @@ def ventilerParSectionHomogene(tableCptNew, tableSectionHomo, codeDept, distance
         vérifier le id_comptag = {~pt.loc[pt.id_comptag.isin(cptSansGeom.id_comptag.tolist()+ppvHorsSectHomo.id_comptag.tolist()+cptSimpleSectHomo.id_comptag.tolist()+
         cptMultiSectHomo.id_comptag.tolist())].gid}""")
     return cptSansGeom, ppvHorsSectHomo, cptSimpleSectHomo, cptMultiSectHomo
+
+
+def geomFromIdComptagCommunal(id_comptag):
+    """
+    trouver la géométrie depuis un identifiant de comptage communal format BDD (i.e avec les coordonnées WGS84 à la fin)
+    in : 
+        id_comptag : string format Bdd communale (exemple 'Niort-place_de_la_breche--0.4585;46.3220')
+    out : 
+        shapely geometrie de type point en EPSG:2154
+    """
+    coords = [float(e) for e in re.findall('([0-9]\.[0-9]{3,4});([0-9]{2}\.[0-9]{3,4})', id_comptag)[0]]
+    return O.reprojeter_shapely(Point(coords[0], coords[1]), '4326', '2154')[1]
 
 
 def creerCompteur(cptRef, attrGeom, dep, reseau, gestionnai, concession, techno=None, obs_geo=None, obs_supl=None, id_cpt=None,
