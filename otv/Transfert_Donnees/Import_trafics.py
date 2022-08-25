@@ -26,7 +26,7 @@ from Donnees_horaires import (comparer2Sens,verifValiditeFichier, concatIndicate
                               mensuelDepuisHoraire)
 from Donnees_sources import FIM, MHCorbin, DataSensError, PasAssezMesureError
 from Integration_nouveau_comptage import (corresp_nom_id_comptag, scinderComptagExistant, creer_comptage, structureBddOld2NewForm,
-                                          geomFromIdComptagCommunal)
+                                          geomFromIdComptagCommunal, creerCompteur)
 from Import_export_comptage import (compteur_existant_bdd, insererSchemaComptage)
 import Outils as O
 from Params.Mensuel import dico_mois, renommerMois
@@ -2773,28 +2773,6 @@ class Comptage_Niort(Comptage):
         df_finale['id_comptag'] = id_comptag
         return df_finale
     
-    def horaire_tout_cpt(self, dico_fichiers_final, dicoFormat):
-        """
-        creation de la df horaire pour tout les cpt
-        in :
-            dico_fichiers_final : dico d'association de l'id_comptag et de sfichiers creer par creer_dico
-            dicoFormat : dico de description des types et format de données dans chaque dossier fournis par la ville de Niort.
-                         format du dico : {dossier: {'type': 'agrege' ou 'horaire', 'format': 'csv' ou 'xls' ou 'mdb'},}
-        """
-        list_dfs, list_2sens = [], []
-        for k, v in dico_fichiers_final.items(): 
-            for i, f in enumerate(v, 1): 
-                if dicoFormat[k]['type'] == 'horaire' and dicoFormat[k]['format'] == 'csv':
-                    try : 
-                        list_2sens.append(self.traiter_csv_sens_unique(f)[7].assign(sens=i))
-                    except PasAssezMesureError:
-                        list_2sens = []
-                        break
-            if not list_2sens: 
-                continue
-            list_dfs.append(self.horaire_2_sens(k, list_2sens) )
-        self.df_attr_horaire = pd.concat(list_dfs, axis=0, sort=False)
-    
     
     def xlsCpevHoraireDebit(self, fichier):
         """
@@ -2834,18 +2812,85 @@ class Comptage_Niort(Comptage):
     def xlsCpevHoraire(self, fichier, id_comptag):
         return pd.concat([self.xlsCpevHoraireDebit(fichier), self.xlsCpevHoraireVitesse(fichier)]
                          ).assign(fichier = os.path.basename(fichier), id_comptag=id_comptag).reset_index(drop=True)
-    
-    
-    def agrege_tout_cpt(self,dico_fichiers_final ):
+
+
+    def calculAgregeHoraireTouteSource(self, dico_fichiers_final, dico_id_comptag, dicoFormat):
         """
-        creation de la df des donnees agregees pour tout les indicatuers
-        """        
-        self.df_attr=pd.concat([indic_agreg_2sens(k,v) for k,v in dico_fichiers_final.items()], axis=0,sort=False)
-        
-    def update_bdd_Niort(self, schema, table):
-        valeurs_txt=self.creer_valeur_txt_update(self.df_attr,['id_comptag','tmja','pc_pl'])
-        dico_attr_modif={f'tmja_{self.annee}':'tmja', f'pc_pl_{self.annee}':'pc_pl'}
-        self.update_bdd(schema, table, valeurs_txt,dico_attr_modif)
+        pour l'ensembledes points de comptage, fournir une df agrege et Horaire.
+        in : 
+            dico_fichiers_final : dico créée par creer_dico()
+            dico_id_comptag : dico de correspondance entre les dossier fournis par la ville de Niort et les id_comptag
+            dicoFormat : dico de description des types et format de données dans chaque dossier fournis par la ville de Niort.
+                         format du dico : {dossier: {'type': 'agrege' ou 'horaire', 'format': 'csv' ou 'xls' ou 'mdb'},}
+        out:
+            dfAgregeFinale : df avec un entrée par compteur et les attributs id_comptag', 'tmja', 'pc_pl', 'tmjo', 'pc_pl_o', 'geometry', 'fichier',
+                             'periode', 'src', 'annee', 'vma', 'vmoy', 'v85'
+            dfHoraireFinale : df avec les attributs de la Bdd Horaire, (hormis id_uniq_cpt remplacé par id_comptag et annee)
+        """
+        listGdfAgrege, listDfHoraire, list_2sens = [], [], []
+        for k, v in dico_fichiers_final.items():
+            # if k != 'Niort-32_Rue_de_l_Aerodrome--0.4260;46.3247':
+                # continue
+            # récupération de la typologie des données
+            doss = dico_id_comptag[k]['dossier']
+            if dicoFormat[doss]['type'] == 'horaire':
+                src = dicoFormat[doss]['type'] + '_' + dicoFormat[doss]['format']
+                if dicoFormat[doss]['format'] == 'xls':
+                    listGdfAgrege.append(self.xlsCpevAgrege(v[0], k).assign(src=src, annee=self.annee))
+                    listDfHoraire.append(self.xlsCpevHoraire(v[0], k))
+                elif dicoFormat[doss]['format'] == 'csv':
+                    for i, f in enumerate(v, 1):
+                        list_2sens.append(self.traiter_csv_sens_unique(f)[7].assign(sens=f'sens {i}', sens_cpt=dico_id_comptag[k]['sens_cpt']))
+                    if not list_2sens:
+                        warnings.warn(f'des donnees sont vides pour le comptage {k} dans le dossier {doss}')
+                        list_2sens = []
+                        continue
+                    listDfHoraire.append(self.horaire_2_sens(k, list_2sens))
+                    listGdfAgrege.append(self.csv_indic_agreg_2sens(k, v).assign(src=src, annee=self.annee))
+                    list_2sens = []
+                elif dicoFormat[doss]['format'] == 'mdb':
+                    if doss[:5].lower() == 'gare_':
+                        intSensAUtiliser = int(doss.split('_')[1])
+                        numSensAUtiliser = [intSensAUtiliser] if intSensAUtiliser <= 10 else [int(str(intSensAUtiliser)[0]), int(str(intSensAUtiliser)[1])]
+                        cpt = MHCorbin(v[0], numSensAUtiliser=numSensAUtiliser)
+                    else:
+                        cpt = MHCorbin(v[0])
+                    dfHoraire = cpt.formaterDonneesHoraires(cpt.formaterDonneesIndiv(cpt.dfAgreg2Sens)).assign(
+                        id_comptag=k).reset_index().assign(annee=self.annee, fichier=os.path.basename(v[0]))
+                    dfAgrege = gp.GeoDataFrame(tmjaDepuisHoraire(dfHoraire).pivot(
+                        index=['id_comptag', 'annee', 'fichier'], columns='indicateur', values='valeur').reset_index().assign(
+                        periode=periodeDepuisHoraire(dfHoraire).periode[0], src='horaire_mdb'), geometry=[geomFromIdComptagCommunal(k)], crs='EPSG:2154')
+                    listDfHoraire.append(dfHoraire)
+                    listGdfAgrege.append(dfAgrege)
+                else:
+                    raise FormatError(dicoFormat[doss]['format'])
+        return pd.concat(listGdfAgrege).reset_index(drop=True), pd.concat(listDfHoraire).reset_index(drop=True)
+         
+         
+    def miseEnFormeCompteurAgrege(self, dfAgregeFinale, listRd, listSensUnique):
+        """
+        formater la df issue de calculAgregeHoraireTouteSource() pour pouvoir creer des compteurs.
+        in : 
+            dfAgregeFinale : df issue de calculAgregeHoraireTouteSource()
+            listRd : list des id_comptag situés sur une RD
+            listSensUnique : list des id_comptag situé sur des sens uniques
+        """    
+        return creerCompteur(
+            dfAgregeFinale.assign(type_poste='ponctuel',
+                                  src_geo='carto_gestionnaire',
+                                  pr=None,abs=None,route=dfAgregeFinale.id_comptag.apply(
+                                      lambda x: re.sub('[0-9]{1,3}[a-z]{0,1}_', '', x.split('-')[1]).replace('_', ' ')),
+                                  src_cpt=dfAgregeFinale.id_comptag.apply(
+                                      lambda x: 'collectivite territoriale' if x in listRd else 'convention gestionnaire'),
+                                  convention=True,
+                                  sens_cpt=dfAgregeFinale.id_comptag.apply(
+                                      lambda x: 'sens unique' if x in listSensUnique else 'double sens')),
+            'geometry',
+            79,
+            dfAgregeFinale.id_comptag.apply(
+                lambda x: 'RD' if x in listRd else 'VC'),
+            dfAgregeFinale.id_comptag.apply(lambda x: 'CD79' if x in listRd else 'Niort'), False)
+    
         
 class Comptage_GrandDax(Comptage): 
     def __init__(self, fichiers_pt_comptages):
