@@ -11,6 +11,7 @@ import datetime as dt
 import Outils as O
 import pandas as pd
 import Connexion_Transfert as ct
+from collections import Counter
 from Params.Bdd_OTV import (nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, tableEnumTypeVeh, 
                             tableCompteur, tableCorrespIdComptag,attrCompteurAssoc, attBddCompteur, attrComptageMano,
                             attrCompteurValeurMano, attrComptageAssoc, enumTypePoste, vueLastAnnKnow, attrIndicHoraireAssoc,
@@ -159,7 +160,7 @@ def ventilerParSectionHomogene(tableCptNew, tableSectionHomo, codeDept, distance
     return cptSansGeom, ppvHorsSectHomo, cptSimpleSectHomo, cptMultiSectHomo
 
 
-def geomFromIdComptagCommunal(id_comptag):
+def geomFromIdComptagCommunal(id_comptag, epsgSrc='4326', epsgDest='2154'):
     """
     trouver la géométrie depuis un identifiant de comptage communal format BDD (i.e avec les coordonnées WGS84 à la fin)
     in : 
@@ -167,8 +168,10 @@ def geomFromIdComptagCommunal(id_comptag):
     out : 
         shapely geometrie de type point en EPSG:2154
     """
-    coords = [float(e) for e in re.findall('([0-9]\.[0-9]{3,4});([0-9]{2}\.[0-9]{3,4})', id_comptag)[0]]
-    return O.reprojeter_shapely(Point(coords[0], coords[1]), '4326', '2154')[1]
+    coords = [float(e) for e in re.findall('(-[0-9]\.[0-9]{3,4});([0-9]{2}\.[0-9]{3,4})', id_comptag)[0]
+              ] if Counter(id_comptag)['-'] >= 3 else [float(e) for e in re.findall(
+                  '([0-9]\.[0-9]{3,4});([0-9]{2}\.[0-9]{3,4})', id_comptag)[0]]
+    return O.reprojeter_shapely(Point(coords[0], coords[1]), epsgSrc, epsgDest)[1]
 
 
 def creerCompteur(cptRef, attrGeom, dep, reseau, gestionnai, concession, techno=None, obs_geo=None, obs_supl=None, id_cpt=None,
@@ -547,21 +550,12 @@ def ventilerCompteurIdComptagExistant(cptSimpleSectHomo, cptRefMultiSectHomo):
     return cptRefSectHomoNew, cptRefSectHomoOld
 
 
-def ventilerNouveauComptageRef(df, nomAttrtypePosteGest, nomAttrtypePosteBdd, nomAttrperiode,  
-                               dep, tableTroncHomo, tableRefLineaire,  distancePlusProcheVoisin=20 ):
+def ventilerNouveauComptageRef(df, dep, tableTroncHomo, tableRefLineaire,  distancePlusProcheVoisin=20 ):
     """
-    A REPRENDRE AVEC LE SCHEMA DE VENTILATION DES COMPTAGES REF : IL Y A BCP DE CAS ET TOUT EST DANS la doc. IL FAUT FAIRE COLLER LES 
-    CAS DANS LE CODE A CEUX DE LA DOC.
-    IL FAUT AUSSI PREVOIR LE CAS DES COMPTAGES QUI VONT AMENER A DEVOIR MODIFIER DES COMPTAGE DE LA BDD EN LES PASSANT EN COMPTAGES
-    ASSOCIES. IL MANQUE UN OUT POUR CA
-    
     depuis une df des comptage de référence situé sur des tronçons avec un id_comptag existant dans la base, 
     séparer en 4 groupe selon le type de poste dans la bdd et le type de poste du hestionnaire.
     in : 
         df : dataframe a classifier
-        nomAttrtypePosteGest : string : nom de l'attribut supportant le type de poste fourni par le gest 
-        nomAttrtypePosteBdd : string : nom de l'attribut supportant le type de poste dans la bdd
-        nomAttrperiode : string : nom de l'attribut décrivant la période de mesure
         tableTronconHomogeneTrafic : table ou vue dans bdd OTV qui contientid_ign, id_groupe de troncon homogene de trafic et compteur associe si il existe
         dep :string sur 2 caractères
         tableTroncHomo : table du schema linauto qui contient le regroupement en tronçons homogène des trafic
@@ -573,7 +567,7 @@ def ventilerNouveauComptageRef(df, nomAttrtypePosteGest, nomAttrtypePosteBdd, no
         dfModifTypePoste : dataframe des points existant dont on va modifier le type de poste
         dfCreationCompteur : dataframe des points qui vont faire l'objet d'un  nouveau compteur
     """
-    rqtTronconHomogene = f"""SELECT DISTINCT ON (s.gid) s.gid, s.geom, c.id_comptag, c.type_poste type_poste_bdd
+    rqtTronconHomogene = f"""SELECT DISTINCT ON (s.gid) s.gid, s.geom, c.id_comptag, c.type_poste type_poste_bdd, c.annee_tmja annee_tmja_bdd
      FROM (SELECT DISTINCT t.gid, t.geom
      FROM (SELECT unnest(list_id) id, gid, geom FROM {tableTroncHomo}) t JOIN {tableRefLineaire} r ON r.id = t.id
      WHERE r.dept = '{dep}') s LEFT JOIN comptage.{vueLastAnnKnow} c ON st_dwithin(s.geom, c.geom, 30)
@@ -584,47 +578,104 @@ def ventilerNouveauComptageRef(df, nomAttrtypePosteGest, nomAttrtypePosteBdd, no
                            end, CASE WHEN c.vacances_zone_b IS NULL OR NOT c.vacances_zone_b THEN 1
                                      ELSE 2 END, c.tmja DESC ;"""
         # récuperer depuis la bdd la listedes tronçons homogenes de trafic, avec le compteur le plus proche
+    O.checkAttributsinDf(df, ['id_comptag', 'type_poste', 'periode', 'annee'])
     with ct.ConnexionBdd(nomConnBddOtv) as c:
         tronconsHomogeneTrafic = gp.read_postgis(rqtTronconHomogene, c.sqlAlchemyConn).rename(columns={'gid': 'id_tronc_homo'})
         # associer les comptages que l'on chreche a qualifier aux tronçons qui supportent (ou non) un compteur, au sein d'un tronçon homogene
-    ppvtronconsHomogeneTrafic = O.plus_proche_voisin(gp.GeoDataFrame(df, geometry='geom_x', crs='epsg:2154').rename(columns={'id_comptag': 'id_comptag_gest'})
-                                                     , tronconsHomogeneTrafic, distancePlusProcheVoisin,'id_comptag_gest', 'id_tronc_homo')
-        # trouver les nouveaux compteurs situés sur des tronçons homogènes qui ont déjà un compteur dans la base
-    dfCorrespIdComptag = ppvtronconsHomogeneTrafic.merge(tronconsHomogeneTrafic, on='id_tronc_homo').rename(
-        columns={'id_comptag_gest': 'id_comptag','id_comptag':'id_comptag_bdd' }).merge(df.drop(['id_comptag_bdd', 'type_poste_bdd'], axis=1),
-                                                                                       on='id_comptag')
-    dfCorrespIdComptag = dfCorrespIdComptag[dfCorrespIdComptag['id_comptag_bdd'].notna()]
-    dfCreationComptageAssocie = df.loc[((df[nomAttrtypePosteGest] == 'ponctuel') &
-                                        (df[nomAttrtypePosteBdd].isin(('permanent', 'tournant')))) |
-                                       ((df[nomAttrtypePosteGest] == df[nomAttrtypePosteBdd]) &
-                                        (df[nomAttrtypePosteGest] == 'ponctuel') &
-                                        (df[nomAttrperiode].apply(lambda x: O.verifVacanceRange(x))))].copy()
-    dfModifTypePoste = df.loc[((df[nomAttrtypePosteGest] == 'permanent') & (df[nomAttrtypePosteBdd] == 'tournant'))].copy()
-    dfCreationCompteur = df.loc[((df[nomAttrtypePosteGest].isin(('permanent', 'tournant'))) & (df[nomAttrtypePosteBdd] == 'ponctuel'))].copy()
-    if len(dfModifTypePoste) + len(dfCorrespIdComptag) + len(dfCreationComptageAssocie) + len(dfCreationCompteur) != len(df):
-        warnings.warn("la somme des éléments présents dans 'dfCorrespIdComptag', 'dfCreationComptageAssocie', 'dfModifTypePoste' est différente du nombre d'éléments initiaux. Chercher les id_comptag no présents ou en doublons, creer des id_orresp_compatg en amont et relancer le process si besoin")
-    return dfCorrespIdComptag, dfCreationComptageAssocie, dfModifTypePoste, dfCreationCompteur
+    ppvtronconsHomogeneTrafic = O.plus_proche_voisin(gp.GeoDataFrame(df, geometry='geom_x', crs='epsg:2154').rename(
+        columns={'id_comptag': 'id_comptag_gest'}), tronconsHomogeneTrafic, distancePlusProcheVoisin,
+        'id_comptag_gest', 'id_tronc_homo')
+    # ventiler les compteurs selon leur rattachement a un troncon homogene topologique ou un tronçon homogene de trafic
+    dfMergeCptGestTroncHomo = ppvtronconsHomogeneTrafic.merge(tronconsHomogeneTrafic, on='id_tronc_homo').rename(
+        columns={'id_comptag_gest': 'id_comptag', 'id_comptag': 'id_comptag_bdd_tronc_homo_topo', 'type_poste_bdd': 'type_poste_bdd_tronc_homo_topo',
+                 }).merge(df.rename(columns={'id_comptag_bdd':'id_comptag_tronc_homo_traf', 'type_poste_bdd': 'type_poste_bdd_tronc_homo_traf'}),
+                          on='id_comptag')
+    dfCptGestTroncHomoTopo = dfMergeCptGestTroncHomo[(dfMergeCptGestTroncHomo['id_comptag_bdd_tronc_homo_topo'].notna())]
+    dfCptGestTroncHomoTraf = dfMergeCptGestTroncHomo[(dfMergeCptGestTroncHomo['id_comptag_bdd_tronc_homo_topo'].isna())]
+    # ventiler les compteurs sur les tronçons homogene de trafic en fonction de la presence ou non 
+    # d'un identifiant de comptage dans la bdd sur ce tronçon homo de trafic
+    dfCptGestTroncHomoTrafAvecIdComptag = dfCptGestTroncHomoTraf.loc[dfCptGestTroncHomoTraf.id_comptag_tronc_homo_traf.notna()]
+    dfCptGestTroncHomoTrafSansIdComptag = dfCptGestTroncHomoTraf.loc[dfCptGestTroncHomoTraf.id_comptag_tronc_homo_traf.isna()]
+    # ventiler les compteur sur un troncon homogne topologique avec un comptage de reference
+    dfCorrespIdComptagTroncHomoTopo = dfCptGestTroncHomoTopo.loc[
+        dfCptGestTroncHomoTopo.type_poste_bdd_tronc_homo_topo == dfCptGestTroncHomoTopo.type_poste]
+    dfCreationComptagAssocTroncHomoTopo = dfCptGestTroncHomoTopo.loc[
+        ((dfCptGestTroncHomoTopo.type_poste == 'ponctuel') & (dfCptGestTroncHomoTopo.type_poste_bdd_tronc_homo_topo.isin(('permanent', 'tournant')))) |
+        ((dfCptGestTroncHomoTopo.type_poste == 'tournant') & (dfCptGestTroncHomoTopo.type_poste_bdd_tronc_homo_topo == 'permanent'))]
+    dfCreationCompteurExistDevientAssocTroncHomoTopo = dfCptGestTroncHomoTopo.loc[
+        ((dfCptGestTroncHomoTopo.type_poste_bdd_tronc_homo_topo == 'ponctuel') & (dfCptGestTroncHomoTopo.type_poste.isin(('permanent', 'tournant')))) |
+        ((dfCptGestTroncHomoTopo.type_poste == 'permanent') & (dfCptGestTroncHomoTopo.type_poste_bdd_tronc_homo_topo == 'tournant'))]
+    # vérif 
+    if sum([len(e) for e in (dfCorrespIdComptagTroncHomoTopo, dfCreationComptagAssocTroncHomoTopo, dfCreationCompteurExistDevientAssocTroncHomoTopo)]
+           ) != len(dfCptGestTroncHomoTopo):
+        warnings.warn("""la somme des éléments présents dans la ventilation des compteurs présents sur un troncon homogene
+                         topologique est différentes du nombre d'éléments initiaux. vérifier le code et les données""")
+    # ventiler les compteur sur un troncon homogene de trafic avec un comptage de reference
+    dfCreationComptagAssocTroncHomoTraf = dfCptGestTroncHomoTrafAvecIdComptag.loc[
+        ((dfCptGestTroncHomoTrafAvecIdComptag.periode.apply(lambda x: O.verifVacanceRange(x))) &
+            (dfCptGestTroncHomoTrafAvecIdComptag.type_poste_bdd_tronc_homo_traf == 'ponctuel')
+            & (dfCptGestTroncHomoTrafAvecIdComptag.type_poste == 'ponctuel')) |
+        ((dfCptGestTroncHomoTrafAvecIdComptag.type_poste_bdd_tronc_homo_traf.isin(('permanent', 'tournant'))) &
+         (dfCptGestTroncHomoTrafAvecIdComptag.type_poste == 'ponctuel')) |
+        ((dfCptGestTroncHomoTrafAvecIdComptag.type_poste_bdd_tronc_homo_traf == 'permanent') &
+         (dfCptGestTroncHomoTrafAvecIdComptag.type_poste == 'tournant'))]
+    dfCreationCompteurExistDevientAssocTroncHomoTraf = dfCptGestTroncHomoTrafAvecIdComptag.loc[
+        ((~dfCptGestTroncHomoTrafAvecIdComptag.periode.apply(lambda x: O.verifVacanceRange(x))) &
+            (dfCptGestTroncHomoTrafAvecIdComptag.type_poste_bdd_tronc_homo_traf == 'ponctuel')
+            & (dfCptGestTroncHomoTrafAvecIdComptag.type_poste == 'ponctuel')) |
+        (~(dfCptGestTroncHomoTrafAvecIdComptag.annee_tmja_bdd == dfCptGestTroncHomoTrafAvecIdComptag.annee) &
+         ((dfCptGestTroncHomoTrafAvecIdComptag.type_poste == dfCptGestTroncHomoTrafAvecIdComptag.type_poste_bdd_tronc_homo_traf) &
+          (dfCptGestTroncHomoTrafAvecIdComptag.type_poste != 'ponctuel'))) |
+        ((dfCptGestTroncHomoTrafAvecIdComptag.type_poste_bdd_tronc_homo_traf == 'ponctuel') &
+         (dfCptGestTroncHomoTrafAvecIdComptag.type_poste.isin(('permanent', 'tournant')))) |
+        ((dfCptGestTroncHomoTrafAvecIdComptag.type_poste_bdd_tronc_homo_traf == 'tournant') &
+         (dfCptGestTroncHomoTrafAvecIdComptag.type_poste == 'permanent'))]
+    dfCreationCompteurTroncHomoTopo = dfCptGestTroncHomoTrafAvecIdComptag.loc[
+        ((dfCptGestTroncHomoTrafAvecIdComptag.annee_tmja_bdd == dfCptGestTroncHomoTrafAvecIdComptag.annee) &
+         ((dfCptGestTroncHomoTrafAvecIdComptag.type_poste == dfCptGestTroncHomoTrafAvecIdComptag.type_poste_bdd_tronc_homo_traf) &
+          (dfCptGestTroncHomoTrafAvecIdComptag.type_poste != 'ponctuel')))]
+    # vérif 
+    if sum([len(e) for e in (dfCreationComptagAssocTroncHomoTraf, dfCreationCompteurExistDevientAssocTroncHomoTraf, dfCreationCompteurTroncHomoTopo)]
+           ) != len(dfCptGestTroncHomoTrafAvecIdComptag):
+        warnings.warn("""la somme des éléments présents dans la ventilation des compteurs présents sur un troncon homogene
+                         de trafic est différentes du nombre d'éléments initiaux. vérifier le code et les données""")
+    # regrouper les compteurs par categorie
+    dfCreationComptagAssoc = pd.concat([dfCreationComptagAssocTroncHomoTopo, dfCreationComptagAssocTroncHomoTraf])
+    dfCorrespIdComptag = dfCorrespIdComptagTroncHomoTopo
+    dfCreationCompteurExistDevientAssoc = pd.concat([dfCreationCompteurExistDevientAssocTroncHomoTopo, dfCreationCompteurExistDevientAssocTroncHomoTraf])
+    dfCreationCompteur = pd.concat([dfCptGestTroncHomoTrafSansIdComptag, dfCreationCompteurTroncHomoTopo])
+    # vérif
+    if sum([len(e) for e in (dfCreationComptagAssoc, dfCorrespIdComptag, dfCreationCompteurExistDevientAssoc, dfCreationCompteur)]
+           ) != len(df):
+        warnings.warn("""la somme des ensortie de ventilation desnouveaux compteurs supposés est différentes du nombre d'éléments initiaux.
+        vérifier le code et les données""")
+    return dfCreationComptagAssoc, dfCorrespIdComptag, dfCreationCompteurExistDevientAssoc, dfCreationCompteur
 
 
 def modifierVentilation(dfCorrespIdComptag, cptRefSectHomoNew, dfCreationComptageAssocie, cptAssocMultiSectHomo,
-                                        listeDepuisAssociesVersCorresp=None,
-                                        listeDepuisCorrespVersAssocies=None, 
-                                        dicoDepuisNewCompteurVersAssocies=None):
+                        listeDepuisAssociesVersCorresp=None, listeDepuisCorrespVersAssocies=None, 
+                        dicoDepuisNewCompteurVersAssocies=None):
     """
     à partir des elements crees par ventilerCompteurIdComptagExistant(), ventilerNouveauComptageRef(), ventilerCompteurIdComptagExistant()
     et de liste ou de dico de transfert de d'un resultats vers un autre, redefinir les dataframes des comptages associes
     in : 
-        listeDepuisCorrespVersAssocies : liste des ids comptages devant etre transferes depuis les correspondances d'id_comptage vers les comptages associes
+        listeDepuisCorrespVersAssocies : liste des ids comptages devant etre transferes depuis les correspondances 
+                                       d'id_comptage vers les comptages associes
         dfCorrespIdComptag : dataframe isse de ventilerNouveauComptageRef()
-        dicoDepuisNewCompteurVersAssocies : dico de transfert de données depuis cptRefSectHomoNew (ventilerCompteurIdComptagExistant()) vers les comptages associes. clé = comptage qui va devenir comptage associé, value = compteur ref du comptage qui va devenir associe
+        dicoDepuisNewCompteurVersAssocies : dico de transfert de données depuis cptRefSectHomoNew (ventilerCompteurIdComptagExistant()) 
+                                            vers les comptages associes. clé = comptage qui va devenir comptage associé, 
+                                            value = compteur ref du comptage qui va devenir associe
         cptRefSectHomoNew : dataframe de comptage qui necesittent creation de compteur, cf ventilerCompteurIdComptagExistant()
         dfCreationComptageAssocie : dataframe des compatge associes. issu de ventilerNouveauComptageRef()
         listeDepuisAssociesVersCorresp : liste des comptages a transferer depuis les comptages associes vers les correspondance de comptage
         cptAssocMultiSectHomo : dataframe des comptages associes issue de ventilerCompteurRefAssoc
     out : 
-        dfCreationComptageAssocie_MaJMano : dataframe des comptages associes, avec les corresp transferees dedans et si besoin les comptages vers corrsp sortis. Si pas concerne, renvoi none
-        dfCorrespIdComptag_MajMano : dataframe des corrsp, avec les corresp transferees dedans et si besoin les comptages vers comptages associes sortis. Si pas concerne, renvoi none
-        cptAssocMultiSectHomo_MajMano : dataframe des comptages associes, avec les corresp transferees dedans et si besoin les comptages vers corrsp sortis. Si pas concerne, renvoi none
+        dfCreationComptageAssocie_MaJMano : dataframe des comptages associes, avec les corresp transferees dedans et 
+                                            si besoin les comptages vers corrsp sortis. Si pas concerne, renvoi none
+        dfCorrespIdComptag_MajMano : dataframe des corrsp, avec les corresp transferees dedans et si besoin les comptages 
+                                     vers comptages associes sortis. Si pas concerne, renvoi none
+        cptAssocMultiSectHomo_MajMano : dataframe des comptages associes, avec les corresp transferees dedans 
+                                        et si besoin les comptages vers corrsp sortis. Si pas concerne, renvoi none
     """
     # initialisation des variables finales   
     dfCreationComptageAssocie_MaJMano = dfCreationComptageAssocie.copy()
@@ -693,7 +744,8 @@ def modifierVentilation(dfCorrespIdComptag, cptRefSectHomoNew, dfCreationComptag
         print(sum([len(a) for a in listeEntree]), sum([len(b) for b in listeSortie]))
         raise ValueError('la somme des élémenst en entrée est différente de la somem des éléments en sortie. vérifier les transferts')
     
-    return (dfCreationComptageAssocie_MaJMano, dfCorrespIdComptag_MajMano, cptAssocMultiSectHomo_MajMano, cptRefSectHomoNew_MajMano)      
+    return (dfCreationComptageAssocie_MaJMano, dfCorrespIdComptag_MajMano, 
+            cptAssocMultiSectHomo_MajMano, cptRefSectHomoNew_MajMano)      
 
 
 def rassemblerNewCompteur(dep, reseau, gestionnai, concession, srcGeo, sensCpt, *tupleDfGeom):

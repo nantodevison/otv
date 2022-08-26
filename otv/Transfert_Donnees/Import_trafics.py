@@ -2837,16 +2837,19 @@ class Comptage_Niort(Comptage):
                 src = dicoFormat[doss]['type'] + '_' + dicoFormat[doss]['format']
                 if dicoFormat[doss]['format'] == 'xls':
                     listGdfAgrege.append(self.xlsCpevAgrege(v[0], k).assign(src=src, annee=self.annee))
-                    listDfHoraire.append(self.xlsCpevHoraire(v[0], k))
+                    listDfHoraire.append(self.xlsCpevHoraire(v[0], k).assign( annee=self.annee))
                 elif dicoFormat[doss]['format'] == 'csv':
                     for i, f in enumerate(v, 1):
-                        list_2sens.append(self.traiter_csv_sens_unique(f)[7].assign(sens=f'sens {i}', sens_cpt=dico_id_comptag[k]['sens_cpt']))
+                        list_2sens.append(self.traiter_csv_sens_unique(f)[7].assign(sens=f'sens {i}', 
+                                                                                    sens_cpt=dico_id_comptag[k]['sens_cpt'],))
                     if not list_2sens:
                         warnings.warn(f'des donnees sont vides pour le comptage {k} dans le dossier {doss}')
                         list_2sens = []
                         continue
-                    listDfHoraire.append(self.horaire_2_sens(k, list_2sens))
-                    listGdfAgrege.append(self.csv_indic_agreg_2sens(k, v).assign(src=src, annee=self.annee))
+                    listDfHoraire.append(self.horaire_2_sens(k, list_2sens).assign(fichier=os.path.basename(v[0]),
+                                                                                   annee=self.annee))
+                    listGdfAgrege.append(gp.GeoDataFrame(self.csv_indic_agreg_2sens(k, v).assign(src=src, annee=self.annee),
+                                                         geometry=[geomFromIdComptagCommunal(k)], crs='EPSG:2154'))
                     list_2sens = []
                 elif dicoFormat[doss]['format'] == 'mdb':
                     if doss[:5].lower() == 'gare_':
@@ -2859,7 +2862,9 @@ class Comptage_Niort(Comptage):
                         id_comptag=k).reset_index().assign(annee=self.annee, fichier=os.path.basename(v[0]))
                     dfAgrege = gp.GeoDataFrame(tmjaDepuisHoraire(dfHoraire).pivot(
                         index=['id_comptag', 'annee', 'fichier'], columns='indicateur', values='valeur').reset_index().assign(
-                        periode=periodeDepuisHoraire(dfHoraire).periode[0], src='horaire_mdb'), geometry=[geomFromIdComptagCommunal(k)], crs='EPSG:2154')
+                        periode=periodeDepuisHoraire(dfHoraire).periode[0], src='horaire_mdb'), 
+                        geometry=[geomFromIdComptagCommunal(k)], crs='EPSG:2154')
+                    dfHoraire.rename(columns={'indicateur': 'type_veh'}, inplace=True)
                     listDfHoraire.append(dfHoraire)
                     listGdfAgrege.append(dfAgrege)
                 else:
@@ -2867,7 +2872,7 @@ class Comptage_Niort(Comptage):
         return pd.concat(listGdfAgrege).reset_index(drop=True), pd.concat(listDfHoraire).reset_index(drop=True)
          
          
-    def miseEnFormeCompteurAgrege(self, dfAgregeFinale, listRd, listSensUnique):
+    def miseEnFormeCompteur(self, dfAgregeFinale, listRd, listSensUnique):
         """
         formater la df issue de calculAgregeHoraireTouteSource() pour pouvoir creer des compteurs.
         in : 
