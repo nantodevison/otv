@@ -16,7 +16,8 @@ from Params.Bdd_OTV import (nomConnBddOtv, schemaComptage, schemaComptageAssoc, 
                             tableCompteur, tableCorrespIdComptag,attrCompteurAssoc, attBddCompteur, attrComptageMano,
                             attrCompteurValeurMano, attrComptageAssoc, enumTypePoste, vueLastAnnKnow, attrIndicHoraireAssoc,
                             attrIndicHoraire)
-from Import_export_comptage import (recupererIdUniqComptage, recupererIdUniqComptageAssoc, compteur_existant_bdd)
+from Import_export_comptage import (recupererIdUniqComptage, recupererIdUniqComptageAssoc, compteur_existant_bdd, 
+                                    recupererLastAnnKnow)
 from Params.Mensuel import dico_mois
 import geopandas as gp
 from shapely.geometry import Point
@@ -278,7 +279,7 @@ def structureBddOld2NewForm(dfAConvertir, listAttrFixe, listAttrIndics, typeIndi
     return dfIndic
 
 
-def structureBddOld2NewFormAssoc(dfAConvertir, annee, listAttrFixe,listAttrIndics,typeIndic):
+def structureBddOld2NewFormAssoc(dfAConvertir, annee, listAttrFixe, listAttrIndics, typeIndic):
     """
     convertir les données creer par les classes et issus de la structure de bdd 2010-2019 (wide-form) vers une structure 2020 (long-form) 
     en ajoutant au passage les ids_comptag_uniq
@@ -333,7 +334,8 @@ def rangBddComptageAssoc(id_comptag_ref_Bdd):
     return rang
     
     
-def creerComptageAssoc(df, id_comptag_ref_nom, annee, id_compteur_asso_nom, src=None, listIdCptExclu=None):
+def creerComptageAssoc(df, id_comptag_ref_nom, annee, id_compteur_asso_nom, src=None, listIdCptExclu=None, 
+                       dicoIdCpteurRef=None):
     """
     a partir d'une df, creer la df a injecter dans les tables compteur et comptage du schema comptage_assoc de la bdd
     in : 
@@ -343,7 +345,8 @@ def creerComptageAssoc(df, id_comptag_ref_nom, annee, id_compteur_asso_nom, src=
         id_comptag_ref_nom : string : nom de l'attribut supportant l'id_comptag du point de référence
         id_compteur_asso_nom : string : nom de l'attribut supportant l'id_comptag du point associé si composante geometrique (i.e l'id_comptag issu des donnees gestionnaire)
         annee : string annee sur 4 caractères
-        listIdCptExclu : liste d'identifiant de comptage a ne pas conserver dans les resultats
+        listIdCptExclu : liste d'identifiant de comptage a ne pas conserver dans les resultats,
+        dicoIdCpteurRef : cf comptagesAssocDefinirIdCompteurRef()
     out : 
         dfIds : df contenant tous les points de la df en entree, avec les attributs issus de la Bdd en plus
         tableComptage : df au format de la table des comptage Associes. ne contient que les points 
@@ -372,12 +375,14 @@ def creerComptageAssoc(df, id_comptag_ref_nom, annee, id_compteur_asso_nom, src=
     if listIdCptExclu:
         dfSource = dfSource.loc[~dfSource[id_compteur_asso_nom].isin(listIdCptExclu)].copy()
     dfSource.rename(columns={id_compteur_asso_nom: 'id_cpteur_asso'}, inplace=True)
-    corresIdComptagInterne = recupererIdUniqComptage(dfSource[[id_comptag_ref_nom]].rename(columns={id_comptag_ref_nom: 'id_comptag'}), True)
+    if dicoIdCpteurRef:
+        dfSource[id_comptag_ref_nom] = dfSource.apply(lambda x: comptagesAssocDefinirIdCompteurRef(x, dicoIdCpteurRef), axis=1)
+    corresIdComptagInterne = recupererIdUniqComptage(dfSource[[id_comptag_ref_nom]].rename(
+        columns={id_comptag_ref_nom: 'id_comptag'}), True)
     dfIds = dfSource.merge(corresIdComptagInterne, left_on=id_comptag_ref_nom, right_on='id_comptag', how='left').rename(columns={'id_comptag_uniq': 'id_cptag_ref'}).assign(annee=annee)
     dfIds['rang_bdd'] = dfIds[id_comptag_ref_nom].apply(lambda x: rangBddComptageAssoc(x))
     dfIds['rang_df'] = dfIds.groupby(id_comptag_ref_nom).cumcount()+1
     dfIds['rang'] = dfIds['rang_bdd']+dfIds['rang_df']
-    print(dfIds.columns)
     tableComptage = dfIds[[c for c in dfIds.columns if c in attrComptageAssoc]].copy()
     # ajouter ou modifier le champs observation pour les ponctuels ou tournant dont une partie de la periode est en vacances scolaire
     if 'obs' in tableComptage.columns:
@@ -387,30 +392,90 @@ def creerComptageAssoc(df, id_comptag_ref_nom, annee, id_compteur_asso_nom, src=
     return dfIds, tableComptage    
 
 
-def creerCompteurAssoc(df, nomAttrIdCpteurAsso, nomAttrGeom=None, nomAttrIdCpteurRef=None, listIdCptExclu=None):
+def creerCompteurAssoc(df, nomAttrIdCpteurAsso, nomAttrGeom=None, dicoIdCpteurRef=None, listIdCptExclu=None, NomAttrFinal=None):
     """
-    a partir d'une df, creer la table des compteurdu schema comptage_assoc de la bdd. la table source doit contenir les attributs d'ientifiantde comptage,
-    type_poste, src_geo, src_cpt, convention, sens_cpt. 
-    pour plus de precision elle peut contenir geom, route, pr, abs, techno, obs_geo, obs_supl, id_cpt, id_sect, id_cpteur_ref. Cf Bdd pour plus de détail
+    a partir d'une df, creer la table des compteurdu schema comptage_assoc de la bdd. la table source doit contenir les attributs d'ientifiant
+    de comptage, type_poste, src_geo, src_cpt, convention, sens_cpt. 
+    pour plus de precision elle peut contenir geom, route, pr, abs, techno, obs_geo, obs_supl, id_cpt, id_sect, id_cpteur_ref. 
+    Cf Bdd pour plus de détail
     in : 
         df : dataframe des donnees sources
         nomAttrIdCpteurAsso : string : nom de l'attribut contenant les id_comptag mis en forme a partir du gestionnaire
-        nomAttrIdCpteurRef : string : nom de l'attribut contenant les id_comptag de référence de la table compteur du schema comptapge de la bdd
+        nomAttrIdCpteurRef : string : nom de l'attribut contenant les id_comptag de référence de la table compteur du schema 
+                                      comptapge de la bdd
         nomAttrGeom : string : nom de l'attribut qui supporte la géométrie
+        dicoIdCpteurRef : cf comptagesAssocDefinirIdCompteurRef()
     out :
         dataframe au format bdd comptage_assoc.compteur
-    """
+    """      
     O.checkAttributsinDf(df, [nomAttrIdCpteurAsso, 'type_poste', 'src_geo', 'src_cpt', 'convention', 'sens_cpt'])
     dfSource = df.copy()
     if listIdCptExclu:
         dfSource = dfSource.loc[~dfSource[nomAttrIdCpteurAsso].isin(listIdCptExclu)].copy()
     dfSource.rename(columns={nomAttrIdCpteurAsso: 'id_cpteur_asso'}, inplace=True)
-    if nomAttrIdCpteurRef:
-        dfSource.rename(columns={nomAttrIdCpteurRef: 'id_cpteur_ref'}, inplace=True)
+    if dicoIdCpteurRef and NomAttrFinal:
+        dfSource[NomAttrFinal] = dfSource.apply(lambda x: comptagesAssocDefinirIdCompteurRef(x, dicoIdCpteurRef), axis=1)
     if nomAttrGeom:
         dfSource = O.gp_changer_nom_geom(dfSource, 'geom')
+    dfSource.rename(columns = {NomAttrFinal: 'id_cpteur_ref'}, inplace=True)
     tableCompteur = dfSource[[c for c in dfSource.columns if c in attrCompteurAssoc]]
     return tableCompteur
+
+
+def comptagesAssocDefinirIdCompteurRef(df, dicoIdCpteurRef):
+    """
+    si il y a plusieurs attributs d'identifiant de comptage de référence pour un compteur associé, affecter le bon.
+    se base sur un dico de type entier auto-incrémentée: attribut a oprendre en compte. Plus l'entier est petit, plus l'attribut est prioritaire
+    in : 
+        df : la ligne de la df à modifier
+        dicoIdCpteurRef : dico de type entier auto-incrémentée: attribut a prendre en compte. Plus l'entier est petit, plus l'attribut est prioritaire
+        attrFinal : string : nom final de l'attribut du compteur de référence
+    """
+    sorted_dicoIdCpteurRef = {key:dicoIdCpteurRef[key] for key in sorted(dicoIdCpteurRef.keys())}
+    for v in sorted_dicoIdCpteurRef.values():
+        if not pd.isnull(df[v]):
+            return df[v]
+
+
+def creerListTransfertComptage2ComptageAssoc(dfCreationCompteurExistDevientAssoc, annee, dicoIdCpteurRef):
+    """
+    fonction de creation d'uine liste de paramètre pour le transfert de compteur et comptage depuis le schema comptage vers le schema comoptage_assoc
+    de la Bdd
+    in :
+        dfCreationCompteurExistDevientAssoc : df des compteurs à transféré, issu du process de caractérisation des nouveaux points gestionnaires.
+        annee  : string sur 4 caractères
+        dicoIdCpteurRef : nécéssaire à la fonction comptagesAssocDefinirIdCompteurRef ; dico de type entier auto-incrémentée: attribut a prendre en compte. 
+                          Plus l'entier est petit, plus l'attribut est prioritaire
+    """
+    O.checkAttributsinDf(dfCreationCompteurExistDevientAssoc, ['id_comptag'] + list(dicoIdCpteurRef.values()))
+    dfCreationCompteurExistDevientAssoc = dfCreationCompteurExistDevientAssoc.copy()
+    dfCreationCompteurExistDevientAssoc['id_comptag_bdd'] = dfCreationCompteurExistDevientAssoc.apply(lambda x: comptagesAssocDefinirIdCompteurRef(
+        x, dicoIdCpteurRef), axis=1)
+    dfLastAnKnow = recupererLastAnnKnow(dfCreationCompteurExistDevientAssoc.id_comptag_bdd.tolist())
+    dfMerge = dfCreationCompteurExistDevientAssoc[['id_comptag', 'id_comptag_bdd']].merge(dfLastAnKnow.rename(columns={'id_comptag': 'id_comptag_bdd'}),
+                                                                                                on='id_comptag_bdd')
+    listParamsFonctionPostgres = list(dfMerge[['id_comptag', 'id_comptag_bdd', 'annee_tmja']].assign(annee='2021').itertuples(index=False, name=None))
+    return listParamsFonctionPostgres
+
+
+def appelFonctionTransfertComptage2ComptageAssoc(listParamsFonctionPostgres, recup_compteur=False, sup_compteur=False):
+    """
+    fonction de creation d'une string permettant l'appel de la fonction comptage.transfert_comptage_assoc() dans postgres puyis
+    d'appel de cette fonction
+    in : 
+        listParamsFonctionPostgres : liste de tuples de tsring, issue de creerListTransfertComptage2ComptageAssoc().
+                                     attention !!! : dans les tuples, l'ordre doit etre : 
+                                         1 : id_comptage_ref : id_comptag qui va rester dans le schema comptage de la bdd
+                                         2 : id_comptage_asso : id_comptag qui va etre basculé dans le schema comptage_assoc de la bdd
+                                         3 : annee_asso : annee du comptage qui va etre basculé dans le sxchmé comptage assoc
+                                         4 : annee_ref : annee du comptage qui va rester dans le schema comptage de la bdd
+    """
+    txtAppelFonction = ' ; '.join([f"""select comptage.transfert_comptage_assoc('{e[0]}', '{e[1]}', '{e[3]}', '{e[2]}', {recup_compteur}, {sup_compteur})"""
+            for e in listParamsFonctionPostgres])
+    with ct.ConnexionBdd() as c:
+        c.curs.execute(txtAppelFonction, c.sqlAlchemyConn)
+        c.connexionPsy.commit()
+    return txtAppelFonction
 
 
 def creerCorrespComptag(df, nomAttrIdComptagGest, nomAttrIdComptagGti, listIdCptExclu):
@@ -567,17 +632,28 @@ def ventilerNouveauComptageRef(df, dep, tableTroncHomo, tableRefLineaire,  dista
         dfModifTypePoste : dataframe des points existant dont on va modifier le type de poste
         dfCreationCompteur : dataframe des points qui vont faire l'objet d'un  nouveau compteur
     """
-    rqtTronconHomogene = f"""SELECT DISTINCT ON (s.gid) s.gid, s.geom, c.id_comptag, c.type_poste type_poste_bdd, c.annee_tmja annee_tmja_bdd
-     FROM (SELECT DISTINCT t.gid, t.geom
-     FROM (SELECT unnest(list_id) id, gid, geom FROM {tableTroncHomo}) t JOIN {tableRefLineaire} r ON r.id = t.id
-     WHERE r.dept = '{dep}') s LEFT JOIN comptage.{vueLastAnnKnow} c ON st_dwithin(s.geom, c.geom, 30)
-     ORDER BY s.gid, CASE WHEN c.type_poste = 'permanent' THEN 1 
-                           WHEN c.type_poste = 'tournant' THEN 2
-                           WHEN c.type_poste = 'ponctuel' THEN 3 
-                           ELSE 4 
-                           end, CASE WHEN c.vacances_zone_b IS NULL OR NOT c.vacances_zone_b THEN 1
-                                     ELSE 2 END, c.tmja DESC ;"""
-        # récuperer depuis la bdd la listedes tronçons homogenes de trafic, avec le compteur le plus proche
+    rqtTronconHomogene = f"""
+    WITH ppv_cpt_ref AS (
+    SELECT DISTINCT ON (t.id) t.id, t.geom, c.id_comptag, c.type_poste, c.annee_tmja, c.tmja, c.vacances_zone_b 
+     FROM comptage.{vueLastAnnKnow} c JOIN {tableRefLineaire} t ON st_dwithin(c.geom, t.geom, 30)
+     WHERE t.dept = '{dep}' AND c.dep = '{dep}'
+     ORDER BY t.id, st_distance(c.geom, t.geom)),
+    pt_par_gid AS (
+    SELECT DISTINCT ON (l.gid) t.id_comptag, t.type_poste, t.annee_tmja, t.tmja, t.vacances_zone_b, l.gid
+     FROM ppv_cpt_ref t LEFT JOIN (SELECT UNNEST(list_id) id, gid FROM {tableTroncHomo}) l using(id)
+     ORDER BY l.gid, CASE WHEN t.type_poste = 'permanent' THEN 1 
+                               WHEN t.type_poste = 'tournant' THEN 2
+                               WHEN t.type_poste = 'ponctuel' THEN 3 
+                               ELSE 4 
+                               end, CASE WHEN t.vacances_zone_b IS NULL OR NOT t.vacances_zone_b THEN 1
+                                         ELSE 2 END, t.tmja DESC),
+    gid_et_ligne as( 
+    SELECT t.id, t.geom, l.gid
+     FROM {tableRefLineaire} t LEFT JOIN (SELECT UNNEST(list_id) id, gid FROM {tableTroncHomo}) l USING(id)
+     WHERE t.dept = '{dep}')                                     
+    SELECT t.id, t.geom,  p.id_comptag, p.type_poste type_poste_bdd, p.annee_tmja annee_tmja_bdd, p.tmja tmja_bdd, p.vacances_zone_b, t.gid
+     FROM pt_par_gid p RIGHT JOIN gid_et_ligne t USING (gid) ; """
+    # récuperer depuis la bdd la listedes tronçons homogenes de trafic, avec le compteur le plus proche
     O.checkAttributsinDf(df, ['id_comptag', 'type_poste', 'periode', 'annee'])
     with ct.ConnexionBdd(nomConnBddOtv) as c:
         tronconsHomogeneTrafic = gp.read_postgis(rqtTronconHomogene, c.sqlAlchemyConn).rename(columns={'gid': 'id_tronc_homo'})
@@ -586,9 +662,10 @@ def ventilerNouveauComptageRef(df, dep, tableTroncHomo, tableRefLineaire,  dista
         columns={'id_comptag': 'id_comptag_gest'}), tronconsHomogeneTrafic, distancePlusProcheVoisin,
         'id_comptag_gest', 'id_tronc_homo')
     # ventiler les compteurs selon leur rattachement a un troncon homogene topologique ou un tronçon homogene de trafic
-    dfMergeCptGestTroncHomo = ppvtronconsHomogeneTrafic.merge(tronconsHomogeneTrafic, on='id_tronc_homo').rename(
+    dfMergeCptGestTroncHomo = ppvtronconsHomogeneTrafic.merge(tronconsHomogeneTrafic.drop_duplicates(
+        ['id_comptag', 'type_poste_bdd', 'annee_tmja_bdd', 'tmja_bdd', 'vacances_zone_b', 'id_tronc_homo']), on='id_tronc_homo').rename(
         columns={'id_comptag_gest': 'id_comptag', 'id_comptag': 'id_comptag_bdd_tronc_homo_topo', 'type_poste_bdd': 'type_poste_bdd_tronc_homo_topo',
-                 }).merge(df.rename(columns={'id_comptag_bdd':'id_comptag_tronc_homo_traf', 'type_poste_bdd': 'type_poste_bdd_tronc_homo_traf'}),
+                 }).merge(df.rename(columns={'id_comptag_bdd': 'id_comptag_tronc_homo_traf', 'type_poste_bdd': 'type_poste_bdd_tronc_homo_traf'}),
                           on='id_comptag')
     dfCptGestTroncHomoTopo = dfMergeCptGestTroncHomo[(dfMergeCptGestTroncHomo['id_comptag_bdd_tronc_homo_topo'].notna())]
     dfCptGestTroncHomoTraf = dfMergeCptGestTroncHomo[(dfMergeCptGestTroncHomo['id_comptag_bdd_tronc_homo_topo'].isna())]
@@ -647,7 +724,7 @@ def ventilerNouveauComptageRef(df, dep, tableTroncHomo, tableRefLineaire,  dista
     # vérif
     if sum([len(e) for e in (dfCreationComptagAssoc, dfCorrespIdComptag, dfCreationCompteurExistDevientAssoc, dfCreationCompteur)]
            ) != len(df):
-        warnings.warn("""la somme des ensortie de ventilation desnouveaux compteurs supposés est différentes du nombre d'éléments initiaux.
+        warnings.warn("""la somme des en sortie de ventilation des nouveaux compteurs supposés est différentes du nombre d'éléments initiaux.
         vérifier le code et les données""")
     return dfCreationComptagAssoc, dfCorrespIdComptag, dfCreationCompteurExistDevientAssoc, dfCreationCompteur
 
@@ -748,7 +825,8 @@ def modifierVentilation(dfCorrespIdComptag, cptRefSectHomoNew, dfCreationComptag
             cptAssocMultiSectHomo_MajMano, cptRefSectHomoNew_MajMano)      
 
 
-def rassemblerNewCompteur(dep, reseau, gestionnai, concession, srcGeo, sensCpt, *tupleDfGeom):
+def rassemblerNewCompteur(dep, tuplesDfGeom, reseau=None, gestionnai=None, concession=False,
+                          srcGeo=None, sensCpt=None):
     """
     regrouper les dataframes issues des fonctions de ventilation dans une seule destinée a etre intégrée das la bdd
     in : 
@@ -758,25 +836,36 @@ def rassemblerNewCompteur(dep, reseau, gestionnai, concession, srcGeo, sensCpt, 
         reseau : string : cf enum_reseau dans bdd
         gestionnai : string : cf enum_gestionnai dans bdd
         concession : boolean
-        tupleDfGeom : autant de tuple de type (df, NomDeLaGeometrie) que necessaire.
+        tuplesDfGeom : autant de tuple de type (df, NomDeLaGeometrie) que necessaire.
     """
+    reseauDf, gestionnaiDf, concessionDf = None, None, None
     listCpteurNew = []
-    for c in tupleDfGeom:
-        df = c[0].copy()
+    for e in [a for a in tuplesDfGeom]:
+        df = e[0].copy()
+        if reseau:
+            df['reseau'] = reseau
+        reseauDf = df['reseau'].tolist()
+        if gestionnai:
+            df['gestionnai'] = gestionnai
+        gestionnaiDf = df['gestionnai'].tolist()
         if srcGeo:
             df['src_geo'] = srcGeo
         if sensCpt:
             df['sens_cpt'] = sensCpt
+        if concession:
+            df['concession'] = concession
+        concessionDf = df['concession'].tolist()
         df['src_cpt'] = df.type_poste.apply(lambda x: 'convention gestionnaire' if x == 'permanent' else 'gestionnaire')
         df['convention'] = df.type_poste.apply(lambda x: True if x == 'permanent' else False)
         # RUSTINE A REPRENDRE : 
         if 'id_cpt' in df.columns and 'obs_supl' in df.columns:
-            listCpteurNew.append(creerCompteur(df, c[1], dep, reseau, gestionnai, concession, id_cpt=df.id_cpt.tolist(), obs_supl=df.obs_supl.tolist()))
+            listCpteurNew.append(creerCompteur(df, e[1], dep, reseauDf, gestionnaiDf, concessionDf, id_cpt=df.id_cpt.tolist(),
+                                               obs_supl=df.obs_supl.tolist()))
         elif 'id_cpt' in df.columns:
-            listCpteurNew.append(creerCompteur(df, c[1], dep, reseau, gestionnai, concession, id_cpt=df.id_cpt.tolist()))
-            listCpteurNew.append(creerCompteur(df, c[1], dep, reseau, gestionnai, concession, obs_supl=df.obs_supl.tolist()))
+            listCpteurNew.append(creerCompteur(df, e[1], dep, reseauDf, gestionnaiDf, concessionDf, id_cpt=df.id_cpt.tolist()))
+            listCpteurNew.append(creerCompteur(df, e[1], dep, reseauDf, gestionnaiDf, concessionDf, obs_supl=df.obs_supl.tolist()))
         else: 
-            listCpteurNew.append(creerCompteur(df, c[1], dep, reseau, gestionnai, concession))
+            listCpteurNew.append(creerCompteur(df, e[1], dep, reseauDf, gestionnaiDf, concessionDf))
     dfNewCompteur = pd.concat(listCpteurNew)      
     if not dfNewCompteur.loc[dfNewCompteur.duplicated('id_comptag')].empty:
         raise ValueError('des identifiants de comptages sont en doublons, a verifier avant insertion. utilisation possible de ventilerCompteurRefAssoc()')
@@ -804,7 +893,8 @@ def rassemblerNewComptage(annee, type_veh, dfComptageCompteurConnu, *dfComptageC
     dfComptageNewTot = creer_comptage(ref.id_comptag.tolist(), annee, ref.src, type_veh, periode=ref.periode)
     return dfComptageNewTot, assoc
     
-def rassemblerIndics(annee, dfComptageNewTot, dfTraficAgrege, dfTraficMensuel=None, dfTraficHoraire=None):
+def rassemblerIndics(annee, dfComptageNewTot, dfTraficAgrege, dfTraficMensuel=None, dfTraficHoraire=None,
+                     indicAgregeValues=['tmja', 'pc_pl']):
     """
     regrouper et mettre en forme les dataframes des indicateurs agreges, mensuel et horaires, correspondants aux id_comptages
     des comptages cree par rassemblerNewComptage()
@@ -814,11 +904,13 @@ def rassemblerIndics(annee, dfComptageNewTot, dfTraficAgrege, dfTraficMensuel=No
         dfTraficAgrege : dataframe des données de trafic agrege. generalement df_attr
         dfTraficMensuel : dataframe des données de trafic mensuelle. generalement df_attr_mens
         dfTraficHoraire : dataframe des données de trafic haorire. generalement df_attr_horaire
+        indicAgregeValues : liste des indicateurs agreges à conserver
     """   
     # récupérer les données
     listIdComptagIndicNew = dfComptageNewTot.id_comptag.tolist()
     dfAttrIndicAgregeNew = dfTraficAgrege.loc[dfTraficAgrege.id_comptag.isin(listIdComptagIndicNew)]
-    dfIndicAgregeNew = structureBddOld2NewForm(dfAttrIndicAgregeNew.assign(annee=annee), ['id_comptag', 'annee', 'fichier'], ['tmja', 'pc_pl'], 'agrege')
+    dfIndicAgregeNew = structureBddOld2NewForm(dfAttrIndicAgregeNew.assign(annee=annee), ['id_comptag', 'annee', 'fichier'],
+                                               indicAgregeValues, 'agrege')
     if isinstance(dfTraficMensuel, pd.DataFrame) and not dfTraficMensuel.empty:
         dfAttrIndicMensNew = dfTraficMensuel.loc[dfTraficMensuel.id_comptag.isin(listIdComptagIndicNew)]
         dfIndicMensNew = structureBddOld2NewForm(dfAttrIndicMensNew.assign(annee=annee), ['id_comptag', 'annee', 'fichier', 'donnees_type'], 
@@ -832,9 +924,10 @@ def rassemblerIndics(annee, dfComptageNewTot, dfTraficAgrege, dfTraficMensuel=No
         dfIndicHoraireNew = None
     if not dfIndicAgregeNew.loc[dfIndicAgregeNew.duplicated(['id_comptag_uniq', 'indicateur'])].empty:
         raise ValueError("des comptages agreges sont en doublons, corrigez")
-    elif dfIndicMensNew and not dfIndicMensNew.loc[dfIndicMensNew.duplicated(['id_comptag_uniq', 'indicateur'])].empty:
+    elif dfIndicMensNew and not dfIndicMensNew.loc[dfIndicMensNew.duplicated(['id_comptag_uniq', 'indicateur', 'mois'])].empty:
         raise ValueError("des comptages mensuels sont en doublons, corrigez")
-    elif dfIndicHoraireNew and not dfIndicHoraireNew.loc[dfIndicHoraireNew.duplicated(['id_comptag_uniq', 'indicateur'])].empty:
+    elif isinstance(dfIndicHoraireNew, pd.DataFrame) and not dfIndicHoraireNew.loc[dfIndicHoraireNew.duplicated(
+        ['id_comptag_uniq', 'indicateur', 'jour'])].empty:
         raise ValueError("des comptages hioraires sont en doublons, corrigez")
     else : 
         pass

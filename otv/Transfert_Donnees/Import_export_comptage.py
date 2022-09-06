@@ -12,7 +12,7 @@ import warnings
 import Connexion_Transfert as ct
 from Params.Bdd_OTV import (nomConnBddOtv, schemaComptage, tableIndicAgrege, tableComptage, 
                             tableCompteur, tableIndicHoraire, schemaComptageAssoc,
-                            tableIndicMensuel, tableCorrespIdComptag)
+                            tableIndicMensuel, tableCorrespIdComptag, vueLastAnnKnow)
 import geopandas as gp
 
 
@@ -68,7 +68,10 @@ def recupererIdUniqComptage(dfSource, derniereAnnee=False):
         """
         if not derniereAnnee:
             O.checkAttributsinDf(dfSource, ['id_comptag', 'annee'])
-        dfidComptagSource = dfSource.drop_duplicates(['id_comptag', 'annee'])[['id_comptag', 'annee']]
+            dfidComptagSource = dfSource.drop_duplicates(['id_comptag', 'annee'])[['id_comptag', 'annee']]
+        else:
+            O.checkAttributsinDf(dfSource, ['id_comptag'])
+            dfidComptagSource = dfSource.drop_duplicates(['id_comptag'])[['id_comptag']]
         with ct.ConnexionBdd(nomConnBddOtv) as c:
             if derniereAnnee:
                 txt = '\'),(\''.join(dfSource.id_comptag.tolist())
@@ -87,7 +90,8 @@ def recupererIdUniqComptage(dfSource, derniereAnnee=False):
                                          order by ca.id_comptag, ca.annee DESC"""
             dfIdCptUniqs = pd.read_sql(rqt, c.sqlAlchemyConn)
         dfSourceIds = dfSource.merge(dfIdCptUniqs, on=['id_comptag', 'annee'], how='left').drop_duplicates(
-            ) if not derniereAnnee else dfSource.merge(dfIdCptUniqs, on='id_comptag', how='left')
+            ) if not derniereAnnee else dfSource.merge(dfIdCptUniqs, on='id_comptag', how='left').drop_duplicates(
+            )
         #verif que tout le monde a un id_comptag_uniq
         if dfSourceIds.id_comptag_uniq.isna().any():
             dfSourceIdsNanList = dfSourceIds.loc[dfSourceIds.id_comptag_uniq.isna()].id_comptag.unique()
@@ -118,6 +122,17 @@ def recupererComptageSansTrafic(listIdComptag, annee):
     with ct.ConnexionBdd(nomConnBddOtv) as c  :
         dfCptSansTmja=pd.read_sql(f'select id, id_comptag, annee from comptage.vue_comptage_sans_tmja where id_comptag=ANY(ARRAY{listIdComptag}) and annee=\'{annee}\'', c.sqlAlchemyConn)
     return  dfCptSansTmja
+
+
+def recupererLastAnnKnow(listIdComptag):
+    """
+    a partir d'une liste d'id_comptag, recuperer les données contenues dans la vue de la derniere annee connue
+    """
+    with ct.ConnexionBdd() as c:
+        dfLastAnKnow = pd.read_sql(f"select * from {schemaComptage}.{vueLastAnnKnow} where id_comptag = any(array{listIdComptag})",
+                                   c.sqlAlchemyConn)
+    return dfLastAnKnow
+    
     
     
 def insert_bdd(schema, table, df, if_exists='append',geomType='POINT'):
