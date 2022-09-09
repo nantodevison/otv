@@ -9,7 +9,7 @@ import Connexion_Transfert as ct
 import pandas as pd
 
 nomConnBddOtv='local_otv_boulot'
-attBddCompteur = ['geometrie', 'id_comptag', 'pr', 'abs', 'route', 'reseau', 'dep', 'gestionnai','concession', 'type_poste', 'techno', 'src_geo', 
+attBddCompteur = ['geom', 'id_comptag', 'pr', 'abs', 'route', 'reseau', 'dep', 'gestionnai','concession', 'type_poste', 'techno', 'src_geo', 
                   'obs_geo', 'x_l93', 'y_l93', 'fictif', 'id_cpt', 'id_sect', 'last_ann_sect', 'src_cpt', 'convention','obs_supl','sens_cpt']
 attBddCompteurNonNull = ['id_comptag', 'reseau', 'dep', 'gestionnai','concession', 'type_poste', 'fictif', 'src_cpt', 'convention','sens_cpt']
 attrComptage = ['id_comptag', 'annee', 'periode', 'src', 'obs', 'type_veh']
@@ -38,8 +38,9 @@ tableCorrespIdComptag = 'corresp_id_comptag'
 tableEnumTypeVeh = 'enum_type_veh'
 tableEnumTypePoste = 'enum_type_poste'
 tableEnumSensCpt = 'enum_nb_sens_cpt'
+tableEnumIndicateur = 'enum_indicateur'
 vueLastAnnKnow = 'vue_compteur_last_annee_know_tmja_pc_pl'
 with ct.ConnexionBdd(nomConnBddOtv) as c:
     enumTypePoste = pd.read_sql(f"select code from {schemaComptage}.{tableEnumTypePoste}", c.sqlAlchemyConn).code.tolist()
     enumSensCpt = pd.read_sql(f"select code from {schemaComptage}.{tableEnumSensCpt}", c.sqlAlchemyConn).code.tolist()
-
+    enumIndicateur = pd.read_sql(f"select code from {schemaComptage}.{tableEnumIndicateur}", c.sqlAlchemyConn).code.tolist()

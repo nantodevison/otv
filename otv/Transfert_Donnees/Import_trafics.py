@@ -31,13 +31,8 @@ from Import_export_comptage import (compteur_existant_bdd, insererSchemaComptage
 import Outils as O
 from Params.Mensuel import dico_mois, renommerMois
 from Params.Bdd_OTV import (attBddCompteur, nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, 
-                            tableIndicAgrege, tableIndicHoraire, attrComptage)   
-from Params.DonneesGestionnaires import (cd16_columnsFichierPtPigma, cd16_columnsFichierLgnPigma, cd16_dicoCorrespTypePoste, cd16_dicoCorrespTechno,
-                                         cd16_dicoCorrespNomColums, cd16_columnsASuppr, cd16_attrIndicAgregePigma, denominationSens,
-                                         cd79_dicoCorrespMaterielTechno, niort_formatFichierAccepte, niort_vmoyHoraireVlStartCpev,
-                                         niort_vmoyHoraireVlPasCpev, niort_vmoyHorairePlPasCpev, niort_nbJoursHoraireCpev, niort_ligneDebutDebitHoraireTv,
-                                         niort_ligneDebutDebitHorairePl, niort_colonneDebutDebitHoraire, niort_colonneFinDebitHoraire, niort_colonneVmoyHoraire,
-                                         niort_colonneVmoyHoraireJour)
+                            tableIndicAgrege, tableIndicHoraire, attrComptage, attrIndicAgrege, enumIndicateur)   
+from Params.DonneesGestionnaires import *
 from Params.DonneesVitesse import valeursVmaAdmises, correspVmaVlVmaPl  
               
               
@@ -2048,21 +2043,232 @@ class Comptage_cd24(Comptage):
  
 class Comptage_cd33(Comptage):
     """
-    Cette classe se base sur la fourniture par le CD33  de tableau des compteurs permanents et tournants, associé au sectionnement.
+    Cette classe se base sur la fourniture par le CD33 : 
+    en 2019 : de tableau des compteurs permanents et tournants, associé au sectionnement.
+    en 2020 : de tableau des compteurs permanents et tournants et enquete, associé au sectionnement.
+    en 2021 : de tableau des compteurs permanents et tournant + fichiers shape format points permanents, tournants, enquetes
     A noter que Vincent récupérait aussi des données sur le site internet du CD33 https://www.gironde.fr/deplacements/les-routes-et-ponts#comptage-routier
     """ 
-    def __init__(self, fichier, annee, sectionnement):
+    def __init__(self, dossier, fichierPermanentExcel, fichierTournantExcel, fichierPermanentShape,
+                 fichierTournantShape, fichierEnqueteShape, annee, epsg='EPSG:2154'):
         """
         attributs : 
-            fichier : string : chemin du tableur des comptages permanents et tournants
-            annee : int : annee dur 4 characters
-            sectionnement : chemin du fichier de sectionnement
+            dossier : dossier contenant les fichiers excel et géoréférencés
+            fichierPermanentExcel : nom du fichier (sans le chemin) excel qui contient les comptages permanents
+            fichierTournantExcel : nom du fichier (sans le chemin) excel qui contient les comptages tournants
+            fichierPermanentShape : nom du fichier (sans le chemin) shape qui contient les point de comptages permanents
+            fichierTournantShape : nom du fichier (sans le chemin) shape qui contient les point de comptages tournants
+            fichierEnqueteShape : nom du fichier (sans le chemin) shape qui contient les point de comptages enquetes (geoloc + datas)
+            epsg : string : de la forme 'EPSG:numEpsg'
+            annee : string : annee sur 4 caractères
+        pour info
+        attributs olds: 
+            self.fichier=fichier fichier : string : chemin du tableur des comptages permanents et tournants
+            self.annee=annee annee : int : annee dur 4 characters
+            self.sectionnement=sectionnement sectionnement : chemin du fichier de sectionnement
         """
-        self.fichier=fichier
-        self.annee=annee
-        self.sectionnement=sectionnement
+        self.fichierPermanentExcel = fichierPermanentExcel
+        self.fichierTournantExcel = fichierTournantExcel
+        self.fichierPermanentShape = fichierPermanentShape
+        self.fichierTournantShape = fichierTournantShape
+        self.fichierEnqueteShape = fichierEnqueteShape
+        self.epsg = epsg
+        self.annee = annee
         
-    def analysePerm(self, sheet_name='Permanents'):
+    
+    def ouvertureFichier(self):
+        """
+        ouverture des fchiers excel est shape
+        """    
+        dfPermanentExcel = pd.read_excel(self.fichierPermanentExcel)
+        dfTournantExcel = pd.read_excel(self.fichierTournantExcel, converters={'ddpériode1': lambda x: pd.to_datetime(x, dayfirst=True),
+                                                                               'dfpériode1': lambda x: pd.to_datetime(x, dayfirst=True),
+                                                                               'ddpériode2': lambda x: pd.to_datetime(x, dayfirst=True),
+                                                                               'dfpériode2': lambda x: pd.to_datetime(x, dayfirst=True),
+                                                                               'ddpériode3': lambda x: pd.to_datetime(x, dayfirst=True),
+                                                                               'dfpériode3': lambda x: pd.to_datetime(x, dayfirst=True),
+                                                                               'ddpériode4': lambda x: pd.to_datetime(x, dayfirst=True),
+                                                                               'dfpériode4': lambda x: pd.to_datetime(x, dayfirst=True)})
+        gdfPermanentShape = gp.read_file(self.fichierPermanentShape, crs=self.epsg)
+        gdfTournantShape = gp.read_file(self.fichierTournantShape, crs=self.epsg)
+        gdfEnqueteShape = gp.read_file(self.fichierEnqueteShape, crs=self.epsg)
+        return dfPermanentExcel, dfTournantExcel, gdfPermanentShape, gdfTournantShape, gdfEnqueteShape
+    
+    
+    def miseEnFormeExcel(self, dfPermanentExcel, dfTournantExcel):
+        """
+        filtrer les colonnes, les renommer, vérifier les doublons, mettre en forme la période des comptages tournants
+        in : 
+            dfPermanentExcel : dataframe, voir ouvertureFichier()
+            dfTournantExcel : dataframe, voir ouvertureFichier()
+        out : 
+            dfPermExcelFiltre
+            dfTournExcelFiltre
+        """
+        dfTournantExcelColsOk = dfTournantExcel.drop('annee', axis=1, errors='ign').drop(
+            [c for c in dfTournantExcel.columns if c not in [e.lower() for e in cd33_dicoAttrTournExcel.keys()] + [
+                v.lower() for v in cd33_dicoAttrTournExcel.values()]], axis=1, errors='ignore').rename(columns={k.lower(): v for k, v in cd33_dicoAttrTournExcel.items()})
+        dfPermanentExcelColsOk = dfPermanentExcel.drop(
+            [c for c in dfPermanentExcel.columns if c not in cd33_dicoAttrPermExcel.keys()], axis=1, errors='ignore').rename(
+            columns={k: v for k, v in cd33_dicoAttrPermExcel.items()})
+        # limitation des données à l'année en cours, sur le sens désiré, sans valeur nulle dans le tmja
+        dfPermExcelFiltre = dfPermanentExcelColsOk.loc[(dfPermanentExcelColsOk.annee == int(self.annee)) & (dfPermanentExcelColsOk.sens == 3) &
+                                                       (dfPermanentExcelColsOk.tmja.notna())].copy()
+        dfTournExcelFiltre = dfTournantExcelColsOk.loc[(dfTournantExcelColsOk.annee == int(self.annee)) & (dfTournantExcelColsOk.sens == 3) &
+                                                       (dfTournantExcelColsOk.tmja.notna())].copy()
+        # vérification des doublons
+        if not dfPermExcelFiltre.loc[dfPermExcelFiltre.duplicated('troncon')].empty:
+            raise ValueError('doublons dans le fichier excel des comptages permanent')
+        if not dfTournExcelFiltre.loc[dfTournExcelFiltre.duplicated('troncon')].empty:
+            raise ValueError('doublons dans le fichier excel des comptages tournants')
+        # mise en forme de la periode pour les comptages tournants
+        dfTournExcelFiltre['periode'] = dfTournExcelFiltre.apply(
+            lambda x: " ; ".join(['-'.join([c[0].strftime('%Y/%m/%d'),c[1].strftime('%Y/%m/%d')]) 
+                                  for c in [[x.debut_periode1, x.fin_periode1], [x.debut_periode2, x.fin_periode2],
+                                            [x.debut_periode3, x.fin_periode3], [x.debut_periode4, x.fin_periode4]]
+                                  if not pd.isnull(c).all()])
+            if not all([pd.isnull(c).all() for c in [[x.debut_periode1, x.fin_periode1], [x.debut_periode2, x.fin_periode2],
+                                                     [x.debut_periode3, x.fin_periode3], [x.debut_periode4, x.fin_periode4]]])
+            else None, axis=1)
+        return dfPermExcelFiltre, dfTournExcelFiltre
+    
+    
+    def miseEnFormeShape(self, gdfPermanentShape, gdfTournantShape, gdfEnqueteShape):
+        """
+        mettre en forme les attributs des fichiers shape
+        in : 
+            gdfPermanentShape : dataframe, voir ouvertureFichier()
+            gdfTournantShape : dataframe, voir ouvertureFichier()
+            gdfEnqueteShape : dataframe, voir ouvertureFichier()
+        out : 
+            gdfPermanentFiltre
+            gdfTournantFiltre
+            gdfEnqueteFiltre
+            gdfEnqueteColsOk
+        """
+        gdfPermanentColsOk = gdfPermanentShape.drop([c for c in gdfPermanentShape.columns if c not in cd33_dicoAttrPermTournShape.keys()
+                                                     ], axis=1, errors='ignore').rename(columns=cd33_dicoAttrPermTournShape
+                                                                                        ).assign(type_poste='permanent', src='shape + excel')
+        gdfTournantColsOk = gdfTournantShape.drop([c for c in gdfTournantShape.columns if c not in cd33_dicoAttrPermTournShape.keys()
+                                                   ], axis=1, errors='ignore'
+                                                  ).rename(columns=cd33_dicoAttrPermTournShape).assign(
+                                                      type_poste='tournant', src='shape + excel')
+        gdfEnqueteColsOk = gdfEnqueteShape.drop(
+            [c for c in gdfEnqueteShape if c not in list(cd33_dicoAttrPermTournShape.keys()) + list(cd33_dicoAttrEnqueteShape.keys())],
+            axis=1, errors='ignore').rename(columns=cd33_dicoAttrPermTournShape).rename(columns=cd33_dicoAttrEnqueteShape).assign(
+                                                    type_poste='ponctuel', src='enquete')
+        for e in (gdfPermanentColsOk, gdfTournantColsOk, gdfEnqueteColsOk):
+            e['route'] = e.route.apply(lambda x: O.epurationNomRoute(x) if not pd.isnull(x) else None)
+            e['id_comptag'] = e.apply(lambda x: f'33-{x.route}-{int(x.pr)}+{int(x["abs"])}'
+                                      if x[['route', 'pr', 'abs']].notna().all().all() else None, axis=1)
+            e['dep'] = '33'
+            e['reseau'] = 'RD'
+            e['gestionnai'] = 'CD33'
+            e['src_geo'] = 'coordonnees_gestionnaire'
+            e['convention'] = True
+            e['src_cpt'] = 'convention gestionnaire'
+            e['techno'] = e.techno.replace(cd33_dicoCorrespTechno)
+            e['concession'] = False
+            if 'vma' in e.columns:
+                e['vma'] = e.vma.apply(lambda x: int(x.split('/')[0]) if '/' in x else None)
+            if 'troncon' in e.columns:
+                e['id_sect'] = e.troncon
+            e['obs_supl'] = e.rattacheme.apply(lambda x: f"rattaché à l'id_cpt {x}" if not pd.isnull(x) else None)
+            # print(e)
+            e['identifiant_modif'] = e['id_cpt'].str[:-2]
+            dfTronconValueCount = e.drop_duplicates(['identifiant_modif', 'sens']).identifiant_modif.value_counts(
+                ).rename('nb_sens').reset_index().rename(columns={'index': 'identifiant_modif'})
+            e.loc[e.identifiant_modif.isin(dfTronconValueCount.loc[
+                dfTronconValueCount.nb_sens >= 3].identifiant_modif.tolist()), 'sens_cpt'] = 'double sens'
+            e.loc[e.identifiant_modif.isin(dfTronconValueCount.loc[
+                dfTronconValueCount.nb_sens < 3].identifiant_modif.tolist()), 'sens_cpt'] = 'sens unique'
+        gdfPermanentFiltre = gdfPermanentColsOk.loc[(gdfPermanentColsOk.sens == 3) & (gdfPermanentColsOk.geometry.notna()) &
+                                                    (gdfPermanentColsOk.id_comptag.notna())].copy()
+        gdfTournantFiltre = gdfTournantColsOk.loc[(gdfTournantColsOk.sens == 3) & (gdfTournantColsOk.geometry.notna()) & 
+                                                  (gdfTournantColsOk.id_comptag.notna())].copy()
+        gdfEnqueteFiltre = gdfEnqueteColsOk.loc[(gdfEnqueteColsOk.sens == 3) & (gdfEnqueteColsOk.geometry.notna()) &
+                                                (gdfEnqueteColsOk.annee == int(self.annee)) &
+                                                (gdfEnqueteColsOk.id_comptag.notna())].copy()
+        # periode pour les enquetes
+        gdfEnqueteFiltre['periode'] = gdfEnqueteFiltre.apply(
+            lambda x: f"{pd.to_datetime(x.debut_periode).strftime('%Y/%m/%d')}-{pd.to_datetime(x.fin_periode).strftime('%Y/%m/%d')}"
+            if not pd.isnull([x.debut_periode, x.fin_periode]).all() else None, axis=1)
+        gdfPermanentFiltre = O.gp_changer_nom_geom(gdfPermanentFiltre, 'geom')
+        gdfTournantFiltre = O.gp_changer_nom_geom(gdfTournantFiltre, 'geom')
+        gdfEnqueteFiltre = O.gp_changer_nom_geom(gdfEnqueteFiltre, 'geom')
+        return gdfPermanentFiltre, gdfTournantFiltre, gdfEnqueteFiltre, gdfEnqueteColsOk
+    
+    
+    def miseEnFormeTournant(self, dfTournExcelFiltre):
+        """
+        passer les données de trafic relatives à des périodes vers la structure en mois et indicateurs
+        in :
+            dfTournExcelFiltre : dataframe, issue de miseEnFormeExcel()
+        """
+        donnees_mens_tour = pd.DataFrame({'troncon': [], 'donnees_type':[]})
+        for j, e in enumerate(dfTournExcelFiltre.itertuples()):
+            for i in range(1, 5):
+                deb = getattr(e, f'debut_periode{i}')
+                fin = getattr(e, f'fin_periode{i}')
+                if pd.isnull(deb) or pd.isnull(fin):
+                    continue
+                mois = [k for k, v in dico_mois.items() if v[0] == Counter(pd.date_range(deb, fin).month).most_common()[0][0]][0]
+                # print(e)
+                donnees_mens_tour.loc[j, mois] = getattr(e, f'tmja_periode{i}')
+                donnees_mens_tour.loc[j, 'donnees_type'] = 'tmja'
+                donnees_mens_tour.loc[j+1000, mois] = getattr(e, f'pc_pl_periode{i}')
+                donnees_mens_tour.loc[j, 'troncon'] = getattr(e, f'troncon')
+                donnees_mens_tour.loc[j+1000, 'troncon'] = getattr(e, f'troncon')
+                donnees_mens_tour.loc[j+1000, 'donnees_type'] = 'pc_pl'
+        return donnees_mens_tour
+    
+    
+    def syntheseNouvellesDonnees(self, dfPermExcelFiltre, gdfPermanentFiltre, dfTournExcelFiltre, gdfTournantFiltre,
+                                 gdfEnqueteFiltre, gdfEnqueteColsOk):
+        """
+        rassembler les données des fichiers excel et shape dans une seule dataframe.
+        Attention ! les données mensuelles tournants ne sont pas jointes, car pas la même structure de données
+        """
+        gdfPermTrafic = dfPermExcelFiltre.merge(gdfPermanentFiltre, on='troncon')
+        if len(gdfPermTrafic) != len(dfPermExcelFiltre):
+            raise ValueError(
+                f"""les nombres de données géoréférencées avec id_comptag {len(gdfPermTrafic)} et excel {len(dfPermExcelFiltre)} aprés jointure est différent. 
+                chercher doublons ou manque ou pb id_comptag""")
+        gdfTournTrafic = dfTournExcelFiltre.merge(gdfTournantFiltre, on='troncon')
+        if len(gdfTournTrafic) != len(dfTournExcelFiltre):
+            raise ValueError(
+                f"""les nombres de données géoréférencées {len(gdfTournTrafic)} et excel {len(dfTournExcelFiltre)} aprés jointure est différent. 
+                chercher doublons ou manque ou pb id_comptag""")
+        if len(gdfEnqueteFiltre) != len(gdfEnqueteColsOk.loc[(gdfEnqueteColsOk.sens == 3) & (gdfEnqueteColsOk.geometry.notna()) & 
+                                                             (gdfEnqueteColsOk.annee == int(self.annee))]):
+            raise ValueError(
+                f"""les nombres de données géoréférencées {len(gdfEnqueteFiltre)} et excel {
+                len(gdfEnqueteColsOk.loc[(gdfEnqueteColsOk.sens == 3) & (gdfEnqueteColsOk.geometry.notna()) 
+                & (gdfEnqueteColsOk.annee == int(self.annee))])} 
+                aprés jointure est différent. chercher doublons ou manque ou pb id_comptag""")
+        dfTtSources = gp.GeoDataFrame(pd.concat([e.drop([
+            c for c in e.columns if c not in attBddCompteur + attrComptage + attrIndicAgrege + list(dico_mois.keys()) + 
+            enumIndicateur + ['troncon', 'libelle']], axis=1, errors='ignore') for e in (gdfPermTrafic, gdfTournTrafic, gdfEnqueteFiltre)
+            ]), geometry='geom', crs=self.epsg)
+        return dfTtSources
+    
+    
+    def miseEnFormeGenerale(self):
+        """
+        chainer les fonctions de mise en forme préalables des données
+        """ 
+        dfPermanentExcel, dfTournantExcel, gdfPermanentShape, gdfTournantShape, gdfEnqueteShape = self.ouvertureFichier()
+        dfPermExcelFiltre, dfTournExcelFiltre = self.miseEnFormeExcel(dfPermanentExcel, dfTournantExcel)
+        gdfPermanentFiltre, gdfTournantFiltre, gdfEnqueteFiltre, gdfEnqueteColsOk = self.miseEnFormeShape(
+            gdfPermanentShape, gdfTournantShape, gdfEnqueteShape)
+        donnees_mens_tour = self.miseEnFormeTournant(dfTournExcelFiltre)
+        dfTtSources = self.syntheseNouvellesDonnees(dfPermExcelFiltre, gdfPermanentFiltre, dfTournExcelFiltre, gdfTournantFiltre,
+                                         gdfEnqueteFiltre, gdfEnqueteColsOk)
+        return dfTtSources, donnees_mens_tour
+        
+        
+        
+    def old_analysePerm(self, sheet_name='Permanents'):
         perm=pd.read_excel(self.fichier, sheet_name=sheet_name)
         gdfPerm = gp.GeoDataFrame(perm, geometry=gp.points_from_xy(perm.Longitude, perm.Latitude), crs='EPSG:4326')
         gdfPerm=gdfPerm.to_crs('EPSG:2154')
@@ -2076,7 +2282,8 @@ class Comptage_cd33(Comptage):
         gdfPerm['type_poste']='permanent'
         return gdfPerm
     
-    def trierPermConnus(self, table, localisation):
+    
+    def old_trierPermConnus(self, table, localisation):
         """
         trouver les comptages permanents connus a partir de l'annee precedente
         """
@@ -2092,7 +2299,7 @@ class Comptage_cd33(Comptage):
         return GdfPerm,gdfPermConnus, gdfPermInconnus
    
     
-    def assignerCptInconnus(self, dicoAssigne, gdfInconnus):
+    def old_assignerCptInconnus(self, dicoAssigne, gdfInconnus):
         """
         assigner manuellement les comptages inconnus, en place dans la df
         in  : 
@@ -2102,7 +2309,8 @@ class Comptage_cd33(Comptage):
         for k, v in dicoAssigne.items() : 
             gdfInconnus.loc[gdfInconnus.troncon==k,'id_comptag']=v
             
-    def analyseTourn(self, sheet_name='Tournants'):
+            
+    def old_analyseTourn(self, sheet_name='Tournants'):
         perm=pd.read_excel(self.fichier, sheet_name=sheet_name)
         gdfTourn = gp.GeoDataFrame(perm, geometry=gp.points_from_xy(perm.Longitude, perm.Latitude), crs='EPSG:4326')
         gdfTourn=gdfTourn.to_crs('EPSG:2154')
@@ -2117,7 +2325,8 @@ class Comptage_cd33(Comptage):
         gdfTourn['type_poste']='tournant'
         return gdfTourn
     
-    def donneesMensTournant(self,gdfTourn):
+    
+    def old_donneesMensTournant(self,gdfTourn):
         """
         ajouter les donnees mensuelles aux donnees de comptage tournant et renvoyer une nouvelle df
         """
@@ -2138,7 +2347,8 @@ class Comptage_cd33(Comptage):
                 donnees_mens_tour.loc[j+1000,'donnees_type']='pc_pl'
         return donnees_mens_tour
             
-    def correspondanceTournant(self, localisation, rqtPpvCptTournant, rqtCptExistant, rqtGeomReferentielEpure, rqtPpvCptBdd,
+            
+    def old_correspondanceTournant(self, localisation, rqtPpvCptTournant, rqtCptExistant, rqtGeomReferentielEpure, rqtPpvCptBdd,
                                schema, table_graph, table_vertex, dfTournant ):
         """"
         Comme on a aucun PR + abs, on fait une correspondanec en cherchant les id_ign commun avec une determination de troncon elementaire,
@@ -2170,7 +2380,8 @@ class Comptage_cd33(Comptage):
         inconnuTournant=ppv_final.loc[~ppv_final['correspondance']]
         return correspTournant,inconnuTournant
     
-    def correctionCorrespondanceTournant(self,dicoCorrespTourn,tournant,correspTournant):
+    
+    def old_correctionCorrespondanceTournant(self,dicoCorrespTourn,tournant,correspTournant):
         """
         suite a la determination des correspondance de comptage tournants, on ajoute les correction manuelle et on produit
         la table de synthese : 
@@ -2185,7 +2396,8 @@ class Comptage_cd33(Comptage):
         cptTournantAffecte.loc[cptTournantAffecte.id_comptag.isna(),'correspondance']=False
         return cptTournantAffecte
     
-    def creerNouveauPointTournants(self,cptTournantAffecte,dicoNewCpt):
+    
+    def old_creerNouveauPointTournants(self,cptTournantAffecte,dicoNewCpt):
         """
         apres xorrection de la correspondance, creer les nouveaux points a inserer
         in : 
@@ -2201,12 +2413,6 @@ class Comptage_cd33(Comptage):
         df_attr_insert[f'obs_{self.annee}']='nouveau_point, '+df_attr_insert[f'obs_{self.annee}']
         return df_attr_insert[['id_comptag','route','type_poste','src_geo','obs_geo','dep','reseau','gestionnai','concession','x_l93','y_l93',f'tmja_{self.annee}',
                 f'pc_pl_{self.annee}', f'obs_{self.annee}', f'src_{self.annee}', 'fichier', 'convention', 'geometry', 'troncon']]
-        
-    def update_bdd_33(self, schema, table):
-        valeurs_txt=self.creer_valeur_txt_update(self.df_attr_update,['id_comptag',f'tmja_{self.annee}',f'pc_pl_{self.annee}',f'src_{self.annee}', 'fichier'])
-        dico_attr_modif={f'tmja_{self.annee}':f'tmja_{self.annee}', f'pc_pl_{self.annee}':f'pc_pl_{self.annee}',f'src_{self.annee}':f'src_{self.annee}', 
-                         'fichier':'fichier'}
-        self.update_bdd(schema, table, valeurs_txt,dico_attr_modif)
  
   
 class Comptage_cd79(Comptage):
