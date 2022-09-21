@@ -15,7 +15,7 @@ from collections import Counter
 from Params.Bdd_OTV import (nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, tableEnumTypeVeh, 
                             tableCompteur, tableCorrespIdComptag,attrCompteurAssoc, attBddCompteur, attrComptageMano,
                             attrCompteurValeurMano, attrComptageAssoc, enumTypePoste, vueLastAnnKnow, attrIndicHoraireAssoc,
-                            attrIndicHoraire)
+                            attrIndicHoraire, dicoTypeAttributs)
 from Import_export_comptage import (recupererIdUniqComptage, recupererIdUniqComptageAssoc, compteur_existant_bdd, 
                                     recupererLastAnnKnow)
 from Params.Mensuel import dico_mois
@@ -34,8 +34,11 @@ def corresp_nom_id_comptag(df):
     with ct.ConnexionBdd(nomConnBddOtv) as c:
         corresp_comptg = pd.read_sql(rqt_corresp_comptg, c.sqlAlchemyConn)
     dfMerge = corresp_comptg.merge(df, left_on='id_gest', right_on='id_comptag', how='right')
-    dfMerge['id_comptag'] = dfMerge.apply(lambda x: x.id_gti if not pd.isnull(x.id_gest) else x.id_comptag, axis=1)
-    dfMerge.drop(['id', 'id_gest', 'id_gti'], axis=1, errors='ignore', inplace=True)
+    if not dfMerge.empty:
+        dfMerge['id_comptag'] = dfMerge.apply(lambda x: x.id_gti if not pd.isnull(x.id_gest) else x.id_comptag, axis=1)
+        dfMerge.drop(['id', 'id_gest', 'id_gti'], axis=1, errors='ignore', inplace=True)
+    else:
+        return pd.DataFrame([])
     return dfMerge
 
 
@@ -377,6 +380,9 @@ def creerComptageAssoc(df, id_comptag_ref_nom, annee, id_compteur_asso_nom, src=
     dfSource.rename(columns={id_compteur_asso_nom: 'id_cpteur_asso'}, inplace=True)
     if dicoIdCpteurRef:
         dfSource[id_comptag_ref_nom] = dfSource.apply(lambda x: comptagesAssocDefinirIdCompteurRef(x, dicoIdCpteurRef), axis=1)
+    # correspondance d'identifiants de comptage si besoin
+    dfSource[id_comptag_ref_nom] = corresp_nom_id_comptag(dfSource.drop('id_comptag', axis=1, errors='ignore').rename(
+        columns={id_comptag_ref_nom: 'id_comptag'})).id_comptag.tolist()
     corresIdComptagInterne = recupererIdUniqComptage(dfSource[[id_comptag_ref_nom]].rename(
         columns={id_comptag_ref_nom: 'id_comptag'}), True)
     dfIds = dfSource.merge(corresIdComptagInterne, left_on=id_comptag_ref_nom, right_on='id_comptag', how='left').rename(columns={'id_comptag_uniq': 'id_cptag_ref'}).assign(annee=annee)
@@ -416,13 +422,20 @@ def creerCompteurAssoc(df, nomAttrIdCpteurAsso, nomAttrGeom=None, dicoIdCpteurRe
     if dicoIdCpteurRef and NomAttrFinal:
         dfSource[NomAttrFinal] = dfSource.apply(lambda x: comptagesAssocDefinirIdCompteurRef(x, dicoIdCpteurRef), axis=1)
     if nomAttrGeom:
-        dfSource = O.gp_changer_nom_geom(dfSource, 'geom')
-    dfSource.rename(columns = {NomAttrFinal: 'id_cpteur_ref'}, inplace=True)
-    tableCompteur = dfSource[[c for c in dfSource.columns if c in attrCompteurAssoc]]
+        dfSource = O.gp_changer_nom_geom(dfSource.drop('geom', axis=1, errors='ignore'), 'geom')
+    dfSource = dfSource.drop('id_cpteur_ref', axis=1, errors='ignore').rename(columns = {NomAttrFinal: 'id_cpteur_ref'})
+    tableCompteur = dfSource[[c for c in dfSource.columns if c in attrCompteurAssoc]].copy()
+    for k, v in dicoTypeAttributs.items():
+        if tableCompteur[k].dtype != v : 
+            tableCompteur.loc[tableCompteur[k].notna(), k] = tableCompteur.loc[tableCompteur[k].notna()][k].astype(v)
+    # correspondance d'identifiants de comptage si besoin
+    tableCompteur['id_cpteur_ref'] = corresp_nom_id_comptag(tableCompteur.drop('id_comptag', axis=1, errors='ignore').rename(
+        columns={'id_cpteur_ref': 'id_comptag'})).id_comptag.tolist()
     return tableCompteur
 
 
-def comptagesAssocDefinirIdCompteurRef(df, dicoIdCpteurRef):
+def comptagesAssocDefinirIdCompteurRef(df, dicoIdCpteurRef={1: 'id_comptag_bdd_tronc_homo_topo', 
+                                                            2: 'id_comptag_tronc_homo_traf'}):
     """
     si il y a plusieurs attributs d'identifiant de comptage de référence pour un compteur associé, affecter le bon.
     se base sur un dico de type entier auto-incrémentée: attribut a oprendre en compte. Plus l'entier est petit, plus l'attribut est prioritaire
@@ -439,22 +452,25 @@ def comptagesAssocDefinirIdCompteurRef(df, dicoIdCpteurRef):
 
 def creerListTransfertComptage2ComptageAssoc(dfCreationCompteurExistDevientAssoc, annee, dicoIdCpteurRef):
     """
-    fonction de creation d'uine liste de paramètre pour le transfert de compteur et comptage depuis le schema comptage vers le schema comoptage_assoc
+    fonction de creation d'uine liste de paramètre pour le transfert de compteur et comptage 
+    depuis le schema comptage vers le schema comoptage_assoc
     de la Bdd
     in :
-        dfCreationCompteurExistDevientAssoc : df des compteurs à transféré, issu du process de caractérisation des nouveaux points gestionnaires.
+        dfCreationCompteurExistDevientAssoc : df des compteurs à transféré, issu du process de caractérisation des nouveaux 
+                                              points gestionnaires.
         annee  : string sur 4 caractères
-        dicoIdCpteurRef : nécéssaire à la fonction comptagesAssocDefinirIdCompteurRef ; dico de type entier auto-incrémentée: attribut a prendre en compte. 
+        dicoIdCpteurRef : nécéssaire à la fonction comptagesAssocDefinirIdCompteurRef ; dico de type entier auto-incrémentée: 
+                          attribut a prendre en compte. 
                           Plus l'entier est petit, plus l'attribut est prioritaire
     """
     O.checkAttributsinDf(dfCreationCompteurExistDevientAssoc, ['id_comptag'] + list(dicoIdCpteurRef.values()))
     dfCreationCompteurExistDevientAssoc = dfCreationCompteurExistDevientAssoc.copy()
-    dfCreationCompteurExistDevientAssoc['id_comptag_bdd'] = dfCreationCompteurExistDevientAssoc.apply(lambda x: comptagesAssocDefinirIdCompteurRef(
-        x, dicoIdCpteurRef), axis=1)
+    dfCreationCompteurExistDevientAssoc['id_comptag_bdd'] = dfCreationCompteurExistDevientAssoc.apply(
+        lambda x: comptagesAssocDefinirIdCompteurRef(x, dicoIdCpteurRef), axis=1)
     dfLastAnKnow = recupererLastAnnKnow(dfCreationCompteurExistDevientAssoc.id_comptag_bdd.tolist())
     dfMerge = dfCreationCompteurExistDevientAssoc[['id_comptag', 'id_comptag_bdd']].merge(dfLastAnKnow.rename(columns={'id_comptag': 'id_comptag_bdd'}),
                                                                                                 on='id_comptag_bdd')
-    listParamsFonctionPostgres = list(dfMerge[['id_comptag', 'id_comptag_bdd', 'annee_tmja']].assign(annee='2021').itertuples(index=False, name=None))
+    listParamsFonctionPostgres = list(dfMerge[['id_comptag', 'id_comptag_bdd', 'annee_tmja']].assign(annee=annee).itertuples(index=False, name=None))
     return listParamsFonctionPostgres
 
 
@@ -473,6 +489,13 @@ def appelFonctionTransfertComptage2ComptageAssoc(listParamsFonctionPostgres, rec
     txtAppelFonction = ' ; '.join([f"""select comptage.transfert_comptage_assoc('{e[0]}', '{e[1]}', '{e[3]}', '{e[2]}', {recup_compteur}, {sup_compteur})"""
             for e in listParamsFonctionPostgres])
     with ct.ConnexionBdd() as c:
+        # si le compteur qui devient asso est référencé dans la table des cpteur assoc, il faut modifier ce référencement
+        listIdCpteurRefDevientAssoc = [e[1] for e in listParamsFonctionPostgres]
+        rqtCpteurRef = f"select * from {schemaComptageAssoc}.{tableCompteur} where id_cpteur_ref = ANY(array{listIdCpteurRefDevientAssoc})" 
+        idCpteurRefDansAssoc = pd.read_sql(rqtCpteurRef, c.sqlAlchemyConn)
+        for e in filter(lambda x: x[1] in idCpteurRefDansAssoc.id_cpteur_ref.tolist(), listParamsFonctionPostgres):
+            c.curs.execute(f"update {schemaComptageAssoc}.{tableCompteur} set id_cpteur_ref = '{e[0]}' where id_cpteur_ref = '{e[1]}'", c.sqlAlchemyConn)
+            c.connexionPsy.commit()
         c.curs.execute(txtAppelFonction, c.sqlAlchemyConn)
         c.connexionPsy.commit()
     return txtAppelFonction
@@ -730,8 +753,11 @@ def ventilerNouveauComptageRef(df, dep, tableTroncHomo, tableRefLineaire,  dista
 
 
 def modifierVentilation(correspIdComptag, creationCompteur, comptageAssocie, CreationCompteurExistDevientAssoc,
-                        dicoAssocies2Corresp={}, listeCorresp2Associes=[], dicoNewCompteur2Associes={},
-                        dicoNewCompteur2Corresp={}, dicoCreationCompteurExistDevientAssoc2Corresp={}):
+                        gest, dicoAssocies2Corresp, dicoCorresp2Associes, dicoNewCompteur2Assoc,
+                        dicoCreationCompteurExistDevientAssoc2Assoc, dicoNewCompteur2CreationCompteurExistDevientAssoc,
+                        dicoAssoc2CreationCompteurExistDevientAssoc, dicoCorresp2CreationCompteurExistDevientAssoc,
+                        dicoNewCompteur2Corresp, dicoCreationCompteurExistDevientAssoc2Corresp, listCompteurAForcer,
+                        listCompteurASupprimer):
     """
     à partir des elements crees par ventilerCompteurIdComptagExistant(), ventilerNouveauComptageRef(), ventilerCompteurIdComptagExistant()
     et de liste ou de dico de transfert de d'un resultats vers un autre, redefinir les dataframes des comptages associes
@@ -751,79 +777,180 @@ def modifierVentilation(correspIdComptag, creationCompteur, comptageAssocie, Cre
         listeAssocies2Corresp : liste des comptages a transferer depuis les comptages associes vers les correspondance de comptage
         CreationCompteurExistDevientAssoc : dataframe de comptage qui necesittent creation de compteur et le passage de celui 
                                             en bdd vers le schema comptage_assoc
+        gest : gestionnaire
     out : 
         comptageAssocie_MaJMano : dataframe des comptages associes, avec les corresp transferees dedans et 
                                             si besoin les comptages vers corrsp sortis. Si pas concerne, renvoi none
         correspIdComptag_MajMano : dataframe des corrsp, avec les corresp transferees dedans et si besoin les comptages 
                                      vers comptages associes sortis. Si pas concerne, renvoi none
     """
-    # initialisation des variables finales   
-    comptageAssocie_MaJMano = comptageAssocie.copy()
-    correspIdComptag_MajMano = correspIdComptag.copy()
-    creationCompteur_MajMano = creationCompteur.copy()
+    # creation des df de Correspondance sur la base des dico
+    dfCreationCompteurExistDevientAssoc2Assoc = pd.DataFrame({'id_comptag': [k for k in 
+                                                                             dicoCreationCompteurExistDevientAssoc2Assoc.keys()],
+                                                           'id_comptag_ref': [v for v in 
+                                                                              dicoCreationCompteurExistDevientAssoc2Assoc.values()]}, 
+                                                                             dtype=str)
+    dfCorresp2Associes = pd.DataFrame({'id_comptag': [k for k in dicoCorresp2Associes.keys()],
+                                                           'id_comptag_ref': [v for v in dicoCorresp2Associes.values()]}, dtype=str)
+    dfNewCompteur2Assoc = pd.DataFrame({'id_comptag': [k for k in dicoNewCompteur2Assoc.keys()],
+                                        'id_comptag_ref': [v for v in dicoNewCompteur2Assoc.values()]}, dtype=str)
+    dfNewCompteur2CreationCompteurExistDevientAssoc = pd.DataFrame({'id_comptag': [
+        k for k in dicoNewCompteur2CreationCompteurExistDevientAssoc.keys()],
+                                                                             'id_comptag_ref': [
+                                                                                 v for v in 
+                                                                                 dicoNewCompteur2CreationCompteurExistDevientAssoc.
+                                                                                 values()]},
+                                                                            dtype=str)
+    dfCorresp2CreationCompteurExistDevientAssoc = pd.DataFrame({'id_comptag': [
+        k for k in dicoCorresp2CreationCompteurExistDevientAssoc.keys()],
+                                                                             'id_comptag_ref': [
+                                                                                 v for v in
+                                                                                 dicoCorresp2CreationCompteurExistDevientAssoc.
+                                                                                 values()]},
+                                                                            dtype=str)
+    dfAssoc2CreationCompteurExistDevientAssoc = pd.DataFrame({'id_comptag': [k for k in dicoAssoc2CreationCompteurExistDevientAssoc.keys()],
+                                                                             'id_comptag_ref': [v for v in dicoAssoc2CreationCompteurExistDevientAssoc.values()]},
+                                                                            dtype=str)
+    dfCreationCompteurExistDevientAssoc2Corresp = pd.DataFrame({'id_comptag': [k for k in dicoCreationCompteurExistDevientAssoc2Corresp.keys()],
+                                           'id_comptag_bdd': [v for v in dicoCreationCompteurExistDevientAssoc2Corresp.values()]}, dtype=str)
+    dfNewCompteur2Corresp = pd.DataFrame({'id_comptag': [k for k in dicoNewCompteur2Corresp.keys()],
+                                           'id_comptag_bdd': [v for v in dicoNewCompteur2Corresp.values()]}, dtype=str)
+    dfAssocies2Corresp = pd.DataFrame({'id_comptag': [k for k in dicoAssocies2Corresp.keys()], 
+                                           'id_comptag_bdd': [v for v in dicoAssocies2Corresp.values()]}, dtype=str)
     
     # FUSION DES DONNEES
-    # transfert des comptages depuis la correspondance d'id_comptage vers les comptages associés (comptageAssocie)
-    # verif que tious les comptages a transfere ont bien une valeur de id_comptag_bdd
-    if listeCorresp2Associes:
-        print(listeCorresp2Associes)
-        dfCptCorrespVersAssocie = correspIdComptag.loc[correspIdComptag.id_comptag.isin(listeCorresp2Associes)]
-        if not dfCptCorrespVersAssocie.loc[dfCptCorrespVersAssocie.id_comptag_bdd.isna()].empty:
-            raise AttributeError("un des objets n'a pas de valeuyr pour id_comptag_bdd ; vérifier puis corriger")
-    # transfert depuis les nouveaux compteurs vers les les comptages associés (comptageAssocie)
-    # association du comptag_bdd
-    if dicoNewCompteur2Associes:
-        dfNewCompteurVersAssocie = creationCompteur.loc[creationCompteur.id_comptag.isin(list(dicoNewCompteur2Associes.keys()))].copy()
-        dfNewCompteurVersAssocie['id_comptag_bdd'] = dfNewCompteurVersAssocie.apply(lambda x: [v for k, v in dicoNewCompteur2Associes.items()                                                                                       if x.id_comptag == k][0], axis=1 )
-    # verifs
-    if listeCorresp2Associes:
-        if len(dfCptCorrespVersAssocie) != len(listeCorresp2Associes):
-            raise ValueError("le nombre d'id_comptag identifie dans listeCorresp2Associes ne correspond pas au nombre d'objets trouves dans la(es) df visées")
-    if dicoNewCompteur2Associes:
-        if len(dfNewCompteurVersAssocie) != len(dicoNewCompteur2Associes):
-            raise ValueError("le nombre d'id_comptag identifie dans dicoNewCompteur2Associes ne correspond pas au nombre d'objets trouves dans la(es) df visées")
-    # fusion avec les comptages associes
-    if listeCorresp2Associes and dicoNewCompteur2Associes:
-        comptageAssocie_MaJMano = pd.concat([comptageAssocie, dfCptCorrespVersAssocie, dfNewCompteurVersAssocie])
-    elif listeCorresp2Associes:
-        comptageAssocie_MaJMano = pd.concat([comptageAssocie, dfCptCorrespVersAssocie])
-    elif dicoNewCompteur2Associes:
-        comptageAssocie_MaJMano = pd.concat([comptageAssocie, dfNewCompteurVersAssocie])    
-    # transfert des données depuis les comptages associes vers les correspondances d'id_comptag
-    if listeAssocies2Corresp:
-        dfDepuisAssocVersCorresp = comptageAssocie.loc[comptageAssocie.id_comptag.isin(listeAssocies2Corresp)]
-        # verifs
-        if len(dfDepuisAssocVersCorresp) != len(listeAssocies2Corresp):
-            raise ValueError("le nombre d'id_comptag identifie dans listeAssocies2Corresp ne correspond pas au nombre d'objets trouves dans la(es) df visées")
-        # fusion avec les corresp
-        correspIdComptag_MajMano = pd.concat([correspIdComptag, dfDepuisAssocVersCorresp])
-
-    # EVIDER LES DONNEES EN TROP
-    # retrait des comptages associes qui vont etre envoyes dans les corres_id_comptag
-    if listeAssocies2Corresp:
-        comptageAssocie_MaJMano = comptageAssocie_MaJMano.loc[
-            ~comptageAssocie_MaJMano.id_comptag.isin(listeAssocies2Corresp)].copy()
-    if dicoNewCompteur2Associes:
-        # retrait des nouveaux compteurs qui vont etre envoyes dans associes
-        creationCompteur_MajMano = creationCompteur.loc[~creationCompteur.id_comptag.isin(list(dicoNewCompteur2Associes.keys()))].copy()
-    if listeCorresp2Associes:
-        # retrait des corres_id_comptag qui vont etre envoyes dans les comptages associes
-        correspIdComptag_MajMano = correspIdComptag_MajMano.loc[~correspIdComptag_MajMano.id_comptag.isin(listeCorresp2Associes)].copy()
-        
-    # verifs finales de coherence
-    listeSortie = [e for e in (comptageAssocie_MaJMano, correspIdComptag_MajMano, 
-                               creationCompteur_MajMano) if isinstance(e, pd.DataFrame)]
-    listeEntree = [e for e in (comptageAssocie, correspIdComptag, creationCompteur) 
-                   if isinstance(e, pd.DataFrame)]
-    if sum([len(a) for a in listeEntree]) != sum([len(b) for b in listeSortie]):
-        print(sum([len(a) for a in listeEntree]), sum([len(b) for b in listeSortie]))
-        raise ValueError('la somme des élémenst en entrée est différente de la somem des éléments en sortie. vérifier les transferts')
+    # gestion des transfert vers corresp
+    correspIdComptag_MajMano = pd.concat(
+        [creerCorrespComptag(correspIdComptag, 'id_comptag', 'id_comptag_bdd_tronc_homo_topo', listCompteurAForcer),
+         creerCorrespComptag(dfCreationCompteurExistDevientAssoc2Corresp,
+                             'id_comptag', 'id_comptag_bdd', listCompteurAForcer),
+         creerCorrespComptag(dfNewCompteur2Corresp,
+                             'id_comptag', 'id_comptag_bdd', listCompteurAForcer),
+         creerCorrespComptag(dfAssocies2Corresp,
+                             'id_comptag', 'id_comptag_bdd', listCompteurAForcer)]).drop_duplicates()
+    # gestion des transferts vers assoc
+    comptageAssocie_MaJMano = pd.concat([comptageAssocie,
+                                         creationCompteur.loc[creationCompteur.id_comptag.isin(dicoNewCompteur2Assoc.keys())].merge(
+                                             dfNewCompteur2Assoc, on='id_comptag'),
+                                         correspIdComptag.loc[correspIdComptag.id_comptag.isin(dicoCorresp2Associes.keys())].merge(
+                                             dfCorresp2Associes, on='id_comptag'),
+                                         CreationCompteurExistDevientAssoc.loc[CreationCompteurExistDevientAssoc.id_comptag.isin(
+                                             dicoCreationCompteurExistDevientAssoc2Assoc.keys())].merge(
+                                             dfCreationCompteurExistDevientAssoc2Assoc,
+                                             on='id_comptag')])
+    comptageAssocie_MaJMano.drop(comptageAssocie_MaJMano.loc[comptageAssocie_MaJMano.id_comptag.isin(
+        listCompteurASupprimer)].index, inplace=True) 
+    # gestion des transferts vers CreationCompteurExistDevientAssoc
+    CreationCompteurExistDevientAssoc_MajMano = pd.concat([CreationCompteurExistDevientAssoc,
+                                                           creationCompteur.loc[creationCompteur.id_comptag.isin(
+                                                               dicoNewCompteur2CreationCompteurExistDevientAssoc.keys())].merge(
+                                                               dfNewCompteur2CreationCompteurExistDevientAssoc, on='id_comptag'),
+                                                           correspIdComptag.loc[correspIdComptag.id_comptag.isin(
+                                                               dicoCorresp2CreationCompteurExistDevientAssoc.keys())].merge(
+                                                               dfCorresp2CreationCompteurExistDevientAssoc, on='id_comptag'),
+                                                           comptageAssocie.loc[comptageAssocie.id_comptag.isin(
+                                                               dicoAssoc2CreationCompteurExistDevientAssoc.keys())].merge(
+                                                               dfAssoc2CreationCompteurExistDevientAssoc,
+                                                               on='id_comptag')])
+    CreationCompteurExistDevientAssoc_MajMano.drop(CreationCompteurExistDevientAssoc_MajMano.loc[
+        CreationCompteurExistDevientAssoc_MajMano.id_comptag.isin(listCompteurASupprimer)].index, inplace=True)
+    # gestion des transfert vers creationCompteur
+    creationCompteur_MajMano = pd.concat([
+        creationCompteur,
+        CreationCompteurExistDevientAssoc.loc[CreationCompteurExistDevientAssoc.id_comptag.isin(listCompteurAForcer)],
+        comptageAssocie.loc[comptageAssocie.id_comptag.isin(listCompteurAForcer)],
+        correspIdComptag.loc[correspIdComptag.id_comptag.isin(listCompteurAForcer)]])
+    creationCompteur_MajMano.drop(creationCompteur_MajMano.loc[
+        creationCompteur_MajMano.id_comptag.isin(listCompteurASupprimer)].index, inplace=True)
     
-    return (comptageAssocie_MaJMano, correspIdComptag_MajMano, creationCompteur_MajMano)      
+    # EVIDER LES DONNEES EN TROP
+    # gestion des transfert vers corresp
+    if dicoAssocies2Corresp:
+        comptageAssocie_MaJMano = comptageAssocie_MaJMano.loc[
+            ~comptageAssocie_MaJMano.id_comptag.isin(correspIdComptag_MajMano.id_gest.tolist())].copy()
+    if dicoCreationCompteurExistDevientAssoc2Corresp:
+        CreationCompteurExistDevientAssoc_MajMano = CreationCompteurExistDevientAssoc_MajMano.loc[
+            ~CreationCompteurExistDevientAssoc_MajMano.id_comptag.isin(correspIdComptag_MajMano.id_gest.tolist())].copy()
+    if dicoNewCompteur2Corresp:
+        creationCompteur_MajMano = creationCompteur_MajMano.loc[
+            ~creationCompteur_MajMano.id_comptag.isin(correspIdComptag_MajMano.id_gest.tolist())].copy()
+    # gestion des transfert vers Assoc
+    if dicoCorresp2Associes:
+        correspIdComptag_MajMano = correspIdComptag_MajMano.loc[
+            ~correspIdComptag_MajMano.id_gest.isin(comptageAssocie_MaJMano.id_comptag.tolist())].copy()
+    if dicoCreationCompteurExistDevientAssoc2Assoc:
+        CreationCompteurExistDevientAssoc_MajMano = CreationCompteurExistDevientAssoc_MajMano.loc[
+            ~CreationCompteurExistDevientAssoc_MajMano.id_comptag.isin(comptageAssocie_MaJMano.id_comptag.tolist())].copy()
+    if dicoNewCompteur2Assoc:
+        creationCompteur_MajMano = creationCompteur_MajMano.loc[
+            ~creationCompteur_MajMano.id_comptag.isin(comptageAssocie_MaJMano.id_comptag.tolist())].copy()
+    # gestion des transferts vers CreationCompteurExistDevientAssoc
+    if dicoCorresp2CreationCompteurExistDevientAssoc:
+        correspIdComptag_MajMano = correspIdComptag_MajMano.loc[
+            ~correspIdComptag_MajMano.id_gest.isin(CreationCompteurExistDevientAssoc_MajMano.id_comptag.tolist())].copy()
+    if dicoAssoc2CreationCompteurExistDevientAssoc:
+        comptageAssocie_MaJMano = comptageAssocie_MaJMano.loc[
+            ~comptageAssocie_MaJMano.id_comptag.isin(CreationCompteurExistDevientAssoc_MajMano.id_comptag.tolist())].copy()
+    if dicoNewCompteur2CreationCompteurExistDevientAssoc:
+        creationCompteur_MajMano = creationCompteur_MajMano.loc[
+            ~creationCompteur_MajMano.id_comptag.isin(CreationCompteurExistDevientAssoc_MajMano.id_comptag.tolist())].copy()
+    # gestion des transfert vers creationCompteur
+    if listCompteurAForcer:
+        comptageAssocie_MaJMano = comptageAssocie_MaJMano.loc[
+            ~comptageAssocie_MaJMano.id_comptag.isin(creationCompteur_MajMano.id_comptag.tolist())].copy()
+        CreationCompteurExistDevientAssoc_MajMano = CreationCompteurExistDevientAssoc_MajMano.loc[
+            ~CreationCompteurExistDevientAssoc_MajMano.id_comptag.isin(creationCompteur_MajMano.id_comptag.tolist())].copy()
+        correspIdComptag_MajMano = correspIdComptag_MajMano.loc[
+            ~correspIdComptag_MajMano.id_gest.isin(creationCompteur_MajMano.id_comptag.tolist())].copy()
+    # gestion des compteurs à supprimer
+    
+    
+    tupleNbElemPostTraites = tuple(len(e) for e in (comptageAssocie_MaJMano, CreationCompteurExistDevientAssoc_MajMano,
+                                                creationCompteur_MajMano, correspIdComptag_MajMano))
+    tupleNbElemInitiaux = tuple(len(e) for e in (comptageAssocie, CreationCompteurExistDevientAssoc,
+                                             creationCompteur, correspIdComptag))
+    if sum(tupleNbElemPostTraites) != (sum(tupleNbElemInitiaux) - len(listCompteurASupprimer)):
+        raise ValueError(f"""le nombre de ligne est différents en entrée {tupleNbElemInitiaux} et en sortie 
+    {tupleNbElemPostTraites} (attention aux nombre de compteur a suppr : {len(listCompteurASupprimer)}).
+    verifier les doublons dans les réusltats""")
+    # remplir les références des comptages associés
+    comptageAssocie_MaJMano['id_comptag_ref'] = comptageAssocie_MaJMano.apply(
+        lambda x: comptagesAssocDefinirIdCompteurRef(x, {1: 'id_comptag_ref', 2: 'id_comptag_bdd_tronc_homo_topo',
+                                                         3: 'id_comptag_tronc_homo_traf'} ), axis=1)
+    # verif
+    if comptageAssocie_MaJMano.id_comptag_ref.isna().any():
+        raise ValueError(f"des références de comptages associés sont nulles. a corriger")
+    # assurer l'existance des references des comptages associés
+    # défnir les liens existants (depuis Bdd ou suite a ventilation)
+    existant = compteur_existant_bdd(gest=gest)
+    listIdComptagRefPossible = (CreationCompteurExistDevientAssoc_MajMano.id_comptag.tolist() +
+                                creationCompteur_MajMano.id_comptag.tolist() + existant.id_comptag.tolist())
+    dfIdComptagModif = pd.concat([dfCorresp2Associes, dfNewCompteur2Assoc, dfCreationCompteurExistDevientAssoc2Assoc,
+                                            dfAssocies2Corresp, dfNewCompteur2Corresp, dfCreationCompteurExistDevientAssoc2Corresp])
+    dfIdComptagModif.id_comptag_bdd.fillna(dfIdComptagModif.id_comptag_ref, inplace=True)
+    dfChagementRef = pd.concat([comptageAssocie_MaJMano[['id_comptag', 'id_comptag_ref']].rename(columns={'id_comptag_ref': 'id_comptag_bdd'}),
+                                dfIdComptagModif, 
+                                correspIdComptag_MajMano[['id_gest', 'id_gti']].rename(columns={'id_gest': 'id_comptag', 'id_gti': 'id_comptag_bdd'})]
+                               ).drop('id_comptag_ref', axis=1).drop_duplicates()
+    # renseigner les references non valides
+    comptageAssocie_MaJMano.loc[~comptageAssocie_MaJMano.id_comptag_ref.isin(listIdComptagRefPossible), 'id_comptag_ref'
+                               ] = comptageAssocie_MaJMano.loc[
+        ~comptageAssocie_MaJMano.id_comptag_ref.isin(listIdComptagRefPossible)][['id_comptag', 'id_comptag_ref']].merge(
+        dfChagementRef, left_on='id_comptag_ref', right_on='id_comptag', how='left').id_comptag_bdd.tolist()
+    # verif
+    if not comptageAssocie_MaJMano.loc[~comptageAssocie_MaJMano.id_comptag_ref.isin(listIdComptagRefPossible)].empty:
+        raise ValueError("des comptages associés n'ont pas une référence valide. à chercher / corriger")
+    # traiter les geom nulles
+    for e in (creationCompteur_MajMano, CreationCompteurExistDevientAssoc_MajMano):
+        if e.geom_x.isna().any():
+            e.loc[creationCompteur_MajMano.geom_x.isna(), 'geom_x'] = e.loc[
+                e.geom_x.isna(), 'geom']
+    
+    return (comptageAssocie_MaJMano, correspIdComptag_MajMano, creationCompteur_MajMano, CreationCompteurExistDevientAssoc_MajMano)      
 
 
 def rassemblerNewCompteur(dep, tuplesDfGeom, reseau=None, gestionnai=None, concession=False,
-                          srcGeo=None, sensCpt=None):
+                          srcGeo=None, sensCpt=None, techno=None, id_sect=None):
     """
     regrouper les dataframes issues des fonctions de ventilation dans une seule destinée a etre intégrée das la bdd
     in : 
@@ -852,12 +979,18 @@ def rassemblerNewCompteur(dep, tuplesDfGeom, reseau=None, gestionnai=None, conce
         if concession:
             df['concession'] = concession
         concessionDf = df['concession'].tolist()
+        if techno:
+            df['techno'] = techno
+        technoDf = df['techno'].tolist()
+        if id_sect:
+            df['id_sect'] = id_sect
+        id_sectDf = df['id_sect'].tolist()
         df['src_cpt'] = df.type_poste.apply(lambda x: 'convention gestionnaire' if x == 'permanent' else 'gestionnaire')
         df['convention'] = df.type_poste.apply(lambda x: True if x == 'permanent' else False)
         # RUSTINE A REPRENDRE : 
         if 'id_cpt' in df.columns and 'obs_supl' in df.columns:
             listCpteurNew.append(creerCompteur(df, e[1], dep, reseauDf, gestionnaiDf, concessionDf, id_cpt=df.id_cpt.tolist(),
-                                               obs_supl=df.obs_supl.tolist()))
+                                               obs_supl=df.obs_supl.tolist(), techno=technoDf, id_sect=id_sectDf))
         elif 'id_cpt' in df.columns:
             listCpteurNew.append(creerCompteur(df, e[1], dep, reseauDf, gestionnaiDf, concessionDf, id_cpt=df.id_cpt.tolist()))
             listCpteurNew.append(creerCompteur(df, e[1], dep, reseauDf, gestionnaiDf, concessionDf, obs_supl=df.obs_supl.tolist()))
@@ -866,6 +999,10 @@ def rassemblerNewCompteur(dep, tuplesDfGeom, reseau=None, gestionnai=None, conce
     dfNewCompteur = pd.concat(listCpteurNew)      
     if not dfNewCompteur.loc[dfNewCompteur.duplicated('id_comptag')].empty:
         raise ValueError('des identifiants de comptages sont en doublons, a verifier avant insertion. utilisation possible de ventilerCompteurRefAssoc()')
+    # vérifier les types des objets
+    for k, v in dicoTypeAttributs.items():
+        if dfNewCompteur[k].dtype != v : 
+            dfNewCompteur[k] = dfNewCompteur[k].astype(v)
     return dfNewCompteur
 
 def rassemblerNewComptage(annee, type_veh, dfComptageCompteurConnu, *dfComptageCompteurNew):
@@ -881,14 +1018,15 @@ def rassemblerNewComptage(annee, type_veh, dfComptageCompteurConnu, *dfComptageC
     # verifs
     O.checkAttributsinDf(dfComptageCompteurConnu, attrComptageMano)
     for d in dfComptageCompteurNew:
-        O.checkAttributsinDf(d, attrComptageMano)
+        if not d.empty:
+            O.checkAttributsinDf(d, attrComptageMano)
     # on va fusionner les sources de données
     concatSources = pd.concat([pd.concat(dfComptageCompteurNew), dfComptageCompteurConnu])
     # puis on vérifie les doublons
-    ref, assoc =ventilerDoublons(concatSources)    
+    ref, assoc = ventilerDoublons(concatSources)    
     # association avec la partie des compteurs deja connus
     dfComptageNewTot = creer_comptage(ref.id_comptag.tolist(), annee, ref.src, type_veh, periode=ref.periode)
-    return dfComptageNewTot, assoc
+    return dfComptageNewTot, assoc, ref
     
 def rassemblerIndics(annee, dfComptageNewTot, dfTraficAgrege, dfTraficMensuel=None, dfTraficHoraire=None,
                      indicAgregeValues=['tmja', 'pc_pl']):
@@ -905,29 +1043,31 @@ def rassemblerIndics(annee, dfComptageNewTot, dfTraficAgrege, dfTraficMensuel=No
     """   
     # récupérer les données
     listIdComptagIndicNew = dfComptageNewTot.id_comptag.tolist()
+    # agrege
     dfAttrIndicAgregeNew = dfTraficAgrege.loc[dfTraficAgrege.id_comptag.isin(listIdComptagIndicNew)]
     dfIndicAgregeNew = structureBddOld2NewForm(dfAttrIndicAgregeNew.assign(annee=annee), ['id_comptag', 'annee', 'fichier'],
-                                               indicAgregeValues, 'agrege')
+                                               indicAgregeValues, 'agrege').drop_duplicates()
+    if not dfIndicAgregeNew.loc[dfIndicAgregeNew.duplicated(['id_comptag_uniq', 'indicateur'])].empty:
+        raise ValueError("des comptages agreges sont en doublons, corrigez")
+    # mensuel
     if isinstance(dfTraficMensuel, pd.DataFrame) and not dfTraficMensuel.empty:
         dfAttrIndicMensNew = dfTraficMensuel.loc[dfTraficMensuel.id_comptag.isin(listIdComptagIndicNew)]
         dfIndicMensNew = structureBddOld2NewForm(dfAttrIndicMensNew.assign(annee=annee), ['id_comptag', 'annee', 'fichier', 'donnees_type'], 
                                               list(dico_mois.keys()), 'mensuel')
+        if not dfIndicMensNew.loc[dfIndicMensNew.duplicated(['id_comptag_uniq', 'indicateur', 'mois'])].empty:
+            raise ValueError("des comptages mensuels sont en doublons, corrigez")
     else :
         dfIndicMensNew = None
+    # horaire
     if isinstance(dfTraficHoraire, pd.DataFrame) and not dfTraficHoraire.empty:
         dfAttrIndicHoraireNew = dfTraficHoraire.loc[dfTraficHoraire.id_comptag.isin(listIdComptagIndicNew)]    
-        dfIndicHoraireNew = structureBddOld2NewForm(dfAttrIndicHoraireNew.assign(annee=annee), ['id_comptag', 'annee'], ['tata'], 'horaire')
+        dfIndicHoraireNew = structureBddOld2NewForm(dfAttrIndicHoraireNew.assign(annee=annee), ['id_comptag', 'annee'], ['tata'],
+                                                    'horaire')
+        if isinstance(dfIndicHoraireNew, pd.DataFrame) and not dfIndicHoraireNew.loc[dfIndicHoraireNew.duplicated(
+            ['id_comptag_uniq', 'indicateur', 'jour'])].empty:
+            raise ValueError("des comptages hioraires sont en doublons, corrigez")
     else:
         dfIndicHoraireNew = None
-    if not dfIndicAgregeNew.loc[dfIndicAgregeNew.duplicated(['id_comptag_uniq', 'indicateur'])].empty:
-        raise ValueError("des comptages agreges sont en doublons, corrigez")
-    elif dfIndicMensNew and not dfIndicMensNew.loc[dfIndicMensNew.duplicated(['id_comptag_uniq', 'indicateur', 'mois'])].empty:
-        raise ValueError("des comptages mensuels sont en doublons, corrigez")
-    elif isinstance(dfIndicHoraireNew, pd.DataFrame) and not dfIndicHoraireNew.loc[dfIndicHoraireNew.duplicated(
-        ['id_comptag_uniq', 'indicateur', 'jour'])].empty:
-        raise ValueError("des comptages hioraires sont en doublons, corrigez")
-    else : 
-        pass
     return dfIndicAgregeNew, dfIndicMensNew, dfIndicHoraireNew
     
     

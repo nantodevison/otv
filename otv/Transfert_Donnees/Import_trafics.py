@@ -84,31 +84,7 @@ class Comptage():
         with ct.ConnexionBdd(nomConnBddOtv) as c:
                 c.sqlAlchemyConn.execute(rqt_geom)
                 c.sqlAlchemyConn.execute(rqt_attr)
-                
-    def localiser_comptage_a_inserer(self,df, schema_temp,nom_table_temp, table_ref, table_pr):
-        """
-        récupérer la geometrie de pt de comptage à inserer dans une df sans les inserer dans la Bdd
-        in : 
-            df : les données de comptage nouvelles, normalement c'est self.df_attr_insert (cf Comptage_Cd17 ou Compatge cd47
-            schema_temp : string : nom du schema en bdd opur calcul geom, cf localiser_comptage_a_inserer
-            nom_table_temp : string : nom de latable temporaire en bdd opur calcul geom, cf localiser_comptage_a_inserer
-            table_ref : string : schema qualifyed nom de la table de reference du lineaire
-            table_pr : string : schema qualifyed nom de la table de reference des pr
-        """
-        with ct.ConnexionBdd(nomConnBddOtv) as c:
-            #passer les données dans Bdd
-            c.sqlAlchemyConn.execute(f'drop table if exists {schema_temp}.{nom_table_temp}')
-            df.to_sql(nom_table_temp,c.sqlAlchemyConn,schema_temp)   
-            #ajouter une colonne geometrie
-            rqt_ajout_geom=f"""ALTER TABLE {schema_temp}.{nom_table_temp} ADD COLUMN geom geometry('POINT',2154)""" 
-            c.sqlAlchemyConn.execute(rqt_ajout_geom)
-            #mettre a jour la geometrie. attention, il faut un fichier de référentiel qui va bein, cf fonction geoloc_pt_comptag dans la Bdd
-            rqt_maj_geom=f"""update {schema_temp}.{nom_table_temp}
-                             set geom=(select geom_out  from comptage.geoloc_pt_comptag('{table_ref}','{table_pr}',id_comptag))
-                             where geom is null"""
-            c.sqlAlchemyConn.execute(rqt_maj_geom)
-            points_a_inserer=gp.GeoDataFrame.from_postgis(f'select * from {schema_temp}.{nom_table_temp}', c.sqlAlchemyConn, geom_col='geom',crs='epsg:2154')
-        return points_a_inserer
+
 
     def filtrer_periode_ponctuels(self):
         """
@@ -2130,6 +2106,8 @@ class Comptage_cd33(Comptage):
             if not all([pd.isnull(c).all() for c in [[x.debut_periode1, x.fin_periode1], [x.debut_periode2, x.fin_periode2],
                                                      [x.debut_periode3, x.fin_periode3], [x.debut_periode4, x.fin_periode4]]])
             else None, axis=1)
+        dfTournExcelFiltre['fichier'] = os.path.basename(self.fichierTournantExcel)
+        dfPermExcelFiltre['fichier'] = os.path.basename(self.fichierPermanentExcel)
         return dfPermExcelFiltre, dfTournExcelFiltre
     
     
@@ -2158,6 +2136,8 @@ class Comptage_cd33(Comptage):
             axis=1, errors='ignore').rename(columns=cd33_dicoAttrPermTournShape).rename(columns=cd33_dicoAttrEnqueteShape).assign(
                                                     type_poste='ponctuel', src='enquete')
         for e in (gdfPermanentColsOk, gdfTournantColsOk, gdfEnqueteColsOk):
+            if e.empty:
+                continue
             e['route'] = e.route.apply(lambda x: O.epurationNomRoute(x) if not pd.isnull(x) else None)
             e['id_comptag'] = e.apply(lambda x: f'33-{x.route}-{int(x.pr)}+{int(x["abs"])}'
                                       if x[['route', 'pr', 'abs']].notna().all().all() else None, axis=1)
@@ -2182,20 +2162,30 @@ class Comptage_cd33(Comptage):
                 dfTronconValueCount.nb_sens >= 3].identifiant_modif.tolist()), 'sens_cpt'] = 'double sens'
             e.loc[e.identifiant_modif.isin(dfTronconValueCount.loc[
                 dfTronconValueCount.nb_sens < 3].identifiant_modif.tolist()), 'sens_cpt'] = 'sens unique'
-        gdfPermanentFiltre = gdfPermanentColsOk.loc[(gdfPermanentColsOk.sens == 3) & (gdfPermanentColsOk.geometry.notna()) &
-                                                    (gdfPermanentColsOk.id_comptag.notna())].copy()
-        gdfTournantFiltre = gdfTournantColsOk.loc[(gdfTournantColsOk.sens == 3) & (gdfTournantColsOk.geometry.notna()) & 
-                                                  (gdfTournantColsOk.id_comptag.notna())].copy()
-        gdfEnqueteFiltre = gdfEnqueteColsOk.loc[(gdfEnqueteColsOk.sens == 3) & (gdfEnqueteColsOk.geometry.notna()) &
-                                                (gdfEnqueteColsOk.annee == int(self.annee)) &
-                                                (gdfEnqueteColsOk.id_comptag.notna())].copy()
-        # periode pour les enquetes
-        gdfEnqueteFiltre['periode'] = gdfEnqueteFiltre.apply(
-            lambda x: f"{pd.to_datetime(x.debut_periode).strftime('%Y/%m/%d')}-{pd.to_datetime(x.fin_periode).strftime('%Y/%m/%d')}"
-            if not pd.isnull([x.debut_periode, x.fin_periode]).all() else None, axis=1)
-        gdfPermanentFiltre = O.gp_changer_nom_geom(gdfPermanentFiltre, 'geom')
-        gdfTournantFiltre = O.gp_changer_nom_geom(gdfTournantFiltre, 'geom')
-        gdfEnqueteFiltre = O.gp_changer_nom_geom(gdfEnqueteFiltre, 'geom')
+        if not gdfPermanentColsOk.empty:
+            gdfPermanentFiltre = gdfPermanentColsOk.loc[(gdfPermanentColsOk.sens == 3) & (gdfPermanentColsOk.geometry.notna()) &
+                                                        (gdfPermanentColsOk.id_comptag.notna())].copy()
+            gdfPermanentFiltre = O.gp_changer_nom_geom(gdfPermanentFiltre, 'geom')
+        else:
+            gdfPermanentFiltre = None
+        if not gdfTournantColsOk.empty: 
+            gdfTournantFiltre = gdfTournantColsOk.loc[(gdfTournantColsOk.sens == 3) & (gdfTournantColsOk.geometry.notna()) & 
+                                                      (gdfTournantColsOk.id_comptag.notna())].copy()
+            gdfTournantFiltre = O.gp_changer_nom_geom(gdfTournantFiltre, 'geom')
+        else:
+            gdfTournantFiltre = None       
+        if not gdfEnqueteColsOk.empty:                                                                         
+            gdfEnqueteFiltre = gdfEnqueteColsOk.loc[(gdfEnqueteColsOk.sens == 3) & (gdfEnqueteColsOk.geometry.notna()) &
+                                                    (gdfEnqueteColsOk.annee == int(self.annee)) &
+                                                    (gdfEnqueteColsOk.id_comptag.notna())].copy()
+            # periode pour les enquetes
+            gdfEnqueteFiltre['periode'] = gdfEnqueteFiltre.apply(
+                lambda x: f"{pd.to_datetime(x.debut_periode).strftime('%Y/%m/%d')}-{pd.to_datetime(x.fin_periode).strftime('%Y/%m/%d')}"
+                if not pd.isnull([x.debut_periode, x.fin_periode]).all() else None, axis=1)
+            gdfEnqueteFiltre = O.gp_changer_nom_geom(gdfEnqueteFiltre, 'geom')
+            gdfEnqueteFiltre['fichier'] = os.path.basename(self.fichierEnqueteShape)
+        else:
+            gdfEnqueteFiltre = None
         return gdfPermanentFiltre, gdfTournantFiltre, gdfEnqueteFiltre, gdfEnqueteColsOk
     
     
@@ -3276,6 +3266,9 @@ class Comptage_Limoges_Metropole(Comptage):
     def groupe_point(self):
         """
         regroupe les points selon un fichier de zones creer mano
+        ATTENTION : le fichier zone peut etre fauix sur certains sens : il peut y avoir 2 geométries unique
+        au sein d'une zone, mais qui désigne 2 points fait das le mm sens sur 2 années différentes. 
+        on est donc dans ce cas sur des sens uniques.
         in : 
            fichier_zone : str : raw_strinf de localisation du fichier
         """

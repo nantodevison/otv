@@ -143,8 +143,14 @@ def insert_bdd(schema, table, df, if_exists='append',geomType='POINT'):
         table : string : nom de la table
     """
     if isinstance(df, gp.GeoDataFrame) :
+        nomGeom = df.geometry.name
+        dfAvecGeom = df.loc[(~df[nomGeom].isna()) & (~df[nomGeom].is_empty)]
+        dfSansGeom = df.loc[(df[nomGeom].isna()) | (df[nomGeom].is_empty)]
         with ct.ConnexionBdd(nomConnBddOtv) as c:
-            df.to_postgis(table,c.sqlAlchemyConn,schema=schema,if_exists=if_exists, index=False)
+            if not dfAvecGeom.empty:
+                dfAvecGeom.to_postgis(table,c.sqlAlchemyConn,schema=schema,if_exists=if_exists, index=False)
+            if not dfSansGeom.empty:
+                dfSansGeom.to_sql(table,c.sqlAlchemyConn,schema=schema,if_exists=if_exists, index=False )
     elif isinstance(df, pd.DataFrame) : 
         with ct.ConnexionBdd(nomConnBddOtv) as c:
             df.to_sql(table,c.sqlAlchemyConn,schema=schema,if_exists=if_exists, index=False )

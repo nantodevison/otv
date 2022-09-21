@@ -64,7 +64,8 @@ cd33_dicoAttrPermTournShape = {'tronçon': 'troncon', 'type': 'type_poste', 'rat
 cd33_dicoAttrEnqueteShape = {'ddperiode': 'debut_periode', 'dfperiode': 'fin_periode', 'mjptv1': 'tmja', 'mjpppl1': 'pc_pl',
                              'mjpv85tv1': 'v85', 'mjpv85vl1': 'v85_vl', 'mjpv85pl1': 'v85_pl', 'annee': 'annee', 'remarque': 'obs',
                              'compteur': 'techno'}
-cd33_dicoCorrespTechno = {'Radars': 'radar', 'Radar': 'radar', 'Tubes': 'tube', 'Boucles': 'boucle_electromagnetique'}
+cd33_dicoCorrespTechno = {'Radars': 'radar', 'Radar': 'radar', 'Tubes': 'tube', 'Boucles': 'boucle_electromagnetique', 
+                          'Tubes Mode3': 'tube', 'Tubes Mode4': 'tube'}
 
 
 #########
