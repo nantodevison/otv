@@ -74,17 +74,17 @@ def correctionHoraire(df_horaire):
                    (df_horaire['jour'].apply(lambda x : x.dayofweek in (5,6)))&
                    (df_horaire[attributHeure]<plageMinWe),attributHeure]=-99
                    
-def verifNbJoursValidDispo(df,nbJours):
+def verifNbJoursValidDispo(df, nbJours):
     """
     verifier que pour chaque id_comptag on a bien au moins XX jours de dispo
     in :
         nbJours : integer : nb de jours mini de mesures necessaires
     """
-    dfNbJour=df.groupby('id_comptag').jour.nunique().reset_index()
-    idCptInvalid=dfNbJour.loc[dfNbJour['jour']<nbJours].id_comptag.tolist()
-    dfCptInvalid=df.loc[df.id_comptag.isin(idCptInvalid)].copy()
-    dfFinale=df.loc[~df.id_comptag.isin(idCptInvalid)].copy()
-    return dfFinale, idCptInvalid,dfCptInvalid
+    dfNbJour = df.groupby('id_comptag').jour.nunique().reset_index()
+    idCptInvalid = dfNbJour.loc[dfNbJour['jour'] < nbJours].id_comptag.tolist()
+    dfCptInvalid = df.loc[df.id_comptag.isin(idCptInvalid)].copy()
+    dfFinale = df.loc[~df.id_comptag.isin(idCptInvalid)].copy()
+    return dfFinale, idCptInvalid, dfCptInvalid
                    
 def comparer2Sens(dfHoraireFichierFiltre, attributSens='voie', attributIndicateur='indicateur', attributSensCpt='sens_cpt',
                   facteurComp=3, TauxErreur=10) : 

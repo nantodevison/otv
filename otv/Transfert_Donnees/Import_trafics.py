@@ -4337,30 +4337,36 @@ class Comptage_Dira(Comptage):
             'ç', 'c', re.sub('(é|è|ê)', 'e', re.sub('( |_)', '', voie.lower())))+')'
         return site, voie, idDira
     
-    def miseEnFormeFeuille(self, fichier, feuille, nbHeure0Max=8):
+    def miseEnFormeFeuille(self, fichier, feuille, nbHeure0Max=8, FlagHorsOTV=False):
         """
         transformer une feuille horaire en df
         in : 
             nbHeure0Max : nombre d'heure consecutive avec 0 véhicules
+            FlagHorsOTV : drapeau pour outre-passer les verifs liées aux références OTV
         """
         voie, idDira = self.enteteFeuilHoraire(fichier, feuille)[1:3]
         flagVoie = False
-        if not idDira in self.dfCorrespExistant.id_dira.tolist(): #il n'y a pas de correspondance avec un point de comptage
-            if not voie in self.dfCorrespExistant.id_cpt.str.replace('_', ' ').tolist() :
-                raise self.BoucleNonConnueError(idDira)
-            else : 
-                flagVoie = True
+        if not FlagHorsOTV:
+            if not idDira in self.dfCorrespExistant.id_dira.tolist(): #il n'y a pas de correspondance avec un point de comptage
+                if not voie in self.dfCorrespExistant.id_cpt.str.replace('_', ' ').tolist() :
+                    raise self.BoucleNonConnueError(idDira)
+                else : 
+                    flagVoie = True
         colonnes = ['jour','type_veh'] + ['h'+c[:-1].replace('-','_') for c in fichier[feuille].iloc[4,:].values if c[-1] == 'h']
         df_horaire = fichier[feuille].iloc[5:fichier[feuille].loc[fichier[feuille].iloc[:,0] == 'Moyenne Jours'].index.values[0]-1, :26]
         df_horaire.columns = colonnes
         df_horaire.jour.fillna(method='pad', inplace=True)
-        if flagVoie:
-            df_horaire['id_dira'] = voie
-            df_horaire = df_horaire.merge(self.dfCorrespExistant.assign(id_cpt=self.dfCorrespExistant.id_cpt.str.replace('_', ' ')),
-                                         left_on='id_dira', right_on='id_cpt')
-        else: 
+        if not FlagHorsOTV:
+            if flagVoie:
+                df_horaire['id_dira'] = voie
+                df_horaire = df_horaire.merge(self.dfCorrespExistant.assign(id_cpt=self.dfCorrespExistant.id_cpt.str.replace('_', ' ')),
+                                             left_on='id_dira', right_on='id_cpt')
+            else: 
+                df_horaire['id_dira'] = idDira
+                df_horaire = df_horaire.merge(self.dfCorrespExistant, on='id_dira')
+        else : 
             df_horaire['id_dira'] = idDira
-            df_horaire = df_horaire.merge(self.dfCorrespExistant, on='id_dira')
+            df_horaire['voie'] = voie
         if any([(len(df_horaire.loc[(df_horaire.isna().any(axis=1)) & (df_horaire['type_veh']==t)]) > len(
             df_horaire.loc[df_horaire['type_veh'] == t]) / 2) or len(df_horaire.loc[df_horaire['type_veh'] == t].loc[
                 df_horaire.loc[df_horaire['type_veh'] == t][df_horaire.loc[df_horaire['type_veh'] == t] == 0].count(axis=1) > nbHeure0Max]
@@ -4393,7 +4399,7 @@ class Comptage_Dira(Comptage):
             idDira2 = None
         return idDira2
     
-    def miseEnFormeFichier(self, nomFichier, nbJoursValideMin=7, dicoModifVerifValiditeHoraire=None):
+    def miseEnFormeFichier(self, nomFichier, nbJoursValideMin=7, dicoModifVerifValiditeHoraire=None, FlagHorsOTV=False):
         """
         transofrmer un fichier complet en df
         in : 
@@ -4401,33 +4407,43 @@ class Comptage_Dira(Comptage):
             dicoModifVerifValiditeHoraire : un dictionnaire avec en clé le nom de fichier (sans le chemin) et en value le nombre d'heure
                                             continue avec une valeur 0 tolérable. Premte d'ajuster plus finement les vérif de validité
                                             pour les fichier de comptage à faible trafic. cf Donnees_horaires.verifValiditeFichier()
+            FlagHorsOTV : drapeau pour outre-passer les verifs liées aux références OTV
         """
         fichier = pd.read_excel(os.path.join(self.dossierAnneeComplete,nomFichier), sheet_name=None)#A63_Ech24_Trimestre2_2019.xls
         dicoFeuille = {}
         listFail = [] # pour la gestion du cas où une des 2 feuilles de la section courantes est invalide, il faut pouvoir identifier l'autre et la virer
         for feuille in [k for k in fichier.keys() if k[:2]!="xx"]: 
-            try :
-                if not dicoModifVerifValiditeHoraire or nomFichier not in dicoModifVerifValiditeHoraire.keys():
-                    df_horaire, idDira = self.miseEnFormeFeuille(fichier, feuille)
-                else:
-                    df_horaire, idDira = self.miseEnFormeFeuille(fichier, feuille, dicoModifVerifValiditeHoraire[nomFichier])
-                if idDira in listFail: 
-                    # print(f'feuille a jeter : {nomFichier}.{idDira}')
-                    continue
-                # print(f'feuille en cours : {nomFichier}.{idDira}')
-                dicoFeuille[idDira] = df_horaire
-            except self.BoucleNonConnueError:
-                continue
-            except self.FeuilleInvalideError as e: 
-                # print(f'feuille a jeter : {nomFichier}.{e.idDira}')
-                # trouver l'autre feuille si traitee avant
-                idDira2 = self.getIdEquiv(e.idDira)
-                if idDira2:
-                    if idDira2 in dicoFeuille.keys(): 
-                        dicoFeuille[idDira2] = pd.DataFrame([])
+            if not FlagHorsOTV:
+                try :
+                    print(feuille)
+                    if not dicoModifVerifValiditeHoraire or nomFichier not in dicoModifVerifValiditeHoraire.keys():
+                        df_horaire, idDira = self.miseEnFormeFeuille(fichier, feuille)
                     else:
-                        listFail.append(idDira2)
-                continue
+                        df_horaire, idDira = self.miseEnFormeFeuille(fichier, feuille, dicoModifVerifValiditeHoraire[nomFichier])
+                    if idDira in listFail: 
+                        # print(f'feuille a jeter : {nomFichier}.{idDira}')
+                        continue
+                    # print(f'feuille en cours : {nomFichier}.{idDira}')
+                    dicoFeuille[idDira] = df_horaire
+                except self.BoucleNonConnueError:
+                    continue
+                except self.FeuilleInvalideError as e: 
+                    # print(f'feuille a jeter : {nomFichier}.{e.idDira}')
+                    # trouver l'autre feuille si traitee avant
+                    idDira2 = self.getIdEquiv(e.idDira)
+                    if idDira2:
+                        if idDira2 in dicoFeuille.keys(): 
+                            dicoFeuille[idDira2] = pd.DataFrame([])
+                        else:
+                            listFail.append(idDira2)
+                    continue
+            else:
+                if not dicoModifVerifValiditeHoraire or nomFichier not in dicoModifVerifValiditeHoraire.keys():
+                    df_horaire, idDira = self.miseEnFormeFeuille(fichier, feuille, FlagHorsOTV=FlagHorsOTV)
+                else:
+                    df_horaire, idDira = self.miseEnFormeFeuille(fichier, feuille, dicoModifVerifValiditeHoraire[nomFichier],
+                                                                 FlagHorsOTV=FlagHorsOTV)
+                dicoFeuille[idDira] = df_horaire.assign(id_comptag=idDira)
         # print([f.empty for f in dicoFeuille.values()])
         if not all([f.empty for f in dicoFeuille.values()]):
             dfHoraireFichier = pd.concat(dicoFeuille.values(), axis=0, sort=False)
@@ -4437,19 +4453,22 @@ class Comptage_Dira(Comptage):
             dfHoraireFichierFiltre = verifValiditeFichier(dfHoraireFichier)[0]  # tri des feuilles sur le nb de valeusr NaN ou 0
         else:
             dfHoraireFichierFiltre = verifValiditeFichier(dfHoraireFichier, dicoModifVerifValiditeHoraire[nomFichier])[0]
-        # test si fichier comprenant des id_comptag à 2 sens 
-        dfFiltre = dfHoraireFichierFiltre.loc[dfHoraireFichierFiltre.id_comptag.isin(self.dfCorrespExistant.set_index('id_comptag').loc[
-            self.dfCorrespExistant.id_comptag.value_counts() == 2].index.unique())]
-        if not dfFiltre.empty: 
-            # tri des donnes pour que les sections courantes ai bien une valeur VL et PL dans les deux sesn
-            dfHoraireFichierFiltre = self.verif2SensDispo(dfHoraireFichierFiltre) 
-            # verif que les deux sens sont concordant : 
-            try:
-                comparer2Sens(dfHoraireFichierFiltre, attributSens='voie', attributIndicateur='type_veh')
-            except SensAssymetriqueError as e:
-                dfHoraireFichierFiltre = dfHoraireFichierFiltre.loc[dfHoraireFichierFiltre.apply(
-                    lambda x : (x['jour'],x['id_comptag']) not in zip(
-                        e.dfCompInvalid.jour.tolist(), e.dfCompInvalid.id_comptag.tolist()), axis=1)].copy()
+        if not FlagHorsOTV:
+            # test si fichier comprenant des id_comptag à 2 sens 
+            dfFiltre = dfHoraireFichierFiltre.loc[dfHoraireFichierFiltre.id_comptag.isin(self.dfCorrespExistant.set_index('id_comptag').loc[
+                self.dfCorrespExistant.id_comptag.value_counts() == 2].index.unique())]
+            if not dfFiltre.empty: 
+                # tri des donnes pour que les sections courantes ai bien une valeur VL et PL dans les deux sesn
+                dfHoraireFichierFiltre = self.verif2SensDispo(dfHoraireFichierFiltre) 
+                # verif que les deux sens sont concordant : 
+                try:
+                    comparer2Sens(dfHoraireFichierFiltre, attributSens='voie', attributIndicateur='type_veh')
+                except SensAssymetriqueError as e:
+                    dfHoraireFichierFiltre = dfHoraireFichierFiltre.loc[dfHoraireFichierFiltre.apply(
+                        lambda x : (x['jour'],x['id_comptag']) not in zip(
+                            e.dfCompInvalid.jour.tolist(), e.dfCompInvalid.id_comptag.tolist()), axis=1)].copy()
+                except KeyError:
+                    warnings.warn("attention, un des attribut nécéssaire à la vérification des sens est manquant")
             
         dfHoraireFichierFiltre = verifNbJoursValidDispo(dfHoraireFichierFiltre, nbJoursValideMin)[0]#tri sur id_comptag avec moins de 15 jours de donnees
         return dfHoraireFichierFiltre.assign(fichier=nomFichier)
