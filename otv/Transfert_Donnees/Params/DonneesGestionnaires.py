@@ -9,6 +9,7 @@ parametres liés aux gestionniaires
 ##########
 # GENERAL
 ##########
+
 denominationSens = ('sens1', 'sens2', 'deportsens1', 'deportsens2', 'sensexter', 'sensinter', 'sens1n137'
                     , 'sens2n137', 'sens1n11', 'sens2n11', 'sens1n10', 'sens2n10', 'sens1n141', 'sens2n141')
 
@@ -16,7 +17,6 @@ denominationSens = ('sens1', 'sens2', 'deportsens1', 'deportsens2', 'sensexter',
 #########
 # CD16
 #########
-
 
 cd16_columnsFichierPtPigma = ['AXE', 'PLOD', 'ABSD', 'MATERIEL', 'IDENTIFIAN', 'LIMITE_VIT']
 cd16_columnsFichierLgnPigma = ['AXE', 'TRAFIC_PL', 'TMJA', 'MJE', 'MJEPPL', 'MJHE', 'MJHEPPL', 'VMOY', 'V85' , 'ANNEE_COMP', 'PRC',
@@ -34,6 +34,7 @@ cd16_attrIndicAgregePigma = ['tmja', 'tmje', 'tmjhe', 'pc_pl', 'pc_pl_e', 'pc_pl
 #########
 # CD79
 #########
+
 cd79_dicoCorrespMaterielTechno = {'Cigale': 'tube', 'Phoenix': 'boucle_electromagnetique', 'Tubes': 'tube', 'Plaques': 'plaquette',
              'Major': 'boucle_electromagnetique'}
 
@@ -41,7 +42,6 @@ cd79_dicoCorrespMaterielTechno = {'Cigale': 'tube', 'Phoenix': 'boucle_electroma
 #########
 # CD79
 #########
-
 
 cd33_dicoAttrPermExcel = {'Tronçon': 'troncon', 'Data': 'route', 'MJA TV JO': 'tmjo', 'MJA PPL JO': 'pc_pl_o',
                      'MJE TV TCJ': 'tmje', 'MJE PPL TCJ': 'pc_pl_e', 'MJA TV TCJ': 'tmja', 'MJA PPL TCJ': 'pc_pl',
@@ -68,6 +68,15 @@ cd33_dicoCorrespTechno = {'Radars': 'radar', 'Radar': 'radar', 'Tubes': 'tube', 
                           'Tubes Mode3': 'tube', 'Tubes Mode4': 'tube'}
 
 
+#########
+# CD17
+#########
+
+cd17_permCsvDropligneDebut = range(3)
+cd17_permCsvTmjmPlColumns = ['localisation', 'route', 'pr', 'abs', 'latitude', 'longitude', 'tmja', 'pc_pl', 'janv_tmja', 'janv_pc_pl', 
+                             'fevr_tmja', 'fevr_pc_pl', 'mars_tmja', 'mars_pc_pl', 'avri_tmja', 'avri_pc_pl', 'mai_tmja', 'mai_pc_pl',
+                             'juin_tmja', 'juin_pc_pl', 'juil_tmja', 'juil_pc_pl', 'aout_tmja', 'aout_pc_pl', 'sept_tmja', 'sept_pc_pl',
+                             'octo_tmja', 'octo_pc_pl', 'nove_tmja', 'nove_pc_pl', 'dece_tmja', 'dece_pc_pl']
 #########
 # NIORT
 #########

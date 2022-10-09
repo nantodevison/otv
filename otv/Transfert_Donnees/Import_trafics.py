@@ -15,7 +15,7 @@ from pathlib import PureWindowsPath
 from unidecode import unidecode
 import datetime as dt
 from geoalchemy2 import Geometry,WKTElement
-from shapely.geometry import LineString
+from shapely.geometry import LineString, Point
 from shapely.ops import transform
 from collections import Counter
 from openpyxl import load_workbook
@@ -524,19 +524,52 @@ class Comptage_cd17(Comptage) :
         """
         sort une dataframe des voie, pr, abs, tmj, pc_pl, v85, periode et mois pour les fichiers csv de comptag permanent
         """
-        fichier_src_2sens = self.fichier_src.loc[self.fichier_src['Sens']=='3'].copy()
-        liste_attr = ([a for a in fichier_src_2sens.columns if a[:6]=='MJM TV']+['Route','PRC','ABC']+['MJA TV TCJ '+str(self.annee),
-                                                                            'MJA %PL TCJ '+str(self.annee),'MJAV85 TV TCJ '+str(self.annee)])
-        liste_nom = (['janv', 'fevr', 'mars', 'avri', 'mai', 'juin', 'juil', 'aout', 'sept', 'octo', 'nove', 'dece']+['route', 'pr','abs']+[
-                                                                            'tmja_'+str(self.annee), 'pc_pl_'+str(self.annee), 'v85'])
-        dico_corres_mois={a:b for a,b in zip(liste_attr,liste_nom)}
-        fichier_filtre = fichier_src_2sens[liste_attr].rename(columns=dico_corres_mois).copy()
-        fichier_filtre = fichier_filtre.loc[~fichier_filtre['tmja_'+str(self.annee)].isna()].copy()
-        fichier_filtre['tmja_'+str(self.annee)] = fichier_filtre['tmja_'+str(self.annee)].apply(lambda x : int(x))
-        fichier_filtre['pc_pl_'+str(self.annee)] = fichier_filtre['pc_pl_'+str(self.annee)].apply(lambda x : float(x.strip().replace(',','.')))
-        fichier_filtre['route'] = fichier_filtre.route.apply(lambda x : x.split(' ')[1]) 
-        fichier_filtre['src'] = self.type_fichier
+        if self.type_fichier == 'permanent_csv_format3sens':
+            fichier_src_2sens = self.fichier_src.loc[self.fichier_src['Sens']=='3'].copy()
+            liste_attr = ([a for a in fichier_src_2sens.columns if a[:6]=='MJM TV']+['Route','PRC','ABC']+['MJA TV TCJ '+str(self.annee),
+                                                                                'MJA %PL TCJ '+str(self.annee),'MJAV85 TV TCJ '+str(self.annee)])
+            liste_nom = (['janv', 'fevr', 'mars', 'avri', 'mai', 'juin', 'juil', 'aout', 'sept', 'octo', 'nove', 'dece']+['route', 'pr','abs']+[
+                                                                                'tmja_'+str(self.annee), 'pc_pl_'+str(self.annee), 'v85'])
+            dico_corres_mois={a:b for a,b in zip(liste_attr,liste_nom)}
+            fichier_filtre = fichier_src_2sens[liste_attr].rename(columns=dico_corres_mois).copy()
+            fichier_filtre = fichier_filtre.loc[~fichier_filtre['tmja_'+str(self.annee)].isna()].copy()
+            fichier_filtre['tmja_'+str(self.annee)] = fichier_filtre['tmja_'+str(self.annee)].apply(lambda x : int(x))
+            fichier_filtre['pc_pl_'+str(self.annee)] = fichier_filtre['pc_pl_'+str(self.annee)].apply(lambda x : float(x.strip().replace(',','.')))
+            fichier_filtre['route'] = fichier_filtre.route.apply(lambda x : x.split(' ')[1]) 
+            fichier_filtre['src'] = self.type_fichier
+        elif self.type_fichier == 'permanent_csv_formatTmjPl':
+            dfFiltre = self.fichier_src.drop(cd17_permCsvDropligneDebut)
+            dfFiltre.columns = cd17_permCsvTmjmPlColumns
+            dfFiltre['route'] = dfFiltre.route.apply(lambda x: O.epurationNomRoute(x))
+            dfFiltre['pr'] = dfFiltre.pr.astype('int')
+            dfFiltre['abs'] = dfFiltre['abs'].astype('int')
+            dfFiltre['latitude'] = dfFiltre['latitude'].astype('float')
+            dfFiltre['longitude'] = dfFiltre['longitude'].astype('float')
+            dfFiltre['id_comptag'] = dfFiltre.apply(lambda x: f"17-{x.route}-{x.pr}+{x['abs']}", axis=1)
+            dfFiltre['geom'] = dfFiltre.apply(lambda x: O.reprojeter_shapely(Point(x.longitude, x.latitude), '4326', '2154')[1], axis=1)
+            for c in [c for c in dfFiltre.columns if 'pc_pl' in c]:
+                dfFiltre[c] = dfFiltre[c].apply(lambda x: x.replace(',', '.').replace('%', '') if not isinstance(x, float) else x).astype('float')
+            for c in [c for c in dfFiltre.columns if 'tmja' in c]:
+                dfFiltre[c] = dfFiltre[c].apply(lambda x: int(x) if not isinstance(x, float) else None)
+            fichier_filtre = dfFiltre
+        else:
+            raise NotImplementedError("format de permanent non traites pour le moment")
         return fichier_filtre
+    
+    
+    def permanent_csv_attrMens(self, fichier_filtre):
+        """
+        extraire les données mensuelle des données issues de permanent_csv_attr()
+        """
+        dfMensPerm = fichier_filtre.melt(id_vars='id_comptag',
+                                         value_vars=[c for c in fichier_filtre.columns if '_tmja' in c or '_pc_pl' in c],
+                                         var_name='indic',
+                                         value_name='valeur')
+        dfMensPerm['mois'] = dfMensPerm.indic.apply(lambda x: x.split('_')[0])
+        dfMensPerm['indicateur'] = dfMensPerm.indic.apply(lambda x: '_'.join(x.split('_')[1:]))
+        dfMensPerm.drop('indic', axis=1, inplace=True)
+        return dfMensPerm
+    
     
     def ponctuel_csv_attr(self):
         """
