@@ -4432,7 +4432,7 @@ class Comptage_Dira(Comptage):
             idDira2 = None
         return idDira2
     
-    def miseEnFormeFichier(self, nomFichier, nbJoursValideMin=7, dicoModifVerifValiditeHoraire=None, FlagHorsOTV=False):
+    def miseEnFormeFichier(self, nomFichier, nbJoursValideMin=7, dicoModifVerifValiditeHoraire=None, FlagHorsOTV=False, nbHeure0Max=8):
         """
         transofrmer un fichier complet en df
         in : 
@@ -4446,13 +4446,15 @@ class Comptage_Dira(Comptage):
         dicoFeuille = {}
         listFail = [] # pour la gestion du cas où une des 2 feuilles de la section courantes est invalide, il faut pouvoir identifier l'autre et la virer
         for feuille in [k for k in fichier.keys() if k[:2]!="xx"]: 
+            print(feuille)
             if not FlagHorsOTV:
                 try :
                     print(feuille)
                     if not dicoModifVerifValiditeHoraire or nomFichier not in dicoModifVerifValiditeHoraire.keys():
-                        df_horaire, idDira = self.miseEnFormeFeuille(fichier, feuille)
+                        df_horaire, idDira = self.miseEnFormeFeuille(fichier, feuille, nbHeure0Max=nbHeure0Max)
                     else:
-                        df_horaire, idDira = self.miseEnFormeFeuille(fichier, feuille, dicoModifVerifValiditeHoraire[nomFichier])
+                        df_horaire, idDira = self.miseEnFormeFeuille(fichier, feuille, dicoModifVerifValiditeHoraire[nomFichier],
+                                                                     nbHeure0Max=nbHeure0Max)
                     if idDira in listFail: 
                         # print(f'feuille a jeter : {nomFichier}.{idDira}')
                         continue
@@ -4472,10 +4474,10 @@ class Comptage_Dira(Comptage):
                     continue
             else:
                 if not dicoModifVerifValiditeHoraire or nomFichier not in dicoModifVerifValiditeHoraire.keys():
-                    df_horaire, idDira = self.miseEnFormeFeuille(fichier, feuille, FlagHorsOTV=FlagHorsOTV)
+                    df_horaire, idDira = self.miseEnFormeFeuille(fichier, feuille, FlagHorsOTV=FlagHorsOTV, nbHeure0Max=nbHeure0Max)
                 else:
                     df_horaire, idDira = self.miseEnFormeFeuille(fichier, feuille, dicoModifVerifValiditeHoraire[nomFichier],
-                                                                 FlagHorsOTV=FlagHorsOTV)
+                                                                 FlagHorsOTV=FlagHorsOTV, nbHeure0Max=nbHeure0Max)
                 dicoFeuille[idDira] = df_horaire.assign(id_comptag=idDira)
         # print([f.empty for f in dicoFeuille.values()])
         if not all([f.empty for f in dicoFeuille.values()]):
@@ -4483,9 +4485,9 @@ class Comptage_Dira(Comptage):
         else: 
             raise self.AucuneBoucleConnueError(nomFichier) 
         if not dicoModifVerifValiditeHoraire or nomFichier not in dicoModifVerifValiditeHoraire.keys():
-            dfHoraireFichierFiltre = verifValiditeFichier(dfHoraireFichier)[0]  # tri des feuilles sur le nb de valeusr NaN ou 0
+            dfHoraireFichierFiltre = verifValiditeFichier(dfHoraireFichier, NbHeures0Max=nbHeure0Max)[0]  # tri des feuilles sur le nb de valeusr NaN ou 0
         else:
-            dfHoraireFichierFiltre = verifValiditeFichier(dfHoraireFichier, dicoModifVerifValiditeHoraire[nomFichier])[0]
+            dfHoraireFichierFiltre = verifValiditeFichier(dfHoraireFichier, dicoModifVerifValiditeHoraire[nomFichier], NbHeures0Max=nbHeure0Max)[0]
         if not FlagHorsOTV:
             # test si fichier comprenant des id_comptag à 2 sens 
             dfFiltre = dfHoraireFichierFiltre.loc[dfHoraireFichierFiltre.id_comptag.isin(self.dfCorrespExistant.set_index('id_comptag').loc[
