@@ -15,7 +15,7 @@ from collections import Counter
 from Params.Bdd_OTV import (nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, tableEnumTypeVeh, 
                             tableCompteur, tableCorrespIdComptag,attrCompteurAssoc, attBddCompteur, attrComptageMano,
                             attrCompteurValeurMano, attrComptageAssoc, enumTypePoste, vueLastAnnKnow, attrIndicHoraireAssoc,
-                            attrIndicHoraire, dicoTypeAttributs)
+                            attrIndicHoraire, dicoTypeAttributs, attBddCompteurNonNull)
 from Import_export_comptage import (recupererIdUniqComptage, recupererIdUniqComptageAssoc, compteur_existant_bdd, 
                                     recupererLastAnnKnow)
 from Params.Mensuel import dico_mois
@@ -178,11 +178,12 @@ def geomFromIdComptagCommunal(id_comptag, epsgSrc='4326', epsgDest='2154'):
     return O.reprojeter_shapely(Point(coords[0], coords[1]), epsgSrc, epsgDest)[1]
 
 
-def creerCompteur(cptRef, attrGeom, dep, reseau, gestionnai, concession, techno=None, obs_geo=None, obs_supl=None, id_cpt=None,
+def creerCompteur(cptRef, attrGeom, dep, reseau, gestionnai, concession, type_poste, src_geo, periode, pr, absc, route, 
+                  src_cpt, convention, sens_cpt, techno=None, obs_geo=None, obs_supl=None, id_cpt=None,
                   id_sect=None, fictif=False, en_service=True):
     """
     creation d'une df prete a etre integree dans la table des compteurs
-    presque tout les chmaps 
+    les cahmps sont soit des valeurs, soit des series, soit des listes avec la bonne longueur
     in : 
         cptRef : df ou geodataframe avec un attribut de géométrie en SRID = 2154
         attrGeom : string : nom de l'attribut supportant la géométrie
@@ -192,13 +193,15 @@ def creerCompteur(cptRef, attrGeom, dep, reseau, gestionnai, concession, techno=
         concession : boolean ou pd.Series de booleean
     """
     df = cptRef.copy()
-    O.checkAttributsinDf(df, [attrGeom] + attrCompteurValeurMano)
-
-    df = df[[attrGeom]  + attrCompteurValeurMano].assign(
+    df = df.assign(
         dep=dep, reseau=reseau, gestionnai=gestionnai, concession=concession, techno=techno, obs_geo=obs_geo,
-        obs_supl=obs_supl, id_cpt=id_cpt, id_sect=id_sect, fictif=fictif, en_service=en_service)
+        obs_supl=obs_supl, id_cpt=id_cpt, id_sect=id_sect, fictif=fictif, en_service=en_service,
+        type_poste=type_poste, src_geo=src_geo, periode=periode, pr=pr, absc=absc, route=route, 
+        src_cpt=src_cpt, convention=convention, sens_cpt=sens_cpt)
     df['x_l93'] = df[attrGeom].apply(lambda x: round(x.x,3) if not x.is_empty else None)
     df['y_l93'] = df[attrGeom].apply(lambda x: round(x.y,3) if not x.is_empty else None)
+    O.checkAttributsinDf(df, [attrGeom] + attrCompteurValeurMano)
+    O.checkAttributNonNull(df, attBddCompteurNonNull)
     df.drop(
         [c for c in df.columns if c not in (attBddCompteur + [attrGeom])], axis=1, inplace=True)
     gdfCpt = gp.GeoDataFrame(df, geometry=attrGeom, crs=2154)

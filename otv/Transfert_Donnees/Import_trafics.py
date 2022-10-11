@@ -538,20 +538,22 @@ class Comptage_cd17(Comptage) :
             fichier_filtre['route'] = fichier_filtre.route.apply(lambda x : x.split(' ')[1]) 
             fichier_filtre['src'] = self.type_fichier
         elif self.type_fichier == 'permanent_csv_formatTmjPl':
-            dfFiltre = self.fichier_src.drop(cd17_permCsvDropligneDebut)
-            dfFiltre.columns = cd17_permCsvTmjmPlColumns
-            dfFiltre['route'] = dfFiltre.route.apply(lambda x: O.epurationNomRoute(x))
-            dfFiltre['pr'] = dfFiltre.pr.astype('int')
-            dfFiltre['abs'] = dfFiltre['abs'].astype('int')
-            dfFiltre['latitude'] = dfFiltre['latitude'].astype('float')
-            dfFiltre['longitude'] = dfFiltre['longitude'].astype('float')
-            dfFiltre['id_comptag'] = dfFiltre.apply(lambda x: f"17-{x.route}-{x.pr}+{x['abs']}", axis=1)
-            dfFiltre['geom'] = dfFiltre.apply(lambda x: O.reprojeter_shapely(Point(x.longitude, x.latitude), '4326', '2154')[1], axis=1)
-            for c in [c for c in dfFiltre.columns if 'pc_pl' in c]:
-                dfFiltre[c] = dfFiltre[c].apply(lambda x: x.replace(',', '.').replace('%', '') if not isinstance(x, float) else x).astype('float')
-            for c in [c for c in dfFiltre.columns if 'tmja' in c]:
-                dfFiltre[c] = dfFiltre[c].apply(lambda x: int(x) if not isinstance(x, float) else None)
-            fichier_filtre = dfFiltre
+            fichier_filtre = self.fichier_src.drop(cd17_permCsvDropligneDebut)
+            fichier_filtre.columns = cd17_permCsvTmjmPlColumns
+            fichier_filtre['route'] = fichier_filtre.route.apply(lambda x: O.epurationNomRoute(x))
+            fichier_filtre['pr'] = fichier_filtre.pr.astype('int')
+            fichier_filtre['abs'] = fichier_filtre['abs'].astype('int')
+            fichier_filtre['latitude'] = fichier_filtre['latitude'].astype('float')
+            fichier_filtre['longitude'] = fichier_filtre['longitude'].astype('float')
+            fichier_filtre['id_comptag'] = fichier_filtre.apply(lambda x: f"17-{x.route}-{x.pr}+{x['abs']}", axis=1)
+            fichier_filtre['geom'] = fichier_filtre.apply(lambda x: O.reprojeter_shapely(Point(x.longitude, x.latitude), '4326', '2154')[1], axis=1)
+            fichier_filtre['src'] = self.type_fichier
+            for c in [c for c in fichier_filtre.columns if 'pc_pl' in c]:
+                fichier_filtre[c] = fichier_filtre[c].apply(lambda x: x.replace(',', '.').replace('%', '') if not isinstance(x, float) else x).astype('float')
+            for c in [c for c in fichier_filtre.columns if 'tmja' in c]:
+                fichier_filtre[c] = fichier_filtre[c].apply(lambda x: int(x) if not isinstance(x, float) else None)
+            fichier_filtre = gp.GeoDataFrame(fichier_filtre, geometry='geom')
+            fichier_filtre.set_crs('epsg:2154', inplace=True)
         else:
             raise NotImplementedError("format de permanent non traites pour le moment")
         return fichier_filtre
