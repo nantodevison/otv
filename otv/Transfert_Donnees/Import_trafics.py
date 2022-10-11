@@ -556,6 +556,8 @@ class Comptage_cd17(Comptage) :
             fichier_filtre.set_crs('epsg:2154', inplace=True)
         else:
             raise NotImplementedError("format de permanent non traites pour le moment")
+        fichier_filtre['fichier'] = os.path.basename(self.fichier)
+        fichier_filtre['annee'] = self.annee
         return fichier_filtre
     
     
