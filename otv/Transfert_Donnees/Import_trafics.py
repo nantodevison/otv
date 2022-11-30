@@ -20,7 +20,7 @@ from shapely.ops import transform
 from collections import Counter
 from openpyxl import load_workbook
 
-import Connexion_Transfert as ct
+from Connexions import Connexion_Transfert as ct
 from Donnees_horaires import (comparer2Sens,verifValiditeFichier, concatIndicateurFichierHoraire, SensAssymetriqueError,
                               verifNbJoursValidDispo, tmjaDepuisHoraire, periodeDepuisHoraire, attributsHoraire, 
                               mensuelDepuisHoraire)
@@ -28,7 +28,7 @@ from Donnees_sources import FIM, MHCorbin, DataSensError, PasAssezMesureError
 from Integration_nouveau_comptage import (corresp_nom_id_comptag, scinderComptagExistant, creer_comptage, structureBddOld2NewForm,
                                           geomFromIdComptagCommunal, creerCompteur)
 from Import_export_comptage import (compteur_existant_bdd, insererSchemaComptage)
-import Outils as O
+from Outils import Outils as O
 from Params.Mensuel import dico_mois, renommerMois
 from Params.Bdd_OTV import (attBddCompteur, nomConnBddOtv, schemaComptage, schemaComptageAssoc, tableComptage, 
                             tableIndicAgrege, tableIndicHoraire, attrComptage, attrIndicAgrege, enumIndicateur)   

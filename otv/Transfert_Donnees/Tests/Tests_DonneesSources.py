@@ -8,7 +8,7 @@ import unittest
 from Donnees_sources import MHCorbin, NettoyageTemps, PasAssezMesureError, GroupeCompletude
 import datetime as dt
 import pandas as pd
-import Outils as O
+from Outils import Outils as O
 
 fichierMHCorbinTest=r'C:\Users\martin.schoreisz\git\otv\otv\Transfert_Donnees\data\MHCorbin\rue de souche du 31 01 au 07 02 2020.mdb'
 fichierMHCorbinAmpute=r'C:\Users\martin.schoreisz\git\otv\otv\Transfert_Donnees\data\MHCorbin\test_Tables_Manquantes.mdb'

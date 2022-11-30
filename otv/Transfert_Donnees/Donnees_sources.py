@@ -29,8 +29,8 @@ from sklearn.model_selection import train_test_split
 
 from Params.DonneesSourcesParams import (MHcorbinMaxLength, MHcorbinMaxSpeed,
                                          MHCorbinValue0, MHCorbinFailAdviceCode, tablesNonSignificatives)
-import Connexion_Transfert as ct
-import Outils as O
+from Connexions import Connexion_Transfert as ct
+from Outils import Outils as O
 from Donnees_horaires import attributsHoraire
 
 

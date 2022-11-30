@@ -10,7 +10,7 @@ from Donnees_horaires import calculJourneeType
 import pandas as pd
 import altair as alt
 import numpy as np
-import Connexion_Transfert as ct
+from Connexions import Connexion_Transfert as ct
 from prompt_toolkit.utils import to_int
 
 def prepGraphJourneeType(dfTMJA,dfTMJO):

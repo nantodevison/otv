@@ -6,10 +6,10 @@ Created on 27 janv. 2022
 regroupe les fonctions d'import export des donnees de comptages
 '''
 
-import Outils as O
+from Outils import Outils as O
 import pandas as pd
 import warnings
-import Connexion_Transfert as ct
+from Connexions import Connexion_Transfert as ct
 from Params.Bdd_OTV import (nomConnBddOtv, schemaComptage, tableIndicAgrege, tableComptage, 
                             tableCompteur, tableIndicHoraire, schemaComptageAssoc,
                             tableIndicMensuel, tableCorrespIdComptag, vueLastAnnKnow)

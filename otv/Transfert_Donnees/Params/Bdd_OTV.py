@@ -5,7 +5,7 @@ Created on 7 janv. 2022
 @author: martin.schoreisz
 Stockage des parametres ou donnees de la Bdd OTV : liste d'attributs, noms de tables, connexion.... 
 '''
-import Connexion_Transfert as ct
+from Connexions import Connexion_Transfert as ct
 import pandas as pd
 
 nomConnBddOtv='local_otv_boulot'

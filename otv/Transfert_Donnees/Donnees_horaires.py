@@ -9,7 +9,7 @@ module d'importation des donnees de trafics forunies par les gestionnaires
 
 import pandas as pd
 import re
-import Outils as O
+from Outils import Outils as O
 from Params.Mensuel import dico_mois
 from Params.Bdd_OTV import attrIndicHoraire, enumSensCpt
 from Params.DonneesGestionnaires import denominationSens

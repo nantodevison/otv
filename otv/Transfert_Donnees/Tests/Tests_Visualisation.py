@@ -7,7 +7,7 @@ module de test des fonctions et classes de l'OTV
 '''
 import unittest
 import pandas as pd
-import Connexion_Transfert as ct
+from Connexions import Connexion_Transfert as ct
 from Tests_Connexion_Transfert import TestConnexionBdd
 from Visualisation import IdComptage, IdComptagInconnuError, Otv
 
