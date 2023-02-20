@@ -1313,32 +1313,33 @@ class Comptage_cd17(Comptage):
 class Comptage_cd19(Comptage):
     """
     Dans le 19 pour le moment on qu'un simple fichier xls des comptages perm ou tourn
+    il y a un dico des types de postes en cours dans Params.DonneesGestionnaire
     """
 
     def __init__(self, fichier, annee):
         Comptage.__init__(self, fichier)
         self.annee = annee
 
-    def comptage_forme(self):
-        def id_comptage(route, pr):
+    def comptage_forme(self, cd19_dicoTypePoste=cd19_dicoTypePoste):
+        def id_comptage(route, pr_gest):
             route = str(route).strip()
             pr = (
-                str(int(pr.split("+")[0])) + "+0"
-                if int(pr.split("+")[1]) == 0
-                else str(int(pr.split("+")[0])) + "+" + str(int(pr.split("+")[1]))
+                str(int(pr_gest.split("+")[0])) + "+0"
+                if int(pr_gest.split("+")[1]) == 0
+                else str(int(pr_gest.split("+")[0])) + "+" + str(int(pr_gest.split("+")[1]))
             )
-            return "19-D" + route + "-" + pr
+            return "19-" + route + "-" + pr
 
         donnees_brutes = pd.read_excel(self.fichier, skiprows=6)
         donnees_filtrees = donnees_brutes.rename(
-            columns={" RD": "route", "P.R.": "pr", self.annee: f"ann_{self.annee}"}
-        )[["route", "pr", f"ann_{self.annee}"]]
-        donnees_filtrees = donnees_filtrees.loc[~donnees_filtrees.pr.isna()].copy()
+            columns={" RD": "route", "P.R.": "pr_gest", self.annee: f"ann_{self.annee}"}
+        )[["route", "pr_gest", f"ann_{self.annee}"]]
+        donnees_filtrees = donnees_filtrees.loc[~donnees_filtrees.pr_gest.isna()].copy()
         donnees_filtrees["route"] = donnees_filtrees.route.apply(
-            lambda x: x.strip().replace(" ", "") if isinstance(x, str) else x
+            lambda x: 'D' + x.strip().replace(" ", "") if isinstance(x, str) else f'D{x}'
         )
         donnees_filtrees["id_comptag"] = donnees_filtrees.apply(
-            lambda x: id_comptage(x["route"], x["pr"]), axis=1
+            lambda x: id_comptage(x["route"], x["pr_gest"]), axis=1
         )
         donnees_filtrees["tmja"] = donnees_filtrees[f"ann_{self.annee}"].apply(
             lambda x: 0 if (pd.isna(x) or x == "x") else int(x.split("\n")[0])
@@ -1348,9 +1349,29 @@ class Comptage_cd19(Comptage):
             if (pd.isna(x) or x == "x")
             else float(x.split("\n")[1].split("%")[0].replace(",", "."))
         )
-        donnees_filtrees["type_poste"] = "tournant"
+        donnees_filtrees["type_poste"] = donnees_filtrees.id_comptag.apply(lambda x:[k for k, v in cd19_dicoTypePoste.items() if x in v][0] 
+                                                                           if x in [c for v in cd19_dicoTypePoste.values() for c in v] else 'tournant')
         donnees_filtrees["src"] = f"tableur_{self.annee}"
         donnees_transfert = donnees_filtrees.loc[donnees_filtrees["tmja"] > 0].copy()
+        donnees_transfert['pr'] = donnees_transfert.pr_gest.apply(lambda x: int(x.split('+')[0]) if not pd.isnull(x) else np.NaN)
+        donnees_transfert['abs'] = donnees_transfert.pr_gest.apply(lambda x: int(x.split('+')[1]) if not pd.isnull(x) else np.NaN)
+        donnees_transfert['annee'] = self.annee
+        donnees_transfert['dep'] = '40'
+        donnees_transfert['reseau'] = 'RD'
+        donnees_transfert['sens_cpt'] = 'double sens'
+        donnees_transfert['gestionnai'] = 'CD19'
+        donnees_transfert['fictif'] = False
+        donnees_transfert['concession'] = False
+        donnees_transfert['src_cpt'] = 'convention gestionnaire'
+        donnees_transfert['convention'] = True
+        donnees_transfert['periode'] = None
+        donnees_transfert['src_geo'] = 'pr+abs_gestionnaire'
+        donnees_transfert['obs_geo'] = None
+        donnees_transfert['techno'] = None
+        donnees_transfert['id_cpt'] = None
+        donnees_transfert['id_sect'] = None
+        donnees_transfert['last_ann_sect'] = None
+        donnees_transfert['fichier'] = self.fichier
         self.df_attr = donnees_transfert.copy()
 
     def classer_compteur_update_insert(

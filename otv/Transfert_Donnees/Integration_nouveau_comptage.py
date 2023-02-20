@@ -201,8 +201,8 @@ def ventilerParSectionHomogene(
         ptGeom, linauto, distancePlusProcheVoisin, "id_comptag", "gid"
     )
     ppVSectHomo = ppV.loc[~ppV.gid.isna()].copy()
-    ppvHorsSectHomo = pt.loc[
-        ~pt.id_comptag.isin(ppV.id_comptag.tolist())
+    ppvHorsSectHomo = ptGeom.loc[
+        ~ptGeom.id_comptag.isin(ppV.id_comptag.tolist())
     ].copy()  # PENSER A CREER LES COMPTEURS POUR CEUX LA !!!!!
     # et on récupère l'id_comptag_existant et l'id de section homogene
     ppVTot = ptGeom.merge(ppVSectHomo, how="left", on="id_comptag").merge(
@@ -319,12 +319,12 @@ def creerCompteur(
         convention=convention,
         sens_cpt=sens_cpt,
     )
-    df["x_l93"] = df[attrGeom].apply(
-        lambda x: round(x.x, 3) if not x.is_empty else None
-    )
-    df["y_l93"] = df[attrGeom].apply(
-        lambda x: round(x.y, 3) if not x.is_empty else None
-    )
+    df.loc[df[attrGeom].notna(), "x_l93"] = df.loc[df[attrGeom].notna()][attrGeom].apply(
+        lambda x: round(x.x, 3))
+    df.loc[df[attrGeom].isna(), "src_geo"] = None
+    df.loc[df[attrGeom].isna(), "x_l93"] = None
+    df.loc[df[attrGeom].notna(), "y_l93"] = df.loc[df[attrGeom].notna()][attrGeom].apply(
+        lambda x: round(x.y, 3))
     O.checkAttributsinDf(df, [attrGeom] + attrCompteurValeurMano)
     O.checkAttributNonNull(df, attBddCompteurNonNull)
     df.drop(
@@ -333,7 +333,7 @@ def creerCompteur(
         inplace=True,
     )
     gdfCpt = gp.GeoDataFrame(df, geometry=attrGeom, crs=2154)
-    gdfCpt = O.gp_changer_nom_geom(gdfCpt, "geom")
+    gdfCpt = O.gp_changer_nom_geom(gdfCpt.drop('geom', axis=1, errors='ignore'), "geom")
     return gdfCpt
 
 
@@ -1376,6 +1376,9 @@ def modifierVentilation(
         CreationCompteurExistDevientAssoc : dataframe de comptage qui necesittent creation de compteur et le passage de celui
                                             en bdd vers le schema comptage_assoc
         gest : gestionnaire
+        dicoCreationCompteurExistDevientAssoc2Corresp : dico des comptage que l'on voulait creer , mais qui finalement vont etre des coresp.
+                                                        key : id_comptag des nouveaux points
+                                                        value : id_comptag e la bdd existante
     out :
         comptageAssocie_MaJMano : dataframe des comptages associes, avec les corresp transferees dedans et
                                             si besoin les comptages vers corrsp sortis. Si pas concerne, renvoi none
@@ -1674,22 +1677,23 @@ def modifierVentilation(
     verifier les doublons dans les réusltats"""
         )
     # remplir les références des comptages associés
-    comptageAssocie_MaJMano["id_comptag_ref"] = comptageAssocie_MaJMano.apply(
-        lambda x: comptagesAssocDefinirIdCompteurRef(
-            x,
-            {
-                1: "id_comptag_ref",
-                2: "id_comptag_bdd_tronc_homo_topo",
-                3: "id_comptag_tronc_homo_traf",
-            },
-        ),
-        axis=1,
-    )
-    # verif
-    if comptageAssocie_MaJMano.id_comptag_ref.isna().any():
-        raise ValueError(
-            f"des références de comptages associés sont nulles. a corriger"
+    if not comptageAssocie_MaJMano.empty:
+        comptageAssocie_MaJMano["id_comptag_ref"] = comptageAssocie_MaJMano.apply(
+            lambda x: comptagesAssocDefinirIdCompteurRef(
+                x,
+                {
+                    1: "id_comptag_ref",
+                    2: "id_comptag_bdd_tronc_homo_topo",
+                    3: "id_comptag_tronc_homo_traf",
+                },
+            ),
+            axis=1,
         )
+        # verif
+        if comptageAssocie_MaJMano.id_comptag_ref.isna().any():
+            raise ValueError(
+                f"des références de comptages associés sont nulles. a corriger"
+            )
     # assurer l'existance des references des comptages associés
     # défnir les liens existants (depuis Bdd ou suite a ventilation)
     existant = compteur_existant_bdd(gest=gest)
@@ -1787,74 +1791,78 @@ def rassemblerNewCompteur(
     listCpteurNew = []
     for e in [a for a in tuplesDfGeom]:
         df = e[0].copy()
-        if reseau:
-            df["reseau"] = reseau
-        reseauDf = df["reseau"].tolist()
-        if gestionnai:
-            df["gestionnai"] = gestionnai
-        gestionnaiDf = df["gestionnai"].tolist()
-        if srcGeo:
-            df["src_geo"] = srcGeo
-        if sensCpt:
-            df["sens_cpt"] = sensCpt
-        if concession:
-            df["concession"] = concession
-        concessionDf = df["concession"].tolist()
-        if techno:
-            df["techno"] = techno
-        technoDf = df["techno"].tolist()
-        if id_sect:
-            df["id_sect"] = id_sect
-        id_sectDf = df["id_sect"].tolist()
-        df["src_cpt"] = df.type_poste.apply(
-            lambda x: "convention gestionnaire" if x == "permanent" else "gestionnaire"
-        )
-        df["convention"] = df.type_poste.apply(
-            lambda x: True if x == "permanent" else False
-        )
-        # RUSTINE A REPRENDRE :
-        if "id_cpt" in df.columns and "obs_supl" in df.columns:
-            listCpteurNew.append(
-                creerCompteur(
-                    df,
-                    e[1],
-                    dep,
-                    reseauDf,
-                    gestionnaiDf,
-                    concessionDf,
-                    id_cpt=df.id_cpt.tolist(),
-                    obs_supl=df.obs_supl.tolist(),
-                    techno=technoDf,
-                    id_sect=id_sectDf,
+        if not df.empty:
+            if reseau:
+                df["reseau"] = reseau
+            reseauDf = df["reseau"].tolist()
+            if gestionnai:
+                df["gestionnai"] = gestionnai
+            gestionnaiDf = df["gestionnai"].tolist()
+            if srcGeo:
+                df["src_geo"] = srcGeo
+            if sensCpt:
+                df["sens_cpt"] = sensCpt
+            if concession:
+                df["concession"] = concession
+            concessionDf = df["concession"].tolist()
+            if techno:
+                df["techno"] = techno
+            technoDf = df["techno"].tolist()
+            if id_sect:
+                df["id_sect"] = id_sect
+            id_sectDf = df["id_sect"].tolist()
+            df["src_cpt"] = df.type_poste.apply(
+                lambda x: "convention gestionnaire" if x == "permanent" else "gestionnaire"
+            )
+            df["convention"] = df.type_poste.apply(
+                lambda x: True if x == "permanent" else False
+            )
+            # RUSTINE A REPRENDRE :
+            if "id_cpt" in df.columns and "obs_supl" in df.columns:
+                listCpteurNew.append(
+                    creerCompteur(
+                        df,
+                        e[1],
+                        dep,
+                        reseauDf,
+                        gestionnaiDf,
+                        concessionDf,
+                        id_cpt=df.id_cpt.tolist(),
+                        obs_supl=df.obs_supl.tolist(),
+                        techno=technoDf,
+                        id_sect=id_sectDf,
+                    )
                 )
-            )
-        elif "id_cpt" in df.columns:
-            listCpteurNew.append(
-                creerCompteur(
-                    df,
-                    e[1],
-                    dep,
-                    reseauDf,
-                    gestionnaiDf,
-                    concessionDf,
-                    id_cpt=df.id_cpt.tolist(),
+            elif "id_cpt" in df.columns and any(df.id_cpt.notna()):
+                listCpteurNew.append(
+                    creerCompteur(
+                        df,
+                        e[1],
+                        dep,
+                        reseauDf,
+                        gestionnaiDf,
+                        concessionDf,
+                        id_cpt=df.id_cpt.tolist(),
+                    )
                 )
-            )
-            listCpteurNew.append(
-                creerCompteur(
-                    df,
-                    e[1],
-                    dep,
-                    reseauDf,
-                    gestionnaiDf,
-                    concessionDf,
-                    obs_supl=df.obs_supl.tolist(),
+                listCpteurNew.append(
+                    creerCompteur(
+                        df,
+                        e[1],
+                        dep,
+                        reseauDf,
+                        gestionnaiDf,
+                        concessionDf,
+                        obs_supl=df.obs_supl.tolist(),
+                    )
                 )
-            )
-        else:
-            listCpteurNew.append(
-                creerCompteur(df, e[1], dep, reseauDf, gestionnaiDf, concessionDf)
-            )
+            else:
+                listCpteurNew.append(
+                    creerCompteur(df, e[1], dep, reseauDf, gestionnaiDf, concessionDf, 
+                                  type_poste=df.type_poste.tolist(), src_geo=df.src_geo.tolist(), periode=df.periode.tolist(),
+                                  pr=df.pr.tolist(), absc=df['abs'].tolist(), route=df.route.tolist(), src_cpt=df.src_cpt.tolist(),
+                                  convention=df.convention.tolist(), sens_cpt=df.sens_cpt.tolist())
+                )
     dfNewCompteur = pd.concat(listCpteurNew)
     if not dfNewCompteur.loc[dfNewCompteur.duplicated("id_comptag")].empty:
         raise ValueError(
@@ -1886,7 +1894,7 @@ def rassemblerNewComptage(
             O.checkAttributsinDf(d, attrComptageMano)
     # on va fusionner les sources de données
     concatSources = pd.concat(
-        [pd.concat(dfComptageCompteurNew), dfComptageCompteurConnu]
+        [pd.concat([df for df in dfComptageCompteurNew if not df.empty]), dfComptageCompteurConnu]
     )
     # puis on vérifie les doublons
     ref, assoc = ventilerDoublons(concatSources)

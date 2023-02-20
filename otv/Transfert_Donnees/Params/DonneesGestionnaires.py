@@ -77,6 +77,15 @@ cd17_permCsvTmjmPlColumns = ['localisation', 'route', 'pr', 'abs', 'latitude', '
                              'fevr_tmja', 'fevr_pc_pl', 'mars_tmja', 'mars_pc_pl', 'avri_tmja', 'avri_pc_pl', 'mai_tmja', 'mai_pc_pl',
                              'juin_tmja', 'juin_pc_pl', 'juil_tmja', 'juil_pc_pl', 'aout_tmja', 'aout_pc_pl', 'sept_tmja', 'sept_pc_pl',
                              'octo_tmja', 'octo_pc_pl', 'nove_tmja', 'nove_pc_pl', 'dece_tmja', 'dece_pc_pl']
+
+
+#########
+# CD19
+#########
+
+cd19_dicoTypePoste = {'permanent': ('19-D9-34+570', '19-D979-69+40', '19-D982-1+855', '19-D1120-34+225', '19-D1120-51+250', '19-D1120-55+150',
+                                    '19-D9-29+80', '19-D170-22+550', '19-D940-9+940', '19-D979-48+500', '19-D982-15+125')}
+
 #########
 # NIORT
 #########
