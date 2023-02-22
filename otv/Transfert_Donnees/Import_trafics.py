@@ -533,7 +533,7 @@ class Comptage_cd23(Comptage):
         """
         # ouvrir le classeur
         df_excel = pd.read_excel(
-            r"Q:\DAIT\TI\DREAL33\2020\OTV\Doc_travail\Donnees_source\CD23\2019-CD23_trafics.xls",
+            self.fichier,
             skiprows=11,
         )
         # renomer les champs
@@ -568,6 +568,9 @@ class Comptage_cd23(Comptage):
         )
         df_excel_filtre["fichier"] = self.fichier
         df_excel_filtre["src"] = "tableur CD23"
+        df_excel_filtre['annee'] = self.annee
+        df_excel_filtre['type_poste'] = 'tournant'
+        df_excel_filtre['periode'] = None
         self.df_attr = df_excel_filtre
 
     def classer_compteur_update_insert(self, table_cpt="compteur"):
@@ -599,73 +602,13 @@ class Comptage_cd23(Comptage):
         """
         calcul des données mensuelles uniquement sur la base du fichier excel de regroupement
         """
-        list_id_comptag = [
-            val for val in self.df_attr.id_comptag.tolist() for _ in (0, 1)
-        ]
-        donnees_type = ["tmja", "pc_pl"] * len(self.df_attr.id_comptag.tolist())
-        annee_df = [str(self.annee)] * 2 * len(self.df_attr.id_comptag.tolist())
-        janv, fev, mars, avril, mai, juin, juil, aout, sept, octo, nov, dec = (
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-        )
-        for i in range(len(self.df_attr.id_comptag.tolist())):
-            for j in (janv, fev, mars):
-                j.extend(
-                    [
-                        self.df_attr.trim1_TV.tolist()[i],
-                        self.df_attr.trim1_pcpl.tolist()[i],
-                    ]
-                )
-            for k in (avril, mai, juin):
-                k.extend(
-                    [
-                        self.df_attr.trim2_TV.tolist()[i],
-                        self.df_attr.trim2_pcpl.tolist()[i],
-                    ]
-                )
-            for l in (juil, aout, sept):
-                l.extend(
-                    [
-                        self.df_attr.trim3_TV.tolist()[i],
-                        self.df_attr.trim3_pcpl.tolist()[i],
-                    ]
-                )
-            for m in (octo, nov, dec):
-                m.extend(
-                    [
-                        self.df_attr.trim4_TV.tolist()[i],
-                        self.df_attr.trim4_pcpl.tolist()[i],
-                    ]
-                )
-        self.df_attr_mensuel = pd.DataFrame(
-            {
-                "id_comptag": list_id_comptag,
-                "donnees_type": donnees_type,
-                "annee": annee_df,
-                "janv": janv,
-                "fevr": fev,
-                "mars": mars,
-                "avri": avril,
-                "mai": mai,
-                "juin": juin,
-                "juil": juil,
-                "aout": aout,
-                "sept": sept,
-                "octo": octo,
-                "nove": nov,
-                "dece": dec,
-            }
-        )
+        self.df_attr_mens = pd.concat([self.df_attr.melt(id_vars='id_comptag',
+                   value_vars=[a, b], 
+                   value_name='valeur', var_name='indicateur').replace({a: 'tmja', b: 'pc_pl'}).
+         assign(mois=m) for k, v in {('janv', 'fevr', 'mars'): (('trim1_TV', 'trim1_pcpl'),),
+                                 ('avri', 'mai', 'juin'): (('trim2_TV', 'trim2_pcpl'),),
+                                 ('juil', 'aout', 'sept'): (('trim3_TV', 'trim3_pcpl'),),
+                                 ('octo', 'nove', 'dece'): (('trim4_TV', 'trim4_pcpl'),)}.items() for m in k for a, b in v]) 
 
 
 class Comptage_cd17(Comptage):

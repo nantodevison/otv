@@ -1889,13 +1889,16 @@ def rassemblerNewComptage(
     """
     # verifs
     O.checkAttributsinDf(dfComptageCompteurConnu, attrComptageMano)
-    for d in dfComptageCompteurNew:
-        if not d.empty:
-            O.checkAttributsinDf(d, attrComptageMano)
-    # on va fusionner les sources de données
-    concatSources = pd.concat(
-        [pd.concat([df for df in dfComptageCompteurNew if not df.empty]), dfComptageCompteurConnu]
-    )
+    if dfComptageCompteurNew:
+        for d in dfComptageCompteurNew:
+            if not d.empty:
+                O.checkAttributsinDf(d, attrComptageMano)
+        # on va fusionner les sources de données
+        concatSources = pd.concat(
+            [pd.concat([df for df in dfComptageCompteurNew if not df.empty]), dfComptageCompteurConnu]
+        )
+    else:
+        concatSources = dfComptageCompteurConnu.copy()
     # puis on vérifie les doublons
     ref, assoc = ventilerDoublons(concatSources)
     # association avec la partie des compteurs deja connus
