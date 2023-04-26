@@ -174,7 +174,9 @@ def NombreDeJours(dfHeureTypeSens):
         un dico avec en key nbJours, nbJoursOuvres,samedi,dimanche
     """
     dfNbJours=dfHeureTypeSens.set_index('date_heure').resample('1D').count().reset_index().date_heure.dt.dayofweek.value_counts().rename('nbOcc')
-    return {'dfNbJours':dfNbJours,
+    return {'dfNbJours': dfHeureTypeSens.assign(date=dfHeureTypeSens.date_heure.dt.date, 
+                            dow=dfHeureTypeSens.date_heure.dt.dayofweek).drop_duplicates(
+    'date').dow.value_counts().reset_index().rename(columns={'index': 'dayofweek', 'dow': 'nbOcc'}).set_index('dayofweek'),
             'nbJours':dfHeureTypeSens.date_heure.dt.dayofyear.nunique(),
             'nbJoursOuvres' : dfHeureTypeSens.loc[dfHeureTypeSens.date_heure.dt.dayofweek.isin(range(5))].date_heure.dt.dayofyear.nunique()}
 
@@ -660,8 +662,8 @@ class FIM():
         O.checkParamValues(typeVeh, ('NC', 'velo', 'tv', 'vl/pl'))
         self.verifQualite = verifQualite
         self.fichier_fim = fichier
-        self.dico_corresp_type_veh = {'TV': ('1.T','2.','1.'),'VL': ('2.V','4.V'),'PL': ('3.P','2.P','4.P'), 'Velo': ('05.',)}
-        self.dico_corresp_type_fichier = {'mode3': ('1.T','3.P'), 'mode4': ('2.V','2.P','4.V', '4.P'), 'mode2': ('2.',), 'mode1' : ('1.',),
+        self.dico_corresp_type_veh = {'TV': ('1.T','2.','1.', '4.T'),'VL': ('2.V','4.V'),'PL': ('3.P','2.P','4.P'), 'Velo': ('05.',)}
+        self.dico_corresp_type_fichier = {'mode3': ('1.T','3.P'), 'mode4': ('2.V','2.P','4.V', '4.P', '4.T'), 'mode2': ('2.',), 'mode1' : ('1.',),
                                           'mode5': ('5.', )}
         self.gest = gest
         self.typVeh = typeVeh
@@ -681,7 +683,7 @@ class FIM():
         ouvrir le fichier txt et en sortir la liste des lignes
         """
         with open(self.fichier_fim) as f :
-            lignes = [e.strip() for e in f.readlines()]
+            lignes = [e.strip() for e in f.readlines() if e.strip() != '']
         return lignes
     
     
@@ -699,6 +701,15 @@ class FIM():
                     else : 
                         self.lignes[e] = l.replace('   4.   ','   4.P   ') 
                         i += 1
+            elif mode in ('QT.S0', 'QL.S0') : #porte ouvert pour d'auter corrections si beoisn
+                if 'QT.S0' in l or 'QL.S0' in l : 
+                    if 'QT.S0' in l:
+                        self.lignes[e] = l.replace('QT.S0','   1.T   ')
+                    elif 'QL.S0' in l:
+                        self.lignes[e] = l.replace('QL.S0','   3.P   ') 
+                    else:
+                        pass
+                    i += 1
 
     def params_fim(self,lignes):
         """
@@ -711,13 +722,15 @@ class FIM():
             self.section_cp = '_'.join([str(int(lign0Splitpoint[a].strip())) for a in (2,3)])
         date_debut = pd.to_datetime(f'{jour}-{mois}-{annee} {heure}:{minute}', dayfirst=True)
         mode = self.lignes[0].split()[9]
-        if mode in ['4.',] : #correction si le mode est de type 4. sans distinction exlpicite de VL TV PL. porte ouvert à d'autre cas si besoin 
+        if mode in ['4.', 'QT.S0', 'QL.S0'] : #correction si le mode est de type 4. sans distinction exlpicite de VL TV PL. porte ouvert à d'autre cas si besoin 
             self.corriger_mode(mode)
             mode = self.lignes[0].split()[9]
+            print('mode', mode)
         if self.typVeh == 'velo':
             mode = 'mode5'
         else:
             mode = [k for k,v in self.dico_corresp_type_fichier.items() if any([e == mode for e in v])][0]
+        print('mode', mode)    
         if not mode : 
             raise self.fim_TypeModeError
         
@@ -750,9 +763,16 @@ class FIM():
         for k, v in self.dico_corresp_type_veh.items() : 
             if any([e+' ' in ligne for e in v]) :
                 if self.typVeh != 'velo':
-                    return [cle for cle, value in self.dico_corresp_type_veh.items() for e in value if e == ligne.split()[9]][0]
+                    try:
+                        typeVeh = [cle for cle, value in self.dico_corresp_type_veh.items() for e in value if e == ligne.split()[9]][0]
+                        return typeVeh
+                    except IndexError:
+                        print(f'un erreur est survenue sur la ligne {ligne}') 
+                        return None
                 else:
-                    return 'Velo'
+                    return typeVeh
+            else:
+                return None
     
     def liste_carac_fichiers(self,lignes):
         """
@@ -765,7 +785,8 @@ class FIM():
                 sens=ligne.split('.')[4].strip()
                 liste_lign_titre.append([i, type_veh,sens])
         sens_uniq=True if len(set([e[2] for e in liste_lign_titre]))==1 else False
-        sens_uniq_nb_blocs=len(liste_lign_titre) if sens_uniq else np.NaN 
+        sens_uniq_nb_blocs=len(liste_lign_titre) if sens_uniq else np.NaN
+        print(liste_lign_titre)
         return liste_lign_titre,sens_uniq,sens_uniq_nb_blocs
 
     def taille_bloc_donnees(self) : 
@@ -774,6 +795,7 @@ class FIM():
         in : 
             lignes_fichiers : toute les lignes du fichiers, issu de f.readlines()
         """
+        print(self.liste_lign_titre)
         taille_donnees=tuple(set([self.liste_lign_titre[i+1][0]-(self.liste_lign_titre[i][0]+1) for i in range(len(self.liste_lign_titre)-1)]+
                            [len(self.lignes)-1-self.liste_lign_titre[len(self.liste_lign_titre)-1][0]]))
         if len(taille_donnees)>1 : 
@@ -786,10 +808,24 @@ class FIM():
         isoler les blocs de données des lignes de titre,en fonction du mode de comptage
         """
         for i,e in enumerate(liste_lign_titre) :
-            if self.mode in ('mode3', 'mode1', 'mode5') :
-                e.append([int(b) for c in [a.split('.') for a in [a.strip() for a in lignes[e[0]+1:e[0]+1+self.taille_donnees]]] for b in c if b])
-            elif self.mode in ('mode4', 'mode2') :
-                e.append([sum([int(e) for e in b if e]) for b in [a.split('.') for a in [a.strip() for a in lignes[e[0]+2:e[0]+1+self.taille_donnees]]]])
+            if self.mode in ('mode3', 'mode1', 'mode5'):
+                listeligneTemp = []
+                for c in [a.split('.')[:12] for a in [a.strip() for a in lignes[e[0]+1:e[0]+1+self.taille_donnees]]]:
+                    for b in c:
+                        if b:
+                            listeligneTemp.append(int(b.replace("     ", "0")))
+                        else:
+                            listeligneTemp.append(0)
+                e.append(listeligneTemp)
+            elif self.mode in ('mode4', 'mode2') and 'TV' not in [liste_lign_titre[i][1] for i in range(len(liste_lign_titre))]:
+                listeligneTemp = []
+                for b in [a.split('.')[:12] for a in self.lignes[e[0]+1:e[0]+1+self.taille_donnees]]:
+                    for c in b:
+                        if c:
+                            listeligneTemp.append(int(c.replace("     ", "0")))
+                        else:
+                            listeligneTemp.append(0)
+                e.append(listeligneTemp)
         return
         
     def traficsHoraires(self):
@@ -820,6 +856,9 @@ class FIM():
             columns={k: v for k, v in zip(['date', 'type_veh']+[e for e in range(24)], ['jour', 'indicateur']+attributsHoraire)})
         dfHoraire2Sens['indicateur']=dfHoraire2Sens.indicateur.str.upper()
         periode = f"{dfHoraire2Sens.jour.min().date().strftime('%Y/%m/%d')}-{dfHoraire2Sens.jour.max().date().strftime('%Y/%m/%d')}"
+        dfHoraire2Sens = dfHoraire2Sens.loc[dfHoraire2Sens.apply(lambda x: any(x[c] != 0 and not pd.isnull(x[c])
+                                                                               for c in dfHoraire2Sens.columns if c[0] == 'h') , axis=1)].copy()
+        dfHeureTypeSens = dfHeureTypeSens.loc[dfHeureTypeSens.date_heure.dt.date.isin([pd.Timestamp(e).date() for e in dfHoraire2Sens.jour.tolist()])].copy()
         return dfHeureTypeSens,dfHoraire2Sens, periode
 
     def calcul_indicateurs_agreges(self):
