@@ -13,7 +13,7 @@ from Outils import Outils as O
 from Params.Mensuel import dico_mois
 from Params.Bdd_OTV import attrIndicHoraire, enumSensCpt
 from Params.DonneesGestionnaires import denominationSens
-
+ 
 
 attributsHoraire = [f'h{i}_{i+1}' for i in range (24)]
 
