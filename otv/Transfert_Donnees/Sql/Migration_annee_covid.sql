@@ -10,7 +10,7 @@
 /*
  * Schéma comptage_assoc
  */;
--- Recherche des comptages_assoc.compteur oÃ¹ le comptage_asso et identique au comptage_ref : 10 résultats
+-- Recherche des comptages_assoc.compteur où le comptage_asso et identique au comptage_ref : 10 résultats
 WITH 
 comptage2020 AS (
     SELECT
@@ -39,7 +39,7 @@ JOIN comptage2020 ca
         USING(id_cpteur_asso)
 WHERE
     ce.id_cpteur_asso = ce.id_cpteur_ref ;
--- on utilise Ã§a pour modifier les nom de id_cpteur_asso sur la base du fichier créé:
+-- on utilise ça pour modifier les nom de id_cpteur_asso sur la base du fichier créé:
 -- Transfert_Donnees\Sql\Migration_annee_covid_comptageAssocMapping_id_cpteur_asso.txt
 WITH
 mappage AS (
@@ -498,7 +498,7 @@ CREATE TABLE covid.indic_horaire (
 
 /*
  * Schéma comptage_assoc
- */;
+ */
 -- table compteur
 WITH
 mappage AS (
@@ -1125,3 +1125,115 @@ WHERE
 /* ------------------------
  * Suppression des données
  *-------------------------*/
+
+/*
+ * Schéma comptage_assoc
+ */
+
+-- tables comptage et indic (FK on delete cascade)
+DELETE FROM comptage_assoc.comptage WHERE annee = '2020' ;
+-- table compteur
+DELETE FROM comptage_assoc.compteur WHERE id_cpteur_asso NOT IN (SELECT id_cpteur_asso FROM comptage_assoc.comptage) ;
+
+
+/*
+ * Schéma comptage toute table (FK on delete cascade)
+ */
+-- vérification que les compteurs à supprimer ne sont pas référencer dans les comptages assoc
+WITH 
+comptage2020 AS (
+    SELECT
+        *
+    FROM
+        comptage.comptage
+    WHERE
+        annee = '2020'
+),
+tt_comptag_2020_autre AS (
+    SELECT
+        c.*,
+        max(c.annee) OVER(
+            PARTITION BY c.id_comptag
+        ) annee_cptag_max,
+        min(c.annee) OVER(
+            PARTITION BY c.id_comptag
+        ) annee_cptag_min
+    FROM
+        comptage.comptage c
+    JOIN comptage2020 c2
+            USING(id_comptag)
+    ORDER BY
+        c.id_comptag
+)
+SELECT DISTINCT (id_comptag) 
+ FROM tt_comptag_2020_autre
+ WHERE annee_cptag_max = annee_cptag_min AND id_comptag IN (SELECT id_cpteur_ref FROM comptage_assoc.compteur) ;
+-- c'est le cas pour le compteur 33-D115-55+330 que l'on va rappatrier au préalable dans le schéma comptage.
+--table compteur
+INSERT INTO comptage.compteur (id_comptag, geom, dep, route, pr, abs, reseau, gestionnai, concession, type_poste, techno, src_geo, obs_geo, x_l93, y_l93, obs_supl, id_cpt, last_ann_cpt, 
+       id_sect, last_ann_sect, fictif, src_cpt, convention, sens_cpt, en_service)
+SELECT id_cpteur_asso id_comptag, geom, '33'::TEXT dep, route, pr, abs, 'RD'::TEXT reseau, 'CD33'::TEXT gestionnai, 
+       FALSE::bool concession, type_poste, techno, src_geo, obs_geo, round(st_x(geom)::NUMERIC, 3) x_l93, round(st_y(geom)::NUMERIC, 3) y_l93, obs_supl, id_cpt, NULL::text last_ann_cpt, 
+       NULL::text id_sect, NULL::text last_ann_sect, FALSE::bool fictif, src_cpt, convention, sens_cpt, TRUE::bool en_service
+  FROM comptage_assoc.compteur
+  WHERE id_cpteur_ref = '33-D115-55+330' ;
+-- table comptage
+INSERT INTO comptage.comptage (id_comptag, "annee", "periode", src, obs, type_veh, suspect)
+SELECT ca.id_cpteur_asso id_comptag, ca."annee", ca."periode", ca.src, ca.obs, ca.type_veh, ca.suspect
+  FROM comptage_assoc.compteur ce JOIN comptage_assoc.comptage ca ON ce.id_cpteur_asso = ca.id_cpteur_asso
+  WHERE ce.id_cpteur_ref = '33-D115-55+330' ;
+-- table indic_agrege
+INSERT INTO comptage.indic_agrege (id_comptag_uniq, indicateur, valeur, fichier)
+SELECT ca2.id id_comptag_uniq, ia.indicateur, ia.valeur, ia.fichier
+  FROM comptage_assoc.compteur ce JOIN comptage_assoc.comptage ca ON ce.id_cpteur_asso = ca.id_cpteur_asso
+                                  JOIN comptage_assoc.indic_agrege ia ON ca.id = ia.id_comptag_uniq
+                                  JOIN comptage.comptage ca2 ON ca.id_cpteur_asso = ca2.id_comptag
+  WHERE ce.id_cpteur_ref = '33-D115-55+330' ;
+
+-- suppression de ce compteur et de ses valeurs dans les comptages assoc
+delete FROM comptage_assoc.indic_agrege ia2 WHERE id IN (
+SELECT ia.id
+ FROM comptage_assoc.indic_agrege ia JOIN comptage_assoc.comptage ca ON ca.id = ia.id_comptag_uniq
+                                  JOIN comptage_assoc.compteur ce ON ce.id_cpteur_asso = ca.id_cpteur_asso
+                                  JOIN comptage.comptage ca2 ON ca.id_cpteur_asso = ca2.id_comptag 
+ WHERE ce.id_cpteur_ref = '33-D115-55+330');
+delete FROM comptage_assoc.comptage ca2 WHERE ca2.id IN (
+SELECT ca.id
+  FROM comptage_assoc.compteur ce JOIN comptage_assoc.comptage ca ON ce.id_cpteur_asso = ca.id_cpteur_asso
+  WHERE ce.id_cpteur_ref = '33-D115-55+330');
+DELETE FROM comptage_assoc.compteur WHERE id_cpteur_ref = '33-D115-55+330' ;
+
+--suppression des compteurs dont seul un comptage sur 2020 existe : 
+WITH 
+comptage2020 AS (
+    SELECT
+        *
+    FROM
+        comptage.comptage
+    WHERE
+        annee = '2020'
+),
+tt_comptag_2020_autre AS (
+    SELECT
+        c.*,
+        max(c.annee) OVER(
+            PARTITION BY c.id_comptag
+        ) annee_cptag_max,
+        min(c.annee) OVER(
+            PARTITION BY c.id_comptag
+        ) annee_cptag_min
+    FROM
+        comptage.comptage c
+    JOIN comptage2020 c2
+            USING(id_comptag)
+    ORDER BY
+        c.id_comptag
+)
+DELETE FROM comptage.compteur WHERE id_comptag IN (SELECT id_comptag FROM tt_comptag_2020_autre WHERE annee_cptag_max = annee_cptag_min) ;
+
+-- supprssion des comptages 2020 dans le schéma comptage
+DELETE FROM comptage.comptage WHERE annee = '2020' ;
+
+/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+ * FIN DU SCRIPT
+ */*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/
