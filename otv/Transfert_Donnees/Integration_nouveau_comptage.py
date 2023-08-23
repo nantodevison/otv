@@ -8,9 +8,9 @@ Module pour integrer les nouveaux comptages fournis par les gestionnaires
 
 import warnings, re
 import datetime as dt
-from Outils.Outils import Outils as O 
+from Outils import Outils as O 
 import pandas as pd
-from . import Connexion_Transfert as ct
+from Connexions import Connexion_Transfert as ct
 from collections import Counter
 from Params.Bdd_OTV import (
     nomConnBddOtv,
