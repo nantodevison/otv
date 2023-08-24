@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<scenario xmlns="http://www.veremes.com/rtest" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.veremes.com/rtest http://schemas.veremes.net/rtest/2.0/rtest.xsd">
+	<project>Hello World !</project>
+	<description>A simple test scenario to understand how rTest for FME does work</description>
+	<rtestCollection>
+		<rtest id="hw.t1" label="Point with positive coordinates">
+			<processCollection>
+				<process label="Run HelloWorld.fmw with a point in Switzerland" deletebefore="./result/dbcountry.sqlite">
+					<workspace>./HelloWorld.fmw</workspace>
+					<parameterCollection>
+						<parameter name="xy" value="6.6 46.6"/>
+						<parameter name="destSpatialiteFile" value="./result/dbcountry.sqlite"/>
+					</parameterCollection>
+				</process>
+			</processCollection>
+			<checkCollection>
+				<check label="Number of features in the 'country' feature type">
+					<source type="datafile" format="SPATIALITE" dataset="./result/dbcountry.sqlite" request="featuresCount()" requestparams="country"/>
+					<condition comparator="eq" expectedvalue="1"/>
+				</check>
+				<check label="Country name in the first record">
+					<source type="datafile" format="SPATIALITE" dataset="result\dbcountry.sqlite" request="attributeValue()" requestparams="country,name,1"/>
+					<condition comparator="eq" expectedvalue="Switzerland"/>
+				</check>
+			</checkCollection>
+		</rtest>
+		<rtest id="hw.t2" label="Point with negative coordinates">
+			<processCollection>
+				<process label="Run HelloWorld.fmw with a point in Argentina">
+					<workspace>./HelloWorld.fmw</workspace>
+					<parameterCollection>
+						<parameter name="xy" value="-60.0 -35.0"/>
+						<parameter name="destSpatialiteFile" value="./result/dbcountry.sqlite"/>
+					</parameterCollection>
+				</process>
+			</processCollection>
+			<checkCollection>
+				<check label="Number of features in the 'country' feature type">
+					<source type="datafile" format="SPATIALITE" dataset="./result/dbcountry.sqlite" request="featuresCount()" requestparams="country"/>
+					<condition comparator="eq" expectedvalue="2"/>
+				</check>
+				<check label="Country name in the second record">
+					<source type="datafile" format="SPATIALITE" dataset="result\dbcountry.sqlite" request="attributeValue()" requestparams="country,name,2"/>
+					<condition comparator="eq" expectedvalue="Argentine"/>
+				</check>
+			</checkCollection>
+		</rtest>		
+		<rtest id="hw.t3" label="Point on a border">
+			<processCollection>
+				<process label="Run HelloWorld.fmw with a point on the French-Swiss border">
+					<workspace>./HelloWorld.fmw</workspace>
+					<parameterCollection>
+						<parameter name="xy" value="5.966666000000032 46.209442000000095"/>
+						<parameter name="destSpatialiteFile" value="./result/border.sqlite"/>
+					</parameterCollection>
+				</process>
+			</processCollection>
+			<checkCollection>
+				<check label="Number of features in the 'country' feature type">
+					<source type="datafile" format="SPATIALITE" dataset="./result/border.sqlite" request="featuresCount()" requestparams="country"/>
+					<condition comparator="eq" expectedvalue="2"/>
+				</check>
+			</checkCollection>
+		</rtest>		
+		
+	</rtestCollection>
+</scenario>
