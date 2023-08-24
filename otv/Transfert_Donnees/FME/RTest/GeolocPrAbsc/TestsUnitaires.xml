@@ -1,26 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
 <scenario xmlns="http://www.veremes.com/rtest" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.veremes.com/rtest http://schemas.veremes.net/rtest/2.0/rtest.xsd">
-	<project>Hello World !</project>
-	<description>A simple test scenario to understand how rTest for FME does work</description>
+	<project>Geolocalisation PR et Abscisse</project>
+	<description>Géolocaliser un point sur un réseau routier à partir de référence en point de repère et abscisse</description>
 	<rtestCollection>
-		<rtest id="hw.t1" label="Point with positive coordinates">
+		<rtest id="gpa.t1" label="Lineaire continu de la route entre PR et PR+1">
 			<processCollection>
-				<process label="Run HelloWorld.fmw with a point in Switzerland" deletebefore="./result/dbcountry.sqlite">
-					<workspace>./HelloWorld.fmw</workspace>
+				<process 
+                    label="Lancer GeolocPrAbsc.fmw avec l'id_comptage 17-D107-14+80 et les données de PR et de lineaire 2021"
+                    copylogto="C:\Users\martin.schoreisz\Documents\temp\OTV\testGeolocPrAbs\GeolocPrAbsc.log">
+					<workspace>C:\Users\martin.schoreisz\Documents\temp\OTV\testGeolocPrAbs\GeolocPrAbsc.fmw</workspace>
+                    <expectedstatus>success</expectedstatus>
 					<parameterCollection>
-						<parameter name="xy" value="6.6 46.6"/>
-						<parameter name="destSpatialiteFile" value="./result/dbcountry.sqlite"/>
+						<parameter name="Dept" value="17"/>
+                        <parameter name="DeptLimitrophe" value="16','24" />
+                        <parameter name="RouteATester" value="D107" />
+                        <parameter name="PR" value="14" />
+                        <parameter name="Absc" value="80" />
+						<parameter name="Id_uniq" value="0"/>
+                        <parameter name="Distance_proche_voisin_geolocPR" value="5" />
+                        <parameter name="ReferentielPR" value="ref.pr_ed21_p" />
+                        <parameter name="ReferentielRoutier" value="lineaire.traf2021_bdt_na_ed21_l" />
+                        <parameter name="TopoLineaireRoutier" value="lineaire.traf2021_bdt_na_ed21_l_vertices_pgr" />
+                        <parameter name="SourceDataset_OGCGEOPACKAGE" value="" />
+                        <parameter name="Bdd_GeolocPr_table" value="geoloc_pr_abs" />
+                        <parameter name="Bdd_GeolocPr_schema" value="rtest" />
 					</parameterCollection>
 				</process>
 			</processCollection>
 			<checkCollection>
-				<check label="Number of features in the 'country' feature type">
-					<source type="datafile" format="SPATIALITE" dataset="./result/dbcountry.sqlite" request="featuresCount()" requestparams="country"/>
-					<condition comparator="eq" expectedvalue="1"/>
+				<check label="Localisation de la geometry">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+                            dbrequest="select ST_asEWKT(geom) as observedvalue from rtest.geoloc_pr_abs ;"/>
+					<condition comparator="eq" expectedvalue="SRID=2154;POINT(387824.2320279859 6572380.196863495)"/>
 				</check>
-				<check label="Country name in the first record">
-					<source type="datafile" format="SPATIALITE" dataset="result\dbcountry.sqlite" request="attributeValue()" requestparams="country,name,1"/>
-					<condition comparator="eq" expectedvalue="Switzerland"/>
+				<check label="Valeur de l'id_comptag">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+                            dbrequest="select id_comptag as observedvalue from rtest.geoloc_pr_abs ;"/>
+					<condition comparator="eq" expectedvalue="17-D107-14+80"/>
+				</check>
+                <check label="Valeur du commentaire">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+                            dbrequest="select commentaire as observedvalue from rtest.geoloc_pr_abs ;"/>
+					<condition comparator="eq" expectedvalue="OK"/>
 				</check>
 			</checkCollection>
 		</rtest>
