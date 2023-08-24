@@ -30,56 +30,60 @@
 			<checkCollection>
 				<check label="Localisation de la geometry">
 					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
-                            dbrequest="select ST_asEWKT(geom) as observedvalue from rtest.geoloc_pr_abs ;"/>
+                            dbrequest="select ST_asEWKT(geom) as observedvalue from rtest.geoloc_pr_abs where id_uniq=0 ;"/>
 					<condition comparator="eq" expectedvalue="SRID=2154;POINT(387824.2320279859 6572380.196863495)"/>
 				</check>
 				<check label="Valeur de l'id_comptag">
 					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
-                            dbrequest="select id_comptag as observedvalue from rtest.geoloc_pr_abs ;"/>
+                            dbrequest="select id_comptag as observedvalue from rtest.geoloc_pr_abs where id_uniq=0 ;"/>
 					<condition comparator="eq" expectedvalue="17-D107-14+80"/>
 				</check>
                 <check label="Valeur du commentaire">
 					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
-                            dbrequest="select commentaire as observedvalue from rtest.geoloc_pr_abs ;"/>
+                            dbrequest="select commentaire as observedvalue from rtest.geoloc_pr_abs where id_uniq=0 ;"/>
 					<condition comparator="eq" expectedvalue="OK"/>
 				</check>
 			</checkCollection>
 		</rtest>
-		<rtest id="hw.t2" label="Point with negative coordinates">
+		<rtest id="gpa.t2" label="Lineaire interrompu par rond point autre route entre PR et PR+1">
 			<processCollection>
-				<process label="Run HelloWorld.fmw with a point in Argentina">
-					<workspace>./HelloWorld.fmw</workspace>
+				<process 
+                    label="Lancer GeolocPrAbsc.fmw avec l'id_comptage 17-D145-3+940 et les données de PR et de lineaire 2021"
+                    copylogto="C:\Users\martin.schoreisz\Documents\temp\OTV\testGeolocPrAbs\GeolocPrAbsc.log">
+					<workspace>C:\Users\martin.schoreisz\Documents\temp\OTV\testGeolocPrAbs\GeolocPrAbsc.fmw</workspace>
+                    <expectedstatus>success</expectedstatus>
 					<parameterCollection>
-						<parameter name="xy" value="-60.0 -35.0"/>
-						<parameter name="destSpatialiteFile" value="./result/dbcountry.sqlite"/>
+						<parameter name="Dept" value="17"/>
+                        <parameter name="DeptLimitrophe" value="16','24" />
+                        <parameter name="RouteATester" value="D145" />
+                        <parameter name="PR" value="3" />
+                        <parameter name="Absc" value="940" />
+						<parameter name="Id_uniq" value="1"/>
+                        <parameter name="Distance_proche_voisin_geolocPR" value="5" />
+                        <parameter name="ReferentielPR" value="ref.pr_ed21_p" />
+                        <parameter name="ReferentielRoutier" value="lineaire.traf2021_bdt_na_ed21_l" />
+                        <parameter name="TopoLineaireRoutier" value="lineaire.traf2021_bdt_na_ed21_l_vertices_pgr" />
+                        <parameter name="SourceDataset_OGCGEOPACKAGE" value="" />
+                        <parameter name="Bdd_GeolocPr_table" value="geoloc_pr_abs" />
+                        <parameter name="Bdd_GeolocPr_schema" value="rtest" />
 					</parameterCollection>
 				</process>
 			</processCollection>
 			<checkCollection>
-				<check label="Number of features in the 'country' feature type">
-					<source type="datafile" format="SPATIALITE" dataset="./result/dbcountry.sqlite" request="featuresCount()" requestparams="country"/>
-					<condition comparator="eq" expectedvalue="2"/>
+				<check label="Localisation de la geometry">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+                            dbrequest="select ST_asEWKT(geom) as observedvalue from rtest.geoloc_pr_abs where id_uniq=1 ;"/>
+					<condition comparator="eq" expectedvalue="SRID=2154;POINT(381677.5652263577 6523583.015564721)"/>
 				</check>
-				<check label="Country name in the second record">
-					<source type="datafile" format="SPATIALITE" dataset="result\dbcountry.sqlite" request="attributeValue()" requestparams="country,name,2"/>
-					<condition comparator="eq" expectedvalue="Argentine"/>
+				<check label="Valeur de l'id_comptag">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+                            dbrequest="select id_comptag as observedvalue from rtest.geoloc_pr_abs where id_uniq=1 ;"/>
+					<condition comparator="eq" expectedvalue="17-D145-3+940"/>
 				</check>
-			</checkCollection>
-		</rtest>		
-		<rtest id="hw.t3" label="Point on a border">
-			<processCollection>
-				<process label="Run HelloWorld.fmw with a point on the French-Swiss border">
-					<workspace>./HelloWorld.fmw</workspace>
-					<parameterCollection>
-						<parameter name="xy" value="5.966666000000032 46.209442000000095"/>
-						<parameter name="destSpatialiteFile" value="./result/border.sqlite"/>
-					</parameterCollection>
-				</process>
-			</processCollection>
-			<checkCollection>
-				<check label="Number of features in the 'country' feature type">
-					<source type="datafile" format="SPATIALITE" dataset="./result/border.sqlite" request="featuresCount()" requestparams="country"/>
-					<condition comparator="eq" expectedvalue="2"/>
+                <check label="Valeur du commentaire">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+                            dbrequest="select commentaire as observedvalue from rtest.geoloc_pr_abs where id_uniq=1 ;"/>
+					<condition comparator="eq" expectedvalue="OK"/>
 				</check>
 			</checkCollection>
 		</rtest>		
