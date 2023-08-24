@@ -11,6 +11,7 @@
 					<workspace>C:\Users\martin.schoreisz\Documents\temp\OTV\testGeolocPrAbs\GeolocPrAbsc.fmw</workspace>
                     <expectedstatus>success</expectedstatus>
 					<parameterCollection>
+                        <parameter name="PurgeTableDestination" value="YES" />
 						<parameter name="Dept" value="17"/>
                         <parameter name="DeptLimitrophe" value="16','24" />
                         <parameter name="RouteATester" value="D107" />
@@ -53,6 +54,7 @@
 					<workspace>C:\Users\martin.schoreisz\Documents\temp\OTV\testGeolocPrAbs\GeolocPrAbsc.fmw</workspace>
                     <expectedstatus>success</expectedstatus>
 					<parameterCollection>
+                        <parameter name="PurgeTableDestination" value="NO" />
 						<parameter name="Dept" value="17"/>
                         <parameter name="DeptLimitrophe" value="16','24" />
                         <parameter name="RouteATester" value="D145" />
