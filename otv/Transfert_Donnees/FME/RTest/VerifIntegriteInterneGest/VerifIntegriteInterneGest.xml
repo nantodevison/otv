@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<scenario xmlns="http://www.veremes.com/rtest" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.veremes.com/rtest http://schemas.veremes.net/rtest/2.0/rtest.xsd">
+	<project>VerifIntegrite</project>
+	<description>Test sur les valeurs prise par les champs cohérence du traitementde vérification de l'intégrité des données fournies par les gestionnaires</description>
+	<rtestCollection>
+		<rtest id="vi.t1" label="Toute cohérence OK">
+			<processCollection>
+				<process label="Données agrégées et mensuelles cohérentes" deletebefore="./Resultats/resultTestUnitaireVerifIntegrite.xlsx"
+				copylogto="C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\travail\IntegrationComptage\VerifIntegrite.log">
+					<workspace>C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\travail\IntegrationComptage\VerifIntegrite.fmw</workspace>
+					<parameterCollection>
+						<parameter name="SourceDataset_GEOJSON" value="./DataSource/VerifIntegriteGest_TestData_comptage_compteur.json"/>
+						<parameter name="IndicMensuelSource" value="./DataSource/VerifIntegriteGest_TestData_indicMensuel.json"/>
+						<parameter name="IndicHoraireSource" value="" />
+						<parameter name="DestDataset_XLSXW" value="./Resultats/resultTestUnitaireVerifIntegrite.xlsx" />
+					</parameterCollection>
+				</process>
+			</processCollection>
+			<checkCollection>
+				<check label="Valeur OK sur cohérence TMJA agrégé-mensuel">
+					<source type="datafile" format="XLSXR" dataset="./Resultats/resultTestUnitaireVerifIntegrite.xlsx" request="attributeValue()" requestparams="IntegriteDesDonneesGestionnaire,Coherence_TMJAagrege-TMJA_sourceMensuelle,1"/>
+					<condition comparator="eq" expectedvalue="OK"/>
+				</check>
+				<check label="Valeur OK sur cohérence Pc_pl agrégé-mensuel">
+					<source type="datafile" format="XLSXR" dataset="./Resultats/resultTestUnitaireVerifIntegrite.xlsx" request="attributeValue()" requestparams="IntegriteDesDonneesGestionnaire,Coherence_PcPlAgrege-PcPl_sourceMensuelle,1"/>
+					<condition comparator="eq" expectedvalue="OK"/>
+				</check>
+			</checkCollection>
+		</rtest>	
+		
+	</rtestCollection>
+</scenario>
