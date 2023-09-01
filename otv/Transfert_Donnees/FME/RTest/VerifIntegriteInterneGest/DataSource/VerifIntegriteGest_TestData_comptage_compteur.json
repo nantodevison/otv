@@ -81,6 +81,26 @@
 				"tmja" : 2000,
 				"pc_pl" : 5
 			}
+		},
+		{
+			"type" : "Feature",
+			"geometry" : null,
+			"properties" : {
+				"id_comptag" : "DD-DXXXX-PR+Abs9",
+				"id_uniq" : 8,
+				"tmja" : 2000,
+				"pc_pl" : 5
+			}
+		},
+		{
+			"type" : "Feature",
+			"geometry" : null,
+			"properties" : {
+				"id_comptag" : "DD-DXXXX-PR+Abs10",
+				"id_uniq" : 9,
+				"tmja" : 2000,
+				"pc_pl" : 5
+			}
 		}
 	]
 }

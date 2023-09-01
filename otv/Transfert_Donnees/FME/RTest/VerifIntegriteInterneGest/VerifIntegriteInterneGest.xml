@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <scenario xmlns="http://www.veremes.com/rtest" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.veremes.com/rtest http://schemas.veremes.net/rtest/2.0/rtest.xsd">
 	<project>VerifIntegrite</project>
-	<description>Test sur les valeurs prise par les champs cohérence du traitementde vérification de l'intégrité des données fournies par les gestionnaires</description>
+	<description>Test sur les valeurs prise par les champs cohérence, écart et valeur du traitement de vérification de l'intégrité des données fournies par les gestionnaires</description>
 	<rtestCollection>
-		<rtest id="vi.t1" label="Toute cohérence OK">
+		<rtest id="vi.t1" label="tests sur les cohérences OK et KO">
 			<processCollection>
-				<process label="Données agrégées et mensuelles cohérentes" deletebefore="./Resultats/resultTestUnitaireVerifIntegrite.xlsx"
-				copylogto="C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\travail\IntegrationComptage\VerifIntegrite.log">
-					<workspace>C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\travail\IntegrationComptage\VerifIntegrite.fmw</workspace>
+				<process label="Ouverture des fichiers agrege et mensuels" deletebefore="./Resultats/resultTestUnitaireVerifIntegrite.xlsx"
+				copylogto="C:\Users\martin.schoreisz\Documents\temp\OTV\VerifIntegrite.log">
+					<workspace>C:\Users\martin.schoreisz\Documents\temp\OTV\VerifIntegrite.fmw</workspace>
 					<parameterCollection>
 						<parameter name="SourceDataset_GEOJSON" value="./DataSource/VerifIntegriteGest_TestData_comptage_compteur.json"/>
 						<parameter name="IndicMensuelSource" value="./DataSource/VerifIntegriteGest_TestData_indicMensuel.json"/>
@@ -25,8 +25,73 @@
 					<source type="datafile" format="XLSXR" dataset="./Resultats/resultTestUnitaireVerifIntegrite.xlsx" request="attributeValue()" requestparams="IntegriteDesDonneesGestionnaire,Coherence_PcPlAgrege-PcPl_sourceMensuelle,1"/>
 					<condition comparator="eq" expectedvalue="OK"/>
 				</check>
+				<check label="Valeur KO sur cohérence TMJA agrégé-mensuel">
+					<source type="datafile" format="XLSXR" dataset="./Resultats/resultTestUnitaireVerifIntegrite.xlsx" request="attributeValue()" requestparams="IntegriteDesDonneesGestionnaire,Coherence_TMJAagrege-TMJA_sourceMensuelle,2"/>
+					<condition comparator="eq" expectedvalue="KO"/>
+				</check>
+				<check label="Valeur KO sur cohérence Pc_pl agrégé-mensuel">
+					<source type="datafile" format="XLSXR" dataset="./Resultats/resultTestUnitaireVerifIntegrite.xlsx" request="attributeValue()" requestparams="IntegriteDesDonneesGestionnaire,Coherence_PcPlAgrege-PcPl_sourceMensuelle,3"/>
+					<condition comparator="eq" expectedvalue="KO"/>
+				</check>
+				<check label="Valeur OK avec TMJA_mensuel en limite haute sur cohérence TMJA agrégé-mensuel">
+					<source type="datafile" format="XLSXR" dataset="./Resultats/resultTestUnitaireVerifIntegrite.xlsx" request="attributeValue()" requestparams="IntegriteDesDonneesGestionnaire,Coherence_TMJAagrege-TMJA_sourceMensuelle,5"/>
+					<condition comparator="eq" expectedvalue="OK"/>
+				</check>
+				<check label="Valeur OK avec TMJA_mensuel en limite haute sur cohérence Pc_pl agrégé-mensuel">
+					<source type="datafile" format="XLSXR" dataset="./Resultats/resultTestUnitaireVerifIntegrite.xlsx" request="attributeValue()" requestparams="IntegriteDesDonneesGestionnaire,Coherence_PcPlAgrege-PcPl_sourceMensuelle,5"/>
+					<condition comparator="eq" expectedvalue="OK"/>
+				</check>
+				<check label="Valeur OK avec avec TMJA_mensuel en limite basse sur cohérence TMJA agrégé-mensuel">
+					<source type="datafile" format="XLSXR" dataset="./Resultats/resultTestUnitaireVerifIntegrite.xlsx" request="attributeValue()" requestparams="IntegriteDesDonneesGestionnaire,Coherence_TMJAagrege-TMJA_sourceMensuelle,6"/>
+					<condition comparator="eq" expectedvalue="OK"/>
+				</check>
+				<check label="Valeur OK avec avec TMJA_mensuel en limite basse sur cohérence Pc_pl agrégé-mensuel">
+					<source type="datafile" format="XLSXR" dataset="./Resultats/resultTestUnitaireVerifIntegrite.xlsx" request="attributeValue()" requestparams="IntegriteDesDonneesGestionnaire,Coherence_PcPlAgrege-PcPl_sourceMensuelle,6"/>
+					<condition comparator="eq" expectedvalue="OK"/>
+				</check>
+				<check label="Valeur KO avec TMJA_mensuel en limite haute sur cohérence TMJA agrégé-mensuel">
+					<source type="datafile" format="XLSXR" dataset="./Resultats/resultTestUnitaireVerifIntegrite.xlsx" request="attributeValue()" requestparams="IntegriteDesDonneesGestionnaire,Coherence_TMJAagrege-TMJA_sourceMensuelle,9"/>
+					<condition comparator="eq" expectedvalue="KO"/>
+				</check>
+				<check label="Valeur KO avec avec TMJA_mensuel en limite basse sur cohérence TMJA agrégé-mensuel">
+					<source type="datafile" format="XLSXR" dataset="./Resultats/resultTestUnitaireVerifIntegrite.xlsx" request="attributeValue()" requestparams="IntegriteDesDonneesGestionnaire,Coherence_TMJAagrege-TMJA_sourceMensuelle,10"/>
+					<condition comparator="eq" expectedvalue="KO"/>
+				</check>
 			</checkCollection>
-		</rtest>	
+		</rtest>
+		<rtest id="vi.t7" label="Valeurs et écart TMJA et Pc_Pl de source mensuelle">
+			<processCollection>
+				<process label="Données agrégées et mensuelles cohérentes" deletebefore="./Resultats/resultTestUnitaireVerifIntegrite.xlsx"
+				copylogto="C:\Users\martin.schoreisz\Documents\temp\OTV\VerifIntegrite.log">
+					<workspace>C:\Users\martin.schoreisz\Documents\temp\OTV\VerifIntegrite.fmw</workspace>
+					<parameterCollection>
+						<parameter name="SourceDataset_GEOJSON" value="./DataSource/VerifIntegriteGest_TestData_comptage_compteur.json"/>
+						<parameter name="IndicMensuelSource" value="./DataSource/VerifIntegriteGest_TestData_indicMensuel.json"/>
+						<parameter name="IndicHoraireSource" value="" />
+						<parameter name="DestDataset_XLSXW" value="./Resultats/resultTestUnitaireVerifIntegrite.xlsx" />
+					</parameterCollection>
+				</process>
+			</processCollection>
+			<checkCollection>
+				<check label="Valeur TMJA.source_mensuelle">
+					<source type="datafile" format="XLSXR" dataset="./Resultats/resultTestUnitaireVerifIntegrite.xlsx" request="attributeValue()" requestparams="IntegriteDesDonneesGestionnaire,tmja.source_mensuelle,7"/>
+					<condition comparator="eq" expectedvalue="6500"/>
+				</check>
+				<check label="Valeur Pc_Pl.source_mensuelle">
+					<source type="datafile" format="XLSXR" dataset="./Resultats/resultTestUnitaireVerifIntegrite.xlsx" request="attributeValue()" requestparams="IntegriteDesDonneesGestionnaire,pc_pl.source_mensuelle,7"/>
+					<condition comparator="eq" expectedvalue="8.33"/>
+				</check>
+				<check label="Valeur EcartTMJAsourceAgrege-TMJASourceMensuelle">
+					<source type="datafile" format="XLSXR" dataset="./Resultats/resultTestUnitaireVerifIntegrite.xlsx" request="attributeValue()" requestparams="IntegriteDesDonneesGestionnaire,EcartTMJAsourceAgrege-TMJASourceMensuelle,7"/>
+					<condition comparator="eq" expectedvalue="69.23"/>
+				</check>
+				<check label="Valeur EcartPcPlsourceAgrege-PcPlSourceMensuelle">
+					<source type="datafile" format="XLSXR" dataset="./Resultats/resultTestUnitaireVerifIntegrite.xlsx" request="attributeValue()" requestparams="IntegriteDesDonneesGestionnaire,EcartPcPlAgrege-PcPlMensuel,7"/>
+					<condition comparator="eq" expectedvalue="3.33"/>
+				</check>
+
+			</checkCollection>
+		</rtest>
 		
 	</rtestCollection>
 </scenario>
