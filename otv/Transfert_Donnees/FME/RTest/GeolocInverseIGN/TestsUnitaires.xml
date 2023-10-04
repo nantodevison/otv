@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<scenario xmlns="http://www.veremes.com/rtest" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.veremes.com/rtest http://schemas.veremes.net/rtest/2.0/rtest.xsd">
+	<project>Geolocalisation PR et Abscisse</project>
+	<description>Géolocaliser un point sur un réseau routier à partir de référence en point de repère et abscisse</description>
+	<rtestCollection>
+		<rtest id="giign.t1" label="Valeurs attributaires StreetAdress, CadastralParcel et Administratif">
+			<processCollection>
+				<process 
+                    label="Test du numero, nom de rue, commune, departement, codepostal pour 1 occurence"
+                    copylogto="C:\Users\martin.schoreisz\git\otv\otv\Transfert_Donnees\FME\RTest\GeolocInverseIGN\Test_OTVGeolocInverseIGN.log">
+					<workspace>C:\Users\martin.schoreisz\git\otv\otv\Transfert_Donnees\FME\RTest\GeolocInverseIGN\Test_OTVGeolocInverseIGN.fmw</workspace>
+                    <expectedstatus>success</expectedstatus>
+					<parameterCollection>
+						<parameter name="SourceDataset_GEOJSON" value="$(FME_MF_DIR)sourceTest.json" />
+                        <parameter name="Test_ReverseGeocodePreference" value="Numero et nom de rue&quot; &quot;Parcelle Cadastrale&quot; &quot;Point d'intérêt&quot; &quot;Références administratives&quot;" />
+						<parameter name="Test_maximumResponses" value="1"/>
+                        <parameter name="Test_distMaxi" value="50" />
+                        <parameter name="RouteATester" value="D107" />
+                        <parameter name="DestDataset_POSTGRES" value="OTV_postgres" />
+					</parameterCollection>
+				</process>
+			</processCollection>
+			<checkCollection>
+				<check label="Localisation de la geometry">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+                            dbrequest="select GeolocInverse.Numero as observedvalue from rtest.geoloc_inverse_ign where GeolocInverse.typeGeoloc='StreetAddress' ;"/>
+					<condition comparator="eq" expectedvalue="52"/>
+				</check>
+			</checkCollection>
+		</rtest>		
+	</rtestCollection>
+</scenario>
