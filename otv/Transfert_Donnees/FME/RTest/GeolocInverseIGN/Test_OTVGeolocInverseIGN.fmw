@@ -1,0 +1,1299 @@
+#! <?xml version="1.0" encoding="UTF-8" ?>
+#! <WORKSPACE
+#    Ligne de commande pour exécuter ce traitement :
+#        "C:\Program Files\FME\fme.exe" C:\Users\martin.schoreisz\git\otv\otv\Transfert_Donnees\FME\RTest\GeolocInverseIGN\Test_OTVGeolocInverseIGN.fmw
+#          --DestDataset_GEOJSON "$(FME_MF_DIR_USERTYPED)sourceTest_erreur.json"
+#          --SourceDataset_GEOJSON "$(FME_MF_DIR_USERTYPED)sourceTest.json"
+#          --Test_ReverseGeocodePreference "StreetAddress CadastralParcel PositionOfInterest Administratif"
+#          --Test_maximumResponses "2"
+#          --Test_distMaxi "50"
+#          --FME_LAUNCH_VIEWER_APP "YES"
+#    
+#!   A0_PREVIEW_IMAGE="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAZAAAADNCAIAAAAZurEGAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAgAElEQVR4nO2dd3wc1b32nylbtKtedmWtyq6Km+SKG26ysA3YdAIJJWAIgZtOEtLe3EtyE26SGxJuIOUmAQI2FzABkhgwyDY29mLjJtnGloSL2qpLq759d9r7x8hrSW7SjOTVyuf7hz4zo3nOOTs759kz55w5P0qSJAAAJEnyer2xsbFQitvtjouLi5Tc6/XGxMTQNB0Ruc/n0+l0DMMok/v9fo1Gw7JsROSBQIBhGI1Go0weCoUkSdLpdBGRcxwnCIJer1cm53me47iYmBhlckEQgsGgwWCIiFxlnY14lfd4PEajkaKokUvYQCAgb0mSFAwGFd/0AILBoOKbfkzkFEUpdhz1ckmSFBtWMBgUBEHxxVcplw1LEARlctlxwr98V1guG5YyLQCe53meH1WdGYwgCKFQSPFto1Kuss5OhCrPMMzoDCtcx+T6prjKAYisnKZphmEUf/djIldc/sjKmbMolqsxa5VyURTlRJTJJUkSRVH9jRcRuco6O0Gq/OgMK2yQkiSxLKvGLyMr12g0Go1GseOMiVzxl8fzvJpnOpVyQRDUPBLK7aNIyQHQNK1YLtcWxXKapkVRjJRcZZ2dIFV+VIalsH4SCATClYcYFoFAiBqIYREIhKiBGBaBQIgaiGERCISogRgWgUCIGohhEQiEqIEYFoFAiBqUz8onECYHTqczKSlp5Oe3t7dPnTp1/MpDuASkhUUgoLe/t9/tkoYCYP/RQ9J5RLqwVzXEsAgEdPZ0/7T8/z278Y/Djpfu2f75Z77Q3dcbkVIRzocYFoEAAAkZcX1LWx7685fcHvfg4zNvyf1t3X/96JmfRKpghMEQwyIQBmg92Xl/4YNxsecWeMrLyf1y1ldr3mv92Tf+PYIFI4QhhkUggKJw8qWmfb+qefwH//m/L26auWSVy+0GsGbJddeXPPjaj1/R6XQzl6z6798Nf2YkXGHIKCGBgPycvL//96sADh05tmj+3Ltvvzk+Lg6AJWPKR++8qdVoABy1b9crXRaVMFYQwyIQEF4H7dqF1wAwm9LkXYqiMqaky9sGpcsoE8YQYliEqx2TyTSqNd3VrGJOUAkxrKjn+JF9B/dtowSfTkN7OSZv2twbbro30oWKJjxBqs0DZdOrRJEKhWi9V2HWl5YnxkgpsQoXm5+ssMFgUN6SJCkUCoV3FRBxOU3Titc4Vi+HipXFg8GgKIqjDaYgSeLbr/9pWqr/39Znhw+2drW98Icnb7v7sYQk08hzZxhGXhxdAXIUCWVa9XI5CIXiKBLHm8Q3j7CgFIaxkCRJFGmGGS/5muliybSLfi8q6+xEqPIsy45uTffBZ1MUpfiLnyByxSlEo/yDd19bW8gcrwm89dHp8MEQLz5y/fSXXn/6y7fOkWgdJV7+flLZkzxCucTGU7xr8JFZ9790ZO8e+VNH6sp/Uqehez/dsvF73/vT/ww+HuJ0Wo3yqjhaQiGtVhsafOTYjp0p+rw99O3FU0WGvuinmwiVTqV8dIal1WrlLUmSOI4L7ypAo9FEUC4XXnETSaWc53mtVqu4hSUIwmijSDjbmyl3rTnZ1tpVn5JwrgvG2euiaWrtgpyPyuqvWzwdksJ201jR1edv6eFS4uj4RK3L17+vvRVAKCSwDH1k4wO33//wltdeliRJ8VdPUZQgCIrlAV48uffFJ/74W1zgofDKvYVDUQAkj8vFeby0RqM1xMxaurh+334KNMXotBeJ86Cyzka8yodCIa1WS4JQXBXs2rl1xex0AHEG7Zx8Ey+ImWlxqQkxOenxAHKmxJ9q7Gl2uj6tdo44SWfpk6/+25OVNZc7r8ZeOcIUe93B5j42NjbZJ8bXt/tPtHceSPNt2t6wsyLwjqN968HatSsWHT9xYsQlHBfi86b7m5uxf3/l/v279h+u/OUvX/3lOwcONAL7K/cDAJr2V+7fX9k0XFi5f//gXefQ3YsxcFrT/sr9+9//8y8rB6UTdHYlxRjiNRqfs4sxGHJLikFeXRwK6XSPVvigJyUhHoA/KNQ093T3+WmK6ujxBkPCM5vLvnnXfGOMxuMPtXa6G9tdt66IL93kLFhVVO2oLAA2A08CTzk67t2wutpeWWAtqt6zCzAXfHnu7Siq3rSrGrpWJBavKsrPGciu1D4gvNdaVA1U23cVwFxdbIIdgBOODsDcilogr3jV2dQ2FHmcgYQkk0bo7vQgNiHd1RH0CMHC6VPX31ny7P+8yOVL6265PRAIbHrtdT7gl0MQ19TUmEwm+Vc33K1mMBgSExNTU1OnTJmSlZWlOFDzBUmgOUMmKpuyipZmmfbvxwOr5mJpUn1Z5X5gKYCmyqasoiw4gcrNm4GcvhxMBZxLlwKo3L/fBJQBC7OWOgHn/s0m5DiXZmE/gCY0NAA5fTgOzJm6fKlz34DcdDbNvs5VOOtWvS1t2dac2uYWRpLS01K729o1wcAYfszJATGsaCXAibwosTQlAf6gwEsIcUJTh/ulrRUAgiEhOT4GQIgTFsxIB+ILVjmrHeHWVkepA7Ca84Fq+YDVXGA15cNZfXa7AIPPPx9Za1qHXc9ZV08FCqwmOFBgRbXDeTY1NMbSIUHsdUkpSSktnZ2xRm1PjevEJ43VdY6k+Xp44HG7T1ZWzJw2bc7sWXK6Wq12WNh6SZL8fn9fX19XV1d9ff3HH3/s8/nkmHpr16612WwqryQvQuTTTSirbGrqQNZqNDmBtCzsPogvLgWQZcL+SgBNQE6OKSsLTee1tc6RYwKcyCrC5l1Z95oBU1YWmmDKgrOpaZB8IM3+zs7l89Ne3YdpC6GNi+3q6jJoNDF6XVd3j86gD3U6Ea/yw002qPAAjSRJXq9X/pVThtvtVjNFRaXc6/XGxMQo7oRSKff5fDqdTnEflt/vH20f1oG92+J8R4tyU1/78KTVHHe6sTc9Jbaxo9/r45x9/n9/cPHbe6rvu3EeLQW0GuWxeVXS6w42doWMxoQOpzMlNaXN1/THg1W5C1MpGlxQ+FJM7l+2tvzut89JkqQb/SRyjuPa2tqmTJkiCIJer1dWwl99IB7/8KkVt67UxA/xhhCn12oCQJNzf5MzK6soK0tZ+iOE43QsG2ivqUuMj/cHAoIkJpvSAk5nm3jHz2+n9Rfvw1JTZyNe5T0ej9FoHF2nu+LMCJFlyfLrn3/WXpSbGqvXFOamuX1cflZilinW2etbvSDnn3vO3LIiV69jIUTMrQAkxemS4nSt3e7FM1NYfdL0ELUoI50XRAB6LavTsN/82ucUJ67RaLKzszmOq63d3tioXbdunbJ00kzThrnVILJMS7NGOj1EHRRFTSnI87ncsYnxWp1O5Lh//PXlpY/deUUyjxqIYUUrFEXf9LlHXnv/rytnp3f0eG0ZCYIgaTVMljn+UFVbdVdMU5kxEHLpRzCIw/M8RVFqhjjlB7SLnxILgOe7WZYdPAvi8a8+Ov3sFDY15OXlNzY2KpbrstfXnRFOfPLW4INtNYfCv/ySJFLURZvekgRlI/uiwNGMRpZLkphZME+Qzl2cGUvvXv7wKxEe4p14EMOKYjKz89fe8a1333p+ajo1Oz81Rqupqu+qaPDOWXLzD29fPvJ0AoEAwzAazUUePC6HPPNTwTPdWLF9e01h4W2DyzOqsXaJNYgMU1T8Zdl4jr3/79/79y8B14VPCIQ0ei03hgWWEUSaoYc40pduufv+p46Gd4lbnQ8xrOjGlJ715W8+VXH84PbK45Ik5lgXf/HG65jR9IVNAm644YbBXVgvvPACx3EMw+Tk5OTm5mZlZcXHx1+2oyTY+GFeYm+NJ7tk7VIAZRufbEGepeShhTmX1gEN9jIHYC0efGaZ3b6wuHjYidveeuvGu+++REovvffWtkNejc54uSyvXq6uO3uykj91zozCBaPqs5/EfP3rXwcgimJTU1Ntbe3Ro0ddLpckSWHPoqiBsSafz3fYt1ITa6Yoyujqv/7Oa0s4btv2YwFfNmxrbi8uLrPbyxxI5dn9bHUJbLtRXwLb7vr6qbD1oD4Zxh4AxkU3LEIrULZxI2DrsWEWcAaA3W4BdgMl1mLAftgBb8fpso12S0lxy+6NgK1LcqRShh6YZpUUZ1zWFgkAiGERJis0Tefk5OTkXMYJfvm+0OUWGYbhm043Oho+qezInD5PbzAA9a32+hY8ZIEdAGDLCP+12SxWKxywWK0WOE68d7gMJjjCxx3nZdLQ4oClHkeRaClBi6NBPlOspy22bAscLY6GjMuVkyBDpjWMjfzKT2sYQ3lk+7BUyuWXn9VMa5ANi/N2UoyO1ce/++ztz218ZvA5V6wP6+9/25R6zc+Hnfbz2ygyrSEMaWERCACgMQ4s2nfrt7c88dh9M+fMGPRPBrj4egxKhwlFnqdZNiw/XXX6hsdeVZDOVQUxLAJhOM88/9Tg3fFrYdU0HBMFXt6990u3bC0tTclVOJvsKoEYFoEwhL2vPLx67n801jVYsi3jOt7a1dleo9npPO0ONUKTIQWE6/KNgZau04bUaeOXabRDVmsgEIbwrSd/BKCvp7v8kwM9nV2tdvvRvY5jDQ2t553Z2tDQioYt9gYAsNvL5KPhjcvBcSGGZbgG6hvf2UA5tZIkzZk6/b4FvhTn68Gec0tm1NaUlpaWqv5YkwTSwiIQLoAEiqIohmWB+hbkL3M4kJNTtnFjD5A8MKfBxtpgdsACvGZ3lNQDxSiz2y31OFMvn2bsAdBrmnXnRWcthDz8mYqGTX/9h4/2yX3PgWCQEzW05txUrLz8gkZH9RX50FEAaWERCEP42bd/ACA1LXXh8qUJSYmwlljg6JD/Z7Ml22yWEqv81wxnRT0sVqACQP3ZBOrPnrZoVolJynS2OBoumJFWF+M46Jz/sDV+tZR3WwqAyrrad8/YXOl3a+KmhE/bvq26oIB0bA1ApjWMjZxMa4j2aQ2DD861HEpJSw3vjl+ne3PLqWBIXoiZsmYX7Dxg1MUPb4yRaQ2DYTlu4JuQJInn+fCuAiIr5ziOZVk1SySrlNM0rTiOg/zBFcdiUC9XXHJZLkmSmkunUi4IguKfClGkJEkadul+9sR//er558K7oRAviOMQvUaSklPzRV4AAIr+waPfu/nxd87/EjmOv9hnU1lnJ0iVH51hhSO1SJIkCMJoA7cMJrJyOeqM4ko7JnJl2rBc8Xr+KuVyyRVbhnzdFH989XI1d44kMcMM673n7vj9K88Gg4Fwo4+mNTHj0MJyuTw7z7xYs7+5r8VtWzLl0Z/c21z2azr/+8NmdQmCIFzkm1FZZydIlR+dYYXb0nLpFTetAXAcF0G5XHg1tU6NXBRFNY+EkiSpeaZTKQeg5pGQpmk1z3Qq5QzDqLlvGUakaXHw9/6fzz4N4ETZEb1OXzh/Lt2891gNq8lfdu7dZru9rLh4IQCgtaEBOTkZZ/9TZrejfmcL1ix6qDgDQzj/dWiXq8/d6/r8zbc01LQEgiGPq3/l3LnOnn9WORM1matoZuDraGne3ejABVf7UllnI17leZ7X6/VkpjuBoBZdTIzH7WlyOJzN1vkr8vVarrXBftgBC2CpR7fVvsXhtNSbWCPMOTllGzeyJbYGBywAkGcBTjTY335x511PPdVit/ccrU9OsvVcaCVnWmASkuNrPjtw3a3XtnR7tQnaFcsWxX9asa/piMGyRD6HjBIOhowSEghDOHmiAoCGZacXzczJy7XAcbTR0dow8AJzDwAc6XbAUm9iS9DR4QQAm5EP/9dmW/iQNcWBFJgHUsy0WUqsyefnRFG1h5t//bM/dXQ5tx5+3xhvPHn61F//+Vk5d0PYrUBGCYdCRgnHRk5GCSfNKGHbyfe+eO/MweeM0yghx0tbd7ycnjOwArNtypwfP/zE/T87Muw0Mko4GPJISCAMYcqMW3Z9ig9fejR8RBIFir74T5EEKFsimQvQGj0kpyxfcdvq892KMAxiWATCEPZt/vpPf/3d1b//UfjIOLWwgiFx/6m3GZbqbXclpsfnpbb+9JEH7xu0RDLhfEgfFoEwhFvuuglARdnRjpY2AGUbn3zv//aEXyRsbWgIb7Ta7WV2+xZ7Q6vdvs1uP3f8Qsmef7yzsy1oaj22+0gCpf30o6Odvc0//PZXmcY3OV/v4NPIu4SDIS0sAmEI1vw8ABJN1dfU+LxeedRvt91eArQUF59578WSWWtaiostjsMVWHRDcY7Fbu8AKKDMvtEC2wmA2r27BbYe1GPgjULTrJJiOBwYtqyoJAHQ0rq1Ny+vrWuUJCkvN29tfv6ZM0e2fxZjzFomn0VGCQdDDItAuABBfyA5Lc1akNfV1jL/2lWaAzvP/secAbQAgMkER1mDowXWRZBjZNsygBM4t4YyMLCMcoujwXKhXNqrehtqW373zAtx03QURfX3972/45MGfqYxa074nO3bqgtnkFHCAcgo4djIySjhpBkllJdIFgWRZgZuhnHqw/J4A//66PcJmXGMhgFQEL9o6wvvzPncK8NOI6OEgyEtLAJhCLd+e8uPvvGIwAXOHaIZkb9wtFcJACRqZMOE9NChRknkQbOAW5bv13df9/BwtyIMgxgWgTCc//7jjwfvjt9qDafrD4tn38XLyZr+8p9/U3jd98c8o8kEMSwCYQifvvP46rnfctTWWbKyNFqFj8kjoauzrT7m444j/UKHhk7leARXzDQ0d1QYzLPGL9Noh0xrIBCG8PC3vgbA1dt39ODhzg4n0PDeXsfA/wYtfzx4fkN4Y/Dsh2PyvIeLZ8RxHEPTXAvztcfvp7p1oijOnjbjwRV0es/mYNfJc+fVPPdcac3Fk7m6IC0sAuECCKJIUZLBaID9pAVsGSyQlz/GRtTXwrbmjBNTHbstsO2Gc+puh6WkGA5Hxe7dHSW2BgcWAU7ADFxwcDCM38VVVzie//0bIa1X7nvu7ep2h/R0XNq5k/JvmuoY188aTZAWFoEwBHmJ5AxLxsLly4yxsWX1mJKDgfDPqAdsFtsai1XelcNBmwbiOePcW9AdI8hIrzc0HXYueCw3/TZtzvpkCah01G9rne1Nv0NjTL28/qqETGsYGzmZ1jBppjUAyDPusBbkhXfHr9O9ra3W7/UCoBjKap2253j++S8tkmkNgyGPhATCcH77n888s/HP4d0gp3w110sgSVJCYkZMTBAAzTDP/8/z09Y+M+a5TDKIYREIQ3j3d7f98bX/9Xk9BuNArC1JYnWasW9h9fe7d9U9H3RznZWupGnG5XeUuKv/FEj/KijSUXNRhgSh4Dgu4ivSK5aTIBQkCIUCzg9C8ZNnnwbw2acVrIaZNX/e0Vd/5hBuXPbIsnPrIG98sgV5lpKHFuYADfYyB2AtDi+g3Gq3t8BqKc4ZtkTy+bjd/YYpTNu+3m9+56Hn/7CZt4QWFBT09m853qyjMlbT7MAzMnfqd//rWPfNG/PPT0FlnY14lZdzVx6EQmUkBRKEQpkWJAjFRApCIaPV63web2tTM5CXAZxosB92OC31JktJMWxrbi8uLrPby3YfOVObVfLlRUOl9S2wwm4HsBu4H3itvj7VZptlLW7ZvRGwWQYv9y6hp8tVe7oxyIcoimIZduGC+RT16eH2Cn36NQMf0HpDXt2F7y6VdTbiVV7BfUuCUIyNnAShmDRBKI4dOLRm/TKdVpcz25aQlNjeaLvmWmvFgRrUm9iB0cD6Vnt9Cx6y2DDT6GyBQ37PeQBricXh6BmY0FBfVg/YbAPrI9tsFqs17FYUTZ/c0Rybr/3YYbfdmQAPqk6d3FYh6bNuNWScK49er9NqccEPSIJQEAhXFzSGt61CxuWANG3WwCrJC4uLAyHNwmIL5JA3OQAeAnA7AJyNgjN02ZiMs8vI3I9iFGPhueNDouaYTRmL51/HsDQAyk1lmvN/9MPv3vef5cNLSOVfKGLOVQoxLMJVTZ4JTveQI7qE3F2foqbs7fARgecY9sLNT0mCJEk0reRhnAv5Wc2UsLx3VuH5bpWTAi2po4MgF4NwVXPTLClWI3T6mWEtrVmWu0Yil3thFD9NX1qeZETJtHGIOB3NEMMiXNVoGBRPFWNiFI9XIBjkDQZtRORXIWTGB4FAiBqIYREIhKiBGBaBQIgaiGERCISogRgWgUCIGohhEQiEqIEYFoFAiBqIYREIhKiBGBaBQIgaiGERCISogRgWgUCIGohhEQiEqIEYFoFAiBomyWoNB46d/Nd2u8joJIGLi9E+fPdNORlpl5cRCISoguV5Xt6SJInn+fCuAiIiD3Hcs6+842ZScq+9Qz4iieLv3vhodnbig7evHm3uipdI5nmeYRjFS8LzPK8mkJR6uSRJilOQ5YqXh1YvFwRB8Y3Hn0WZXM46UnKVdXaCVPnRLZE8OGpOZMPeKJP/5m//SMxfmqQ3+DwuhmV1egNF09OvWdXQWPPwj36to0GNLLyCKIqXOe28qxprMHh8vsHyhjMn/vXqS6P9CADkb12N36mUR3XUHFEUFd94cp1RLJcdJ1JylXV2glT50RlWTEyMvCWH0AjvKsv+CsvtZRWcwSKK4uHdW4J+nyRJxrjEuddez2q1U7Lz25tqZ85fqVNRpEuTaGD7fDyA/s4Wjd5oiEucdyOW3XjbUfsOBampjCKhRk5RlJogFHLTUk0UCTVylmXVRFKQ64zi+1YQBJqmIyVXWWcjXuUFQYiJiRmVYUV3p3vpnoOZeTOryvakmCwr1t+3cv196dm5nW2O8j3vCTyXN/OaMycOjmsBQkF/R+2x9GQjE3J1OCoBfOO/Xh7XHAmEq5no7nQPSSwfCvX3OuevXE9RFCjq+IFdRz9+H8CpY5/c9/gvAn43WnZVNQOZqwstQ7TOlnpYbCZ1BfD1d1ksmTUNzXEGfWJCgt/jMiYnqkuSQCBclOg2LFEQaZahQHGhoE5vAJCUmm6xTu92NhfMXkLTjCh4q5pnFS62Vb39gvOuRzvffgHIZa5FazOKAFhsVYd2pQHlTXUL7npUgXnRtEYURZZmtBoNx3EavcKeYwKBMBKi27AMWtA0M8U6teLwR9PnLA0F/QnJpls2fFeSRFOGtbezLT4pK4Wrq2pBnyG3EOjMyk3L1HY2h8xN6MlCcjihrFxlTS2dMa69vTbTktnT3RPkxViTsbenAyAzKgiEcSG6DeuudcVv2MumzV1a99nRTw98CElIz56amp4ld+NVV5bNX76O1WhMACw2AIWLVwMwWYDFAymYFq8GsF5pAXQxRpNtdnd3my4pI05vALDx6e9+6yYlne4EAuGyRLdhzZ+Zv+fQcXdvV37hgvzCBYP/VVNZznc7Sp//Ec5Oa7j0xIXLT2uQT5NEmho4jWXZ1OQUQMLZ4Z70jExlQ4QEAmEkRLdhAfjuw5/78+b3Th87ZStcpNXqAfjc/bUn9q5fVrSxUvzGT/4YPlPLUCFB4UylMDqWDvJDpiw5P7Nv+PxtPp9Pp9Mpnv1IIBBGQtQbFoCv3ntLfXPHprffF2hW4LgpaUm/evy+0h27vvT1H/b1dLld/VnWvHHK2ufud3a0Hz9+vKCgYJyyIBAIYSaDYQGwZZq//+gXYmJiwo91brcrHvB63W2tjV2dbfMWLkfDh+UOCdlrF2SfE7Y21iE7N0Pe2fdh+fK1C85P/eLwPLd86SJRo3vzX1v8HndaSgqAU6dOJSYmypMhjUajyWQymUzp6ekmk0nNCzQEAmGSGNYlEAU+PTsXqDvcmLdgua381b9sB1KQx66EoxGLgIqPd7Qir9uKWQ5g+ejTF8Uzp08Z9fripdcaDAYAa9askQ0rFAp5PJ6urq7Ozs6amhqn0wlAkiS9Xr9kyZIZM2YQ/yIQRsWkNax77rpjb10wJdWcnGKOMRgAWLCzvFHqNuSlmJCRrW1tDGU64LQC1ryM7Dw01gK1wNpR5RJjjHv+pb+89Nyvg8HgsD4siqJ0Op1Op0tJSZk2bdpglc/nO3jwYGlpqd/vX7t27aJFi8biExMIkx8q/MasJElerzc2NlZxWm63Oy4uLlJyr9c7+JEQgHX24j+/vj28Ox6d7m++8r8vP/1jAMo63YPB4JYtW44fPz5nzpw777xT8dt8fr9fzbuEgUBAzbuEoVBIzcuAKuUcx0X2XcJgMCi3rK+8XGWdjXiV93g8RqNxVM8Zk9mwrqRc5ShheXn51q1bv/rVr5rNZgVyYljEsK68HJEwrEn7SBhdFBYWzpw5829/+1tubu5NN90U6eIQCBOU6F6tYTKh1Wq/+c1vJiQkvPLKK5EuC4EwQSGGNbFYvnx5RkbG1q1bI10QAmEiQgxrwrFmzRqPx3Pw4Piu5EUgRCPEsCYi99xzz+7du9Wslk0gTEpYQRDkLUmSBEEI7ypgIsgVr2s+JnJlWpx9d3rwcMl99923adOmhx56SJl8tLljZCvfX0wu3zyRkqu5+FEtV1lnJ0iVH90oYTAYlLfkmdnhXQVEXE7TtOJap14OQPG0hlAoJIri4O8+LS3N5XJ1dHQkJl5+CdPz5aPNnaZpxXEo5M+uGJVyOQiFmpA/aqIlCYIQCoUUf+8q5Srr7ESo8izLjs6wwnNAJEmSJEnxlBAAgiBEUC5JkpqJVCrlANTMw6Io6vyJVI888sgbb7zx2GOPKZOPHJqm1czDYllWZRSJqJ6HxTCMmnlYauQq62zEq7woigaD4SoKQjG5iY+P7+/vV/yUSiBMPohhTWhWrFjx8ccfR7oUBMJEgRjWhGbx4sVlZWWRLgWBMFEghjWhkUOcqhmIIRAmE8SwJjpLly49cOBApEtBIEwIiGFNdBYuXEieCgkEGWJYEx15pgUZKyQQQAwrKpg9e3ZFRUWkS0EgRB5iWFHAypUr7XZ7pEtBIEQeYlhRgEaj4XmejBUSCMSwooMbb7xx+/btlz+PQJjUEMOKDmbMmFFVVRXpUhAIEYYYVtSwYMGCffv2RboUBEIkIYYVNZSUlNjtdsWLwBAIkwBiWNHEPffc8+qrr08seHIAABqkSURBVEa6FARCxCCGFU3k5eUZDIa9e/dGuiAEQmQghhVl3HXXXSdPnvzss88iXRACIQJMkkCqDa2d//ePDwKCJAp8pjntgTuujzMqXENy4vPoo4/+8Y9/7OvrW7p0aaTLQrjSdLQ1bCvdInJejhPMGTkritdBRejmqIMaHIQiSkPVv/hm6an2gLVwgVarB+B19TVUHbhp+ay1S+eNPJHIhqpXEGt+27ZtZ86c+cpXvqLVakmo+qshVL0kiVv/tUnjry2ZlxmjYwF09vm2lbUVLbxpzjXLFeQe8SqvIFQ95fF45C1Jknw+n9FoVJO9mg+vTP6nze9LKTMSkk2iKABU2HFqKsqc1fsRdFMUNZKaLK+uPaqstSwbOhuJS45bk5ll++E3HhntRwAQCARYlh2t43R1df3tb3+75pprli5dqtVqFRtWMBikafqJJ38+7DhN0aJ0+UFJeWlwZV7PMgzH84Pl3/rKv+VbM0eeghyEQrHfyUEoysv2vfn+kJefNBqW4y4fZk2SJFEU1USRGJlcAqg0nfvbd81s6fQM/kdCrLaxw52Qt3b6zAUKco9slfd6vaNd050KLwMQcbtVID9+qu61j05mFhSdOrKvs72BZlhThnXG/OU0zQA4vOed+cvWs0obDpcl0cD2+XgAru52nSFOF2ME8PxPHjhq3zHapNQ0kQ4ePPjGG2+YzeYNGzZkZGQoSCEQCMy8ds0Pnv3HsONxOsYdHN/3geJjGJdfANDT0ZiQMoVhNQCCZ3Y8/ugDI0xBfQvrK49/+8Vvzx7+D00CuH5laY4VIU5wdHinZsaDNZyqbero8RXPy3p5a1VuZnz4nGan5/7rZ7y8rfaBrzzFarSjSj/iVV5BCyu6+7DeLN2TO/+m4/t3MBrtqlselESptfG0q7erq60xr3BBQeGi6srDM+YtG78ChIL+/tbq9ClT+nrb3F1Cata0Dd99evyyuyBLliyZM2dOf3//+++/7/F4NBrN3Llz582bN5LHnI/37o2Li7NYLOe71RWjr6uNEXwZKSlt7XUirUnJyN33yd6RG5ZiTp8+09TctGL58tx0hWY3rpyo6w8KdEZ6+nFHd0q8sOdo81fumAMgxHNNTrdew/a4/Ja0WHle3rLC5I93v3/d9XdEutTjTnQbljcgCTzX5WxadfOD8o9zVZn96N4PJEmatWT1LQ98t7riMFp2VTUDmasLLUO0zpZ6WGwmDDu4q7MZhYtXj7AAQU+/2Wxube9KjDdKFBcM+JJNlsvLxoHU1NRHHnkEAM/zn3766auvvup2u+XHJfnFab1ezzAMTdMdHR0Gg2HKlCkAQqK0bGXxB9u2O0PJppi+C14omQterjFB5IIpCbFNbU5zalKHs0sY03jXgiD4fD6v1yv/7e/vb25uzs7OBnDq9OklK1dteb+UF9kQL76+4zO9lvEF+C/dPGsECTtLn9yxBXO//1RRPgCgpsGJHFP+0JNK7ZXriovCuzX2yvxBu5cgEBQ4kUpOjHd2NCckpvuCHpYZaIaYk4z+EEdRkCDRFEVTFIB8S+InH9eOJOVoJ7oNi2YYgMKgte20uhiDMcHv98QY4mmapuhAVfPswsW2qrdfcN71aOfbLwC5zLVobUYRAIut6tCuNKC8qW7BXY+aAJMlt7O5buQFEASeYfSCKAaCIb1OK3CqYoKOEEmS6uvrT58+3dDQwHEcTdMcx7EsK3cDURRF07RGozGZTBqNRqvVyt1bct82AKPRyPN8fHw8gF63R6/XxxiNlM9X1ZxbuNgGYOCaAF/QMFXzV+HQC2nIrQHyLbaqt18AcvtQV3DXo2NlXpIkSAAvIhgIarWsIHCKk+rr6/vkk0/q6urkbjW5+9JgMBiNRqPRaDAYdDpdYmKi3PbUaDQ0TSckJGj1Rp4XblmW9/4ndbetyC/dVFmwqqi6+dMC3ltdXAR75TrgKUfHvRtWV9srW492ZCSbCzYUrfvy3PJ/dlRvAjaYqjc5tQbk5JhK7ZUFDmy24l6gurgIQKm9sgDYDNxrLaoGqu27CmCuLjbBDsAJRwdgbkVH8YZZ1ZucrT0DiZsFkWHYYJCDJICSQrzEsPQ9T773aY2TAvWH71zHMLTHH0pLMvR7ggBUhP2OMqLbsDQUx7BsWkbOZ0f2zpi3PBQKWKfPmbvsBndvl3X6XHdflz4mLQ11VS3oM+QWAp1ZuWmZ2s7mkLkJPVlIDieUlStXv6pDdWmZI21eAYiJS2puOlWQV9DT29vncput2WP9Ec/R3d29detWl8tFUVRubu6MGTPWrl0rd3sp7gIr3ba9rbFh5dJre09T0qFdVS1Ig+3sP+uON1KYvwrINQE18rGs3LTMXDRjDJtatCamr69vRl52S0tziEeCTsmAXXd39+bNmzUazZo1a9atWzeSEQCKpk9VHF+1cmVD1UcGvcag19x7/XQNyxSsQrXDOahmdJQ6AKs5H6gGkGkuWHS2JTWwbcIqp31rX87Z8wHzxbOV0zGtw67nrKunAgVWExyQEynfqiteZcoHYNDwnFuU6Ozs/JqG1myT3h/k5083J8XpHW19WaZ4o1HDC2KhLbWtywugoc2VljZFwXWLOqK703334RO7qnrSM/NOHtvb2dogQTJbcmcuWCl3uh/bv33G3BX6kQ451zsP1XVm5hZabJc/F8CgTvc+Z5POkBATG4/x6XT3eDwbN27UarWf+9znUlJSRiu/LIFA4JGf/mXF+nuHHb+Sne6dTaeT0nPlEZLyf/72xed+M8IUOI47efLktm3bvvGNbyiYXsDz/Lq77v/wN+f9SinqdK9pqKzeg4INRfmXP/fyuL2hxi5/YU4CWEN5RT3LUHOnmrYfrhcEGPVsY4erKDftdGP3PWtmvLaz9o4N/2EwjK76RLzKK5nWENWGBeDnf3o1IW+ZLsYgSiIkSbYqAB3NtQ1VB4Wgn6YkmqEACLzAsBcdPxZFiaYvdeHk6yTwIsMO/HobYvRaXSwoWS5SFPVZuX37PzeP9iPg4o7Dcdzrr7/udrsffPBB+SFuVPIRIs/DuvkLDxYuXBU+KPB8MOjluIEHNFEQ6IuMvstXZuR3XXgGiSRBr9PqYuIAyHctHwrUnjz2/hsbR174EydO7Nix44knnlD2UCTPw7rji4/cuiJv8PHEJJM49OGUomjpvEkeaqZ0XEwuSqBoWhr0ljvLsl1dHV5X1+N3z/7wsIOhaZqmOF7Qadm4GG2cQesxzFtavF5B7sSwrrRhhTju6Rff9mnSsgsG+kolUTx11D7HmvTTn/z4+b/vCp+pZaiQoDaUg46lg/yQu3bt9DiWZcZ84mh3d/e7777b3t7+wAMPZGZeZl7SmE8c/bcn/uP2h7+nLLXLYtQx3kENN1EU1kyLVTCRSpKk0tLS6urqxx57TPHMz4tNHD326afacZsQc1lYluWHDj5o9YaczPQ3X/3D1FT/opkDT3+iKP1rX31Cxrw1676gIJeIV/mr0bBkPjn62T+27WZ0RpHnjFrm4btvqm9oCCZMdfX3BoPBNFM6xsewAn7viY+3PHbfnQkJCWoMy+v1dnZ2NjQ01NXVeb1eiqLi4+PXr19/wQfA8xlbw+rtdx1sEgHUnTmZO3WGsjQvwTDD6mpr3Pfey7/++U8TExNHIvf7/ZWVlcePH+/p6Vm3bt306dPHcKb7azs3v3tqyy9u/YW7x6PVaBobG7Ozs7F3794VK1Yoy0ARFzSsgjwbgONHP9n78c44nRgICow+fu2Nt+dYpyrLJeJV/qqbhxVm2fyZc6flDH63ZtdHuyzzp7pdfc0NdT3OtmlF89DwYblDQvbaBYN6xlsb65CdOzDbct+H5cvXjmq+cCjgv37V0jOOhprTp4wxMclJSQBOnz5tMBg4juN5PvxlnL8xOHIXx3GZmZnTpk1buHCh4vc8xgq/3wfoAbQ2O3p6nLPmLdaV7S0HmpF3+/JcDLtowAWPjCI7j+s73/n2gSPHWpsaUxIT5I9fUVFhMBjkSUaDr5gkSXq9vrCw8J577pFrWvihdUzo8LQfydh7w0fFWc1Tn77x6YaGhoaGhhwHcCXt6pLMmb9szvyBqYWy40S2PFeYSWJYl0aj1wN1hxvzFiy3lb/6l+1ACvLYlXA0YhFQ8fGOVuR1WzHLASh5JQv+QECr1eXabElJSQBsNltmZqZWqx15g0tlE2m8kESWYRmaLkfeguW5Gfs+3L6v9gagAsDHO2DNsztxrwnly9dmNNYiO1dNVqFg0Gg05ufny8+GU6dOzczMjMgFkfzI6LZ+Pu9uY0z4l8MxgRzr6maC1ZCxY/78+R1AYlKKMTY+MSkFgAU7yxulbkNeigkZ2drWxlCmA04rYM3LyM5DYy1QC6wdVS46veGDDz/4/tceYllWzSPhhCIuLh5dIQC2qTMtWTYAGagtb6xtRl4mdpQ7AGserAAAU225A1g+uos2jNiE5F/+4pcv/On3it8HHEPWzFqzIrhi4cwFf3r+RQADD4IrVozjdJWRoddH/uJMBCZJHxYutNyCZca8F9/aHd4dp073dUWJiMRqDWMoP7/T/Y0tHyTkX2rtmvJ9Hy5Q6lPD+rBOVh79+h3LJuBqDU/8+0+nmAcmnImSxPP8+aOBYzhKyA66eVgNyw969Xra1Km33HiBq62yzka8yl+9ne64yPowzS2tYYvief4SVdrn8+n1+sveecMSycyYIl/uSWZYAFweb3//uYlIl7h6HMdJkqTVjvTN22FJmdNSyfIyyuRXoWFN2kdCmUzLSDuCVa6HNfmIjzXGx45o4RH162EpExKuQkj9JBAIUQMxLAKBEDUQwyIQCFEDMSwCgRA1sOFIwvLy0moCCxO54kWJxLNESk5RlBq5fPNESh7ZSxdBuco6O0Gq/OhGCf1+v7wlSZI8vK04ezmSQgTlABQP86mXqwlGEAgELj3rYlzlchAKXulSn/K0BsU3rnq5bHnK5HIQCmVaAIIghEIhxT9UKuUq6+xEqPL0KNceZMMxM8LLUSrOXhTFCMoBqJyXoEZOUZSaeVjyGqGKv3uVcoZhSJgvZXJBEORFTSMiV1lnI17lJUka7Tws0odFIBCiBmJYBAIhaiCGRSAQogZiWAQCIWoghkUgEKIGYlgEAiFqIIZFIBCiBmJYBAIhaiCGRSAQogZiWAQCIWoghkUgEKIGYlgEAiFqIIZFIBCiBmJYBAIhaiCGRSAQogZiWAQCIWoghkUgEKKGSRJI1esP/mP7vuaOLpqi5hVOXbv8GlrpsrMEwiRAksTyg3tOnawAkGHJXF68TqdXuK7phGIyGNa7Hx3aceik2TYzdfpsgef31tRutT//2OdvmDXVGumiEQgRwFH72fZ3X1lYYPz84lQNS1c3V7/1t0P5c9csWXZ9pIumFsrlcslbkiT5fD41KzR7PJ7Y2NgrLN/8wd7mYHxGTsGw48cPfKj3t+honqIozQgWO+c4jmXZUS0vLYkSRQ+cz/M8wzA/+NbXRi4fjLyYv5ogFGrkchAKxWu6y1EktFptpOSiKCpeEl4OQqHX63/zhz8PPi5J0khuBkmS5HXZleWuUg6A47jwF8fxvCRJeio4w+S97posf/BccA2aorpdgeZA5so1dw7OPbJV3uv1GgyG0QWhiIuLk7ckSaJpWk32AMKpXRl5fXPH6TZf3uw5Z44fdLbW0YzGnGnLnXENRVFzrl17+KN/Llh5B02P17NhooHt8/EAPH1dekM8q9W+dtT3xjPf2vPu30ebFMuyaqJIqJRrNJqrOQjF5r+/8cAi38/vThzyD00CuH5laV55HO3uHHMsRVGCIL30QcUXVs/e+EFlSsK5yBqNHe6v3zm38ZMzPk+PeUqOfDDiVZ6iqKsrCMXL/9hWMG/FyWOfeFw9c5fdOGvxaoHj+7rb2xprAOTOWFh/8si4FiAU9Hc1njTQXF97bU9rLYDbHvrhuOZIGCsaGxuPHz8OoKHmWKTLopzGDndVoy9IJZRX99e1ee3HGlfNzQIgiZI/yLc6Pb2uYE9/QBQlALcsy3l/9L+mE4ro7sNy+UNmgW9vqlmx/j6tLgbAkYYzO97+q6e/Z8mazxXf/MXaqvK8xP6qZiBzdaFliNbZUg+LzYRhB3dVHsB1d60eYQECPk9qUmJ3X39KcmJ3Ty/PcalTssbkoxFGRTgmqCAIwzYGbweDwdbW1sTERAAnKipmzJn3+ptviRJEUfr7rtMxOsYf5O9dO2MEGTpLn9yxBXO//1RRPgCgpsGJHFP+0JNK7ZXriovCuzX2yvxBu2NCjzuUYsrs7uzIzMioqauvbe0vuSYbgCnJYDRoXJ5gvFEriKJ4Nm6jEOwb2wJcYaLbsBhGK4kSAFYz0APi9fT3drYB6GpvlCCxGqGqObdwsa3q7Recdz3a+fYLQC5zLVqbUQTAYqs6tCsNKG+qW3DXoybABAC5Iy+AEPBqk+MEWtvncicnJfu8/QlG0+Vlk5pgMNjX1+d2u10ul9vtDm+EQiH5hMGPAHInjiRJcgfixXqO5Ah6F/yXbEbyUy1N0zRNn78R3hYEob+/Pz8/H4Df7zcYDPnTpjnbm92+0Mo5lt3Hmq6bn126qbJgVVF186cFvLe6uAj2ynXAU46OezesrrZXth7tyEg2F2woWvflueX/7KjeBGwwVW9yag3IyTGV2isLHNhsxb1AdXERgFJ7ZQGwGbjXWlQNVNt3FcBcXWyCHYATjg7A3IqO4g2zqjc5W3sGEs8HSjftAswFG4qqN+1qBYo3rK7etAswt1rxyNny5ANBgQ4Egsmx6OnrNxjjNLTz/0o/27zzZGOH6+mvF6clxWSZ4zhedPb65Mul10T3Q1V0GxYlBFmNJiHFXFtVnl+0SBT4OYtXLyy+uaO5rnBhScDnYdi4NNRVtaDPkFsIdGblpmVqO5tD5ib0ZCE5nFBWrmwzTuSas+qcGN7yuhiGxLT29rrM9CmBQKjf5U6yDO/7n5SIotje3l5fX19XV+dyuWTHkYPIyt3niYmJ8fHxcXFxSUlJ2dnZ8vbFutUj1Yel08ccO3xo6ZLFcawrITYhIVZ3y7K8hFidbxWqHc5BNaOj1AFYzflANYBMc8Gisy2pgW0TVjntW/tyzp4PmC+erZyOaR12PWddPRUosJrggJxI+VZd8aqziVvNBVZTPlBtNWcA8kaB1QRHRbg8ABJiEOR4Q0IG4/HqeK9Wy7p9QYamaYrSMIwogWVoSZSYsxGCvSHlcZ4nAlQ4xrckSV6vV00PnNvtVtMDp0D+7q4DxzuZ+MSU4wd2+r1uUeDjElPnLr2B1WoBVB7+KHfGfENc4mXTAQDUOw/VdWbmFlpsI8xd7nTnQkFPT6tGH6/Rx+j0hk2/eOzAjndG9SkA+P1+Nb3mKuVyvPJLdLpLklRfX3/o0KGuri4ANE1PmTIlNzfXZrMlJCREe6f7jZ+7b+dv1wz/h6JO95qGyuo9kJtIKnDW2J3VVtO6nMv/boqixPHiwZNdC6cnszTt8ob2Hm++o7jg/f11cTGaMy29aQkGQRT7vaGH1xedbuzp1sxZunKdrI14lfd4PKPtdI/uFtatq6/d/8zGFPP1i6673e91SRIMsfHyv/p7nBqNRq/XipxPvh6iINLMRdvDkmRKm29OAyTOd4kcRVEMh7MPBRgtE6MzxMQa8uRnmd//+MFj9tKx+nSRpbe39/Dhw2fOnJF/0nJzc1evXm0yTcIH3vfe2DRz1Y2fvf6lIUdpFvSIPHTwY2y+7Zr8kf7eXUB+lqz8kqwRWh5FSTqWKp6XLe+m6mJYpqPZ6WZp2uPnYvVaCRIFyqhjeVHaf4Z7+KvrRle+CUZ0t7AA9Lo8//3CW/FZs1PMmeGDjtPHktD/h2d//cKbH4UPahkqJEiKiyejY+kgL57Lvdt5X/FUAD6fT6fTyY9FCoh4C4vjuNbW1rq6uoaGBo7jACQlJS1cuLCgoCBs0Bcj2ltYHMfFxMRc/tQLIQhCMBg0GBROIlcpv1idfeOV5yzG3hWzM8JHalv67J8FPv/At2IHPXBEvMoraGFFvWHJ/L3040+OVIm0VhJ4o565Y+3yTFNSZY/O7/MIghAbl4DxMaxQwL/7nZd/9ePvyFVuAhoWz/Mej0fu9pb/9vT09PT0iKIIQJIkSZJCoZDBYMjPz8/Nzc3JyRnthCxiWBPNsACcrCzft2erxHs1DBXgNTNnLyxeffvI5SOEGJZyudfrjYmJCTcHXnzldcv89S1N9c2NdekZWTm2qdrmnfsdErLXLsg+p2ptrEN27sAv0b4Py5evXXDJXIYZlqu3K8vg6nQ6+7q7Mszm+Ph4AE6nMzk5+YJD7BccaxcEIRAIyCWXD+JC42LyIFp4I7wrSRLHcfJY2OBvU95gWTZ+KImJiUlJSYPbTZftw7o0xLAmoGFdATlIH9Z4QFOUp78PqDvcmLdgua381b9sB1KQx66EoxGLgIqPd7Qir9uKWQ5g+ajTp0CZzem93d0cx8ktLI1GYzAYwkPpw0bZL7gbCoV0Op1Wq5V3R/UVQnUDjUCIFibtLW5OnwIgNjYh21pgzsgCYMHO8kap25CXYkJGtra1MZTpgNMKWPMysvPQWAvUAmtHlYtGq9uzb+e9t6+bfecdEXwkJBCuEiZtDbnl+pJrVt/6X8+9kpA0MN3KsmJtmiAhe2BeaEb2kPZURnYulq/NOD+hSxJjjLv1xrXWnByf71JjiwQCYUyYtIYF4Miudw+WH5XEgS4nfyCYqL9oR0kgENBqtZcdEQsEg4mDelsWL5hP0yOc50UgENQymQ0LwJIF80d45rA+ewKBMAEh9ZNAIEQNxLAIBELUQAyLQCBEDcSwCARC1EAMi0AgRA2s2+2Wt+QV6cOvdCjA4/GoKYpKuc/n43le8TCfSrnf7w+FQoonjkY8CAXDMIrlchSJ8Pp8V1jO87wgCPIL28rkMsrkgiCEQiFBECIiV1lnI17lvV6vKIpXURCKwdA0rWZegko5wzBqZrqTIBTkXUIFqKyzEa/yV10QCgKBcFVBDItAIEQNxLAIBELUQAyLQCBEDcSwCARC1EAMi0AgRA3EsAgEQtRADItAIEQNxLAIBELUQAyLQCBEDcSwCARC1EAMi0AgRA3/H4Rpj9YOmLdVAAAAAElFTkSuQmCC"
+#!   ARCGIS_COMPATIBILITY="ARCGIS_AUTO"
+#!   ATTR_TYPE_ENCODING="SDF"
+#!   BEGIN_PYTHON=""
+#!   BEGIN_TCL=""
+#!   CATEGORY=""
+#!   DESCRIPTION=""
+#!   DESTINATION="NONE"
+#!   DESTINATION_ROUTING_FILE=""
+#!   DOC_EXTENTS="2514 1471"
+#!   DOC_TOP_LEFT="800 -2271"
+#!   END_PYTHON=""
+#!   END_TCL=""
+#!   EXPLICIT_BOOKMARK_ORDER="false"
+#!   FME_BUILD_NUM="22776"
+#!   FME_BULK_MODE_THRESHOLD="2000"
+#!   FME_DOCUMENT_GUID="5dfd0183-28fe-4ca3-b4f8-789fc06f6265"
+#!   FME_DOCUMENT_PRIORGUID="c3192ea6-f16d-4536-9472-a6f2e3c1a2c0,2ea2fddb-ecd3-497d-8abc-f34a71f273b9,bcf442de-368e-4a6e-871d-52ef25b5932e"
+#!   FME_GEOMETRY_HANDLING="Enhanced"
+#!   FME_IMPLICIT_CSMAP_REPROJECTION_MODE="Auto"
+#!   FME_NAMES_ENCODING="UTF-8"
+#!   FME_REPROJECTION_ENGINE="FME"
+#!   FME_SERVER_SERVICES=""
+#!   FME_STROKE_MAX_DEVIATION="0"
+#!   HISTORY=""
+#!   IGNORE_READER_FAILURE="No"
+#!   LAST_SAVE_BUILD="FME(R) 2022.2.1.0 (20221202 - Build 22776 - WIN64)"
+#!   LAST_SAVE_DATE="2023-10-04T14:46:54"
+#!   LOG_FILE=""
+#!   LOG_MAX_RECORDED_FEATURES="200"
+#!   MARKDOWN_DESCRIPTION=""
+#!   MARKDOWN_USAGE=""
+#!   MAX_LOG_FEATURES="200"
+#!   MULTI_WRITER_DATASET_ORDER="BY_ID"
+#!   PASSWORD=""
+#!   PYTHON_COMPATIBILITY="310"
+#!   REDIRECT_TERMINATORS="NONE"
+#!   SAVE_ON_PROMPT_AND_RUN="Yes"
+#!   SHOW_ANNOTATIONS="true"
+#!   SHOW_INFO_NODES="true"
+#!   SOURCE="NONE"
+#!   SOURCE_ROUTING_FILE=""
+#!   TERMINATE_REJECTED="YES"
+#!   TITLE=""
+#!   USAGE=""
+#!   USE_MARKDOWN=""
+#!   VIEW_POSITION="-1175.01 -284.378"
+#!   WARN_INVALID_XFORM_PARAM="Yes"
+#!   WORKSPACE_VERSION="1"
+#!   ZOOM_SCALE="100"
+#! >
+#! <DATASETS>
+#! <DATASET
+#!   IS_SOURCE="true"
+#!   ROLE="READER"
+#!   FORMAT="GEOJSON"
+#!   DATASET="$(SourceDataset_GEOJSON)"
+#!   KEYWORD="GEOJSON_2"
+#!   MULTI_GEOM_ALLOWED="false"
+#!   ATTR_MAX_LENGTH="0"
+#!   ATTR_CASE="ANY"
+#!   ALLOWED_FEAT_TYPES=""
+#!   WRITE_DEFS="true"
+#!   DEFLINE_TEMPLATE=""
+#!   DEFLINE_ATTRS="true"
+#!   EXPOSABLE_ATTRS="fme_basename string fme_color string fme_dataset string fme_feature_type string fme_fill_color string fme_geometry string fme_primary_axis float fme_rotation float fme_secondary_axis float fme_start_angle float fme_sweep_angle float fme_text_size float fme_text_string string fme_type string multi_reader_full_id int multi_reader_id int multi_reader_keyword string multi_reader_type string"
+#!   DEFLINE_PARMS=""
+#!   ATTR_INDEX_TYPES=""
+#!   ATTR_NAME_INVALID_CHARS=""
+#!   SUPPORTS_FEATURE_TYPE_FANOUT="true"
+#!   ENABLED="true"
+#!   DYNAMIC_FEATURE_TYPES_LIST_ON_MERGE="true"
+#!   DATASET_TYPE="FILE"
+#!   FTTR_TYPE="LISTBOX_ENCODED"
+#!   GENERATE_FME_BUILD_NUM="22776"
+#!   COORDSYS=""
+#!   FEATURE_TYPES=""
+#!   MAX_FEATURES=""
+#!   MAX_FEATURES_PER_FEATURE_TYPE=""
+#!   MIN_FEATURES=""
+#!   START_FEATURE=""
+#! >
+#! <METAFILE_PARAMETER
+#!   NAME="MIME_TYPE"
+#!   VALUE="application/geo+json ADD_DISPOSITION"
+#! />
+#! <METAFILE_PARAMETER
+#!   NAME="READER_DATASET_HINT"
+#!   VALUE="Select the GeoJSON file(s) or type the GeoJSON URL"
+#! />
+#! <METAFILE_PARAMETER
+#!   NAME="WRITER_DATASET_HINT"
+#!   VALUE="Specify a name for the GeoJSON file"
+#! />
+#! </DATASET>
+#! <DATASET
+#!   IS_SOURCE="false"
+#!   ROLE="WRITER"
+#!   FORMAT="GEOJSON"
+#!   DATASET="$(DestDataset_GEOJSON)"
+#!   KEYWORD="GEOJSON_1"
+#!   MULTI_GEOM_ALLOWED="true"
+#!   ATTR_MAX_LENGTH="600"
+#!   ATTR_CASE="ANY"
+#!   ALLOWED_FEAT_TYPES=""
+#!   WRITE_DEFS="true"
+#!   DEFLINE_TEMPLATE=""
+#!   DEFLINE_ATTRS="true"
+#!   EXPOSABLE_ATTRS="fme_basename string fme_color string fme_dataset string fme_feature_type string fme_fill_color string fme_geometry string fme_primary_axis float fme_rotation float fme_secondary_axis float fme_start_angle float fme_sweep_angle float fme_text_size float fme_text_string string fme_type string"
+#!   DEFLINE_PARMS=""
+#!   ATTR_INDEX_TYPES=""
+#!   ATTR_NAME_INVALID_CHARS=""
+#!   SUPPORTS_FEATURE_TYPE_FANOUT="true"
+#!   ENABLED="true"
+#!   DYNAMIC_FEATURE_TYPES_LIST_ON_MERGE="true"
+#!   DATASET_TYPE="FILE"
+#!   FTTR_TYPE=""
+#!   GENERATE_FME_BUILD_NUM="22776"
+#!   COORDSYS=""
+#!   FANOUT_EXPRESSION="&lt;Unused&gt;"
+#!   FANOUT_GROUP="NO"
+#! >
+#! <METAFILE_PARAMETER
+#!   NAME="MIME_TYPE"
+#!   VALUE="application/geo+json ADD_DISPOSITION"
+#! />
+#! <METAFILE_PARAMETER
+#!   NAME="READER_DATASET_HINT"
+#!   VALUE="Select the GeoJSON file(s) or type the GeoJSON URL"
+#! />
+#! <METAFILE_PARAMETER
+#!   NAME="WRITER_DATASET_HINT"
+#!   VALUE="Specify a name for the GeoJSON file"
+#! />
+#! </DATASET>
+#! </DATASETS>
+#! <DATA_TYPES>
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_buffer"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_binarybuffer"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_xml"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_varchar(width)"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_varbinary(width)"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="boolean"
+#!   FME_TYPE="fme_boolean"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_char(width)"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_binary(width)"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_datetime"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_time"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_date"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="float"
+#!   FME_TYPE="fme_real64"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="float"
+#!   FME_TYPE="fme_real32"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="int"
+#!   FME_TYPE="fme_int64"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_uint64"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="int"
+#!   FME_TYPE="fme_int32"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="int"
+#!   FME_TYPE="fme_uint32"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="int"
+#!   FME_TYPE="fme_int16"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="int"
+#!   FME_TYPE="fme_uint16"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="int"
+#!   FME_TYPE="fme_int8"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="int"
+#!   FME_TYPE="fme_uint8"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_decimal(width,decimal)"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="json"
+#!   FME_TYPE="fme_json"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_buffer"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_binarybuffer"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_xml"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_varchar(width)"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_varbinary(width)"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="boolean"
+#!   FME_TYPE="fme_boolean"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_char(width)"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_binary(width)"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_datetime"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_time"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_date"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="float"
+#!   FME_TYPE="fme_real64"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="float"
+#!   FME_TYPE="fme_real32"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="int"
+#!   FME_TYPE="fme_int64"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_uint64"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="int"
+#!   FME_TYPE="fme_int32"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="int"
+#!   FME_TYPE="fme_uint32"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="int"
+#!   FME_TYPE="fme_int16"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="int"
+#!   FME_TYPE="fme_uint16"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="int"
+#!   FME_TYPE="fme_int8"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="int"
+#!   FME_TYPE="fme_uint8"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="string"
+#!   FME_TYPE="fme_decimal(width,decimal)"
+#!   FORMAT="GEOJSON"
+#! />
+#! <DATA_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="json"
+#!   FME_TYPE="fme_json"
+#!   FORMAT="GEOJSON"
+#! />
+#! </DATA_TYPES>
+#! <GEOM_TYPES>
+#! <GEOM_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="json_point"
+#!   FME_TYPE="fme_point"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="json_line"
+#!   FME_TYPE="fme_line"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="json_polygon"
+#!   FME_TYPE="fme_area"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="json_text"
+#!   FME_TYPE="fme_text"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="json_ellipse"
+#!   FME_TYPE="fme_ellipse"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="json_arc"
+#!   FME_TYPE="fme_arc"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="json_rectangle"
+#!   FME_TYPE="fme_rectangle"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="json_rounded_rectangle"
+#!   FME_TYPE="fme_rounded_rectangle"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="json_raster"
+#!   FME_TYPE="fme_raster"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="json_no_geom"
+#!   FME_TYPE="fme_no_geom"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="json_collection"
+#!   FME_TYPE="fme_collection"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="json_line"
+#!   FME_TYPE="fme_surface"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="json_line"
+#!   FME_TYPE="fme_solid"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="json_polygon"
+#!   FME_TYPE="fme_point_cloud"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="json_polygon"
+#!   FME_TYPE="fme_voxel_grid"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="true"
+#!   FORMAT_TYPE="json_no_geom"
+#!   FME_TYPE="fme_feature_table"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="json_point"
+#!   FME_TYPE="fme_point"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="json_line"
+#!   FME_TYPE="fme_line"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="json_polygon"
+#!   FME_TYPE="fme_area"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="json_text"
+#!   FME_TYPE="fme_text"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="json_ellipse"
+#!   FME_TYPE="fme_ellipse"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="json_arc"
+#!   FME_TYPE="fme_arc"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="json_rectangle"
+#!   FME_TYPE="fme_rectangle"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="json_rounded_rectangle"
+#!   FME_TYPE="fme_rounded_rectangle"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="json_raster"
+#!   FME_TYPE="fme_raster"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="json_no_geom"
+#!   FME_TYPE="fme_no_geom"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="json_collection"
+#!   FME_TYPE="fme_collection"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="json_line"
+#!   FME_TYPE="fme_surface"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="json_line"
+#!   FME_TYPE="fme_solid"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="json_polygon"
+#!   FME_TYPE="fme_point_cloud"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="json_polygon"
+#!   FME_TYPE="fme_voxel_grid"
+#!   FORMAT="GEOJSON"
+#! />
+#! <GEOM_TYPE
+#!   IS_SOURCE="false"
+#!   FORMAT_TYPE="json_no_geom"
+#!   FME_TYPE="fme_feature_table"
+#!   FORMAT="GEOJSON"
+#! />
+#! </GEOM_TYPES>
+#! <FEATURE_TYPES>
+#! <FEATURE_TYPE
+#!   IS_SOURCE="false"
+#!   NODE_NAME="sourceTestgolocInverse"
+#!   FEATURE_TYPE_NAME=""
+#!   FEATURE_TYPE_NAME_QUALIFIER=""
+#!   IS_EDITABLE="false"
+#!   IDENTIFIER="9"
+#!   FEAT_GEOMTYPE="&lt;NO_GEOMETRY&gt;"
+#!   POSITION="2600 -1800"
+#!   BOUNDING_RECT="2600 -1800 588.00106825772946 71"
+#!   ORDER="500000000000000"
+#!   COLLAPSED="false"
+#!   KEYWORD="GEOJSON_1"
+#!   PARMS_EDITED="true"
+#!   ENABLED="true"
+#!   SCHEMA_ATTRIBUTE_SOURCE="0"
+#! >
+#!     <FEAT_ATTRIBUTE ATTR_NAME="id" ATTR_TYPE="int" ATTR_HAS_PORT="true" ATTR_VALUE=""/>
+#! </FEATURE_TYPE>
+#! <FEATURE_TYPE
+#!   IS_SOURCE="true"
+#!   NODE_NAME="sourceTestgolocInverse"
+#!   FEATURE_TYPE_NAME=""
+#!   FEATURE_TYPE_NAME_QUALIFIER=""
+#!   IS_EDITABLE="false"
+#!   IDENTIFIER="11"
+#!   FEAT_GEOMTYPE="json_point json_no_geom json_line"
+#!   POSITION="1600 -800"
+#!   BOUNDING_RECT="1600 -800 588.00106825772946 71"
+#!   ORDER="500000000000000"
+#!   COLLAPSED="true"
+#!   KEYWORD="GEOJSON_2"
+#!   PARMS_EDITED="true"
+#!   ENABLED="true"
+#!   HIDDEN_USER_ATTRS=""
+#!   MERGE_FILTER=""
+#!   MERGE_FILTER_TYPE="FILTER_TYPE_GLOB"
+#!   MERGE_FILTER_CASE_SENSITIVE="true"
+#!   DYNAMIC_SCHEMA="false"
+#! >
+#!     <FEAT_ATTRIBUTE ATTR_NAME="id" ATTR_TYPE="int" ATTR_HAS_PORT="true" ATTR_VALUE=""/>
+#! </FEATURE_TYPE>
+#! <FEATURE_TYPE
+#!   IS_SOURCE="false"
+#!   NODE_NAME="sourceTestgolocInverse_erreur"
+#!   FEATURE_TYPE_NAME=""
+#!   FEATURE_TYPE_NAME_QUALIFIER=""
+#!   IS_EDITABLE="false"
+#!   IDENTIFIER="14"
+#!   FEAT_GEOMTYPE="All"
+#!   POSITION="2600 -2200"
+#!   BOUNDING_RECT="2600 -2200 714.00106825772946 71"
+#!   ORDER="500000000000000"
+#!   COLLAPSED="false"
+#!   KEYWORD="GEOJSON_1"
+#!   PARMS_EDITED="true"
+#!   ENABLED="true"
+#!   SCHEMA_ATTRIBUTE_SOURCE="0"
+#! >
+#! </FEATURE_TYPE>
+#! </FEATURE_TYPES>
+#! <FMESERVER>
+#! <READER_DATASETS>
+#! <DATASET
+#!   NAME="GEOJSON_2"
+#!   OVERRIDE="-GEOJSON_2_DATASET"
+#!   DATASET="GEOJSON_2/sourceTest.json"
+#! />
+#! </READER_DATASETS>
+#! <WRITER_DATASETS>
+#! <DATASET
+#!   NAME="GEOJSON_1"
+#!   OVERRIDE="-GEOJSON_1_DATASET"
+#!   DATASET="GEOJSON_1/sourceTest_erreur.json"
+#! />
+#! </WRITER_DATASETS>
+#! </FMESERVER>
+#! <GLOBAL_PARAMETERS>
+#! <GLOBAL_PARAMETER
+#!   GUI_LINE="GUI FILENAME DestDataset_GEOJSON GeoJSON_Documents(*.json;*.geojson)|*.json;*.geojson|GeoJSON_Documents(*.json)|*.json|GeoJSON_Documents(*.geojson)|*.geojson|All_Files(*)|* Fichiers GeoJSON Destination "
+#!   DEFAULT_VALUE="$(FME_MF_DIR)sourceTest_erreur.json"
+#!   IS_STAND_ALONE="false"
+#! />
+#! <GLOBAL_PARAMETER
+#!   GUI_LINE="GUI FILE_OR_URL SourceDataset_GEOJSON INCLUDE_WEB_BROWSER%GeoJSON_Documents(*.json;*.geojson)|*.json;*.geojson|GeoJSON_Documents(*.json)|*.json|GeoJSON_Documents(*.geojson)|*.geojson|Archive_Files(*.7z;*.7zip;*.rar;*.rvz;*.tar;*.tar.bz2;*.tar.gz;*.tgz;*.zip;*.zipx)|*.7z;*.7zip;*.rar;*.rvz;*.tar;*.tar.bz2;*.tar.gz;*.tgz;*.zip;*.zipx|Compressed_Files(*.bz2;*.gz)|*.bz2;*.gz|All_Files(*)|* URL ou fichier GeoJSON source :"
+#!   DEFAULT_VALUE="$(FME_MF_DIR)sourceTest.json"
+#!   IS_STAND_ALONE="false"
+#! />
+#! <GLOBAL_PARAMETER
+#!   GUI_LINE="GUI LOOKUP_LISTBOX_OR_ATTR Test_ReverseGeocodePreference Numero&lt;space&gt;et&lt;space&gt;nom&lt;space&gt;de&lt;space&gt;rue,StreetAddress%Point&lt;space&gt;d&lt;apos&gt;int&lt;u00e9&gt;r&lt;u00ea&gt;t,PositionOfInterest%Parcelle&lt;space&gt;Cadastrale,CadastralParcel%R&lt;u00e9&gt;f&lt;u00e9&gt;rences&lt;space&gt;administratives,Administratif Type de géocodage"
+#!   DEFAULT_VALUE="StreetAddress CadastralParcel PositionOfInterest Administratif"
+#!   IS_STAND_ALONE="true"
+#! />
+#! <GLOBAL_PARAMETER
+#!   GUI_LINE="GUI RANGE_SLIDER_OR_ATTR Test_maximumResponses RANGE:[1,100)%PRECISION:0 Nombre de réponses maximales"
+#!   DEFAULT_VALUE="2"
+#!   IS_STAND_ALONE="true"
+#! />
+#! <GLOBAL_PARAMETER
+#!   GUI_LINE="GUI RANGE_SLIDER_OR_ATTR Test_distMaxi RANGE:[1,1000]%PRECISION:0 Distance maximale de recherche"
+#!   DEFAULT_VALUE="50"
+#!   IS_STAND_ALONE="true"
+#! />
+#! </GLOBAL_PARAMETERS>
+#! <USER_PARAMETERS
+#!   FORM="eyJwYXJhbWV0ZXJzIjpbeyJhY2Nlc3NNb2RlIjoid3JpdGUiLCJkZWZhdWx0VmFsdWUiOiIkKEZNRV9NRl9ESVIpc291cmNlVGVzdF9lcnJldXIuanNvbiIsImZpbHRlcnMiOlt7ImRlc2NyaXB0aW9uIjoiR2VvSlNPTiBEb2N1bWVudHMiLCJmaWx0ZXIiOlsiKi5qc29uIiwiKi5nZW9qc29uIl19LHsiZGVzY3JpcHRpb24iOiJHZW9KU09OIERvY3VtZW50cyIsImZpbHRlciI6WyIqLmpzb24iXX0seyJkZXNjcmlwdGlvbiI6Ikdlb0pTT04gRG9jdW1lbnRzIiwiZmlsdGVyIjpbIiouZ2VvanNvbiJdfSx7ImRlc2NyaXB0aW9uIjoiQWxsIEZpbGVzIiwiZmlsdGVyIjpbIioiXX1dLCJoaWRkZW4iOmZhbHNlLCJpdGVtc1RvU2VsZWN0IjoiZmlsZXMiLCJuYW1lIjoiRGVzdERhdGFzZXRfR0VPSlNPTiIsInByb21wdCI6IkZpY2hpZXJzIEdlb0pTT04gRGVzdGluYXRpb24gIiwicmVxdWlyZWQiOnRydWUsInNlbGVjdE11bHRpcGxlIjpmYWxzZSwic3VwcG9ydGVkVmFsdWVUeXBlcyI6WyJnbG9iYWxQYXJhbWV0ZXIiXSwidHlwZSI6ImZpbGUiLCJ2YWxpZGF0ZUV4aXN0ZW5jZSI6ZmFsc2UsInZhbHVlVHlwZSI6InN0cmluZyJ9LHsiYWNjZXNzTW9kZSI6InJlYWQiLCJhbGxvd1VSTCI6dHJ1ZSwiZGVmYXVsdFZhbHVlIjoiJChGTUVfTUZfRElSKXNvdXJjZVRlc3QuanNvbiIsImZpbHRlcnMiOlt7ImRlc2NyaXB0aW9uIjoiR2VvSlNPTiBEb2N1bWVudHMiLCJmaWx0ZXIiOlsiKi5qc29uIiwiKi5nZW9qc29uIl19LHsiZGVzY3JpcHRpb24iOiJHZW9KU09OIERvY3VtZW50cyIsImZpbHRlciI6WyIqLmpzb24iXX0seyJkZXNjcmlwdGlvbiI6Ikdlb0pTT04gRG9jdW1lbnRzIiwiZmlsdGVyIjpbIiouZ2VvanNvbiJdfSx7ImRlc2NyaXB0aW9uIjoiQXJjaGl2ZSBGaWxlcyIsImZpbHRlciI6WyIqLjd6IiwiKi43emlwIiwiKi5yYXIiLCIqLnJ2eiIsIioudGFyIiwiKi50YXIuYnoyIiwiKi50YXIuZ3oiLCIqLnRneiIsIiouemlwIiwiKi56aXB4Il19LHsiZGVzY3JpcHRpb24iOiJDb21wcmVzc2VkIEZpbGVzIiwiZmlsdGVyIjpbIiouYnoyIiwiKi5neiJdfSx7ImRlc2NyaXB0aW9uIjoiQWxsIEZpbGVzIiwiZmlsdGVyIjpbIioiXX1dLCJpbmNsdWRlV2ViQnJvd3NlciI6dHJ1ZSwiaXRlbXNUb1NlbGVjdCI6ImZpbGVzIiwibmFtZSI6IlNvdXJjZURhdGFzZXRfR0VPSlNPTiIsInByb21wdCI6IlVSTCBvdSBmaWNoaWVyIEdlb0pTT04gc291cmNlIDoiLCJyZXF1aXJlZCI6dHJ1ZSwic2VsZWN0TXVsdGlwbGUiOnRydWUsInN1cHBvcnRlZFZhbHVlVHlwZXMiOlsiZ2xvYmFsUGFyYW1ldGVyIl0sInR5cGUiOiJmaWxlIiwidmFsaWRhdGVFeGlzdGVuY2UiOmZhbHNlLCJ2YWx1ZVR5cGUiOiJzdHJpbmcifSx7ImFsbG93T3JkZXJpbmciOmZhbHNlLCJjaG9pY2VTZXR0aW5ncyI6eyJjaG9pY2VTZXQiOiJ1c2VyRGVmaW5lZCIsImNob2ljZXMiOlt7ImRpc3BsYXkiOiJOdW1lcm8gZXQgbm9tIGRlIHJ1ZSIsInZhbHVlIjoiU3RyZWV0QWRkcmVzcyJ9LHsiZGlzcGxheSI6IlBvaW50IGQnaW50w6lyw6p0IiwidmFsdWUiOiJQb3NpdGlvbk9mSW50ZXJlc3QifSx7ImRpc3BsYXkiOiJQYXJjZWxsZSBDYWRhc3RyYWxlIiwidmFsdWUiOiJDYWRhc3RyYWxQYXJjZWwifSx7ImRpc3BsYXkiOiJSw6lmw6lyZW5jZXMgYWRtaW5pc3RyYXRpdmVzIiwidmFsdWUiOiJBZG1pbmlzdHJhdGlmIn1dLCJzb3J0IjoibmF0dXJhbFNvcnQifSwiZGVmYXVsdFZhbHVlIjoiU3RyZWV0QWRkcmVzcyBDYWRhc3RyYWxQYXJjZWwgUG9zaXRpb25PZkludGVyZXN0IEFkbWluaXN0cmF0aWYiLCJoaWRkZW4iOmZhbHNlLCJuYW1lIjoiVGVzdF9SZXZlcnNlR2VvY29kZVByZWZlcmVuY2UiLCJwcm9tcHQiOiJUeXBlIGRlIGfDqW9jb2RhZ2UiLCJyZXF1aXJlZCI6dHJ1ZSwic2luZ2xlU2VsZWN0aW9uIjpmYWxzZSwic3VwcG9ydGVkVmFsdWVUeXBlcyI6WyJleHByZXNzaW9uIiwiZ2xvYmFsUGFyYW1ldGVyIl0sInR5cGUiOiJsaXN0Ym94IiwidmFsdWVUeXBlIjoic3RyaW5nIn0seyJkZWZhdWx0VmFsdWUiOiIyIiwiaGlkZGVuIjpmYWxzZSwibWF4aW11bSI6MTAwLCJtYXhpbXVtRXhjbHVzaXZlIjp0cnVlLCJtaW5pbXVtIjoxLCJtaW5pbXVtRXhjbHVzaXZlIjpmYWxzZSwibXVsdGlwbGVPZiI6MSwibmFtZSI6IlRlc3RfbWF4aW11bVJlc3BvbnNlcyIsInByb21wdCI6Ik5vbWJyZSBkZSByw6lwb25zZXMgbWF4aW1hbGVzIiwicmVxdWlyZWQiOnRydWUsInNob3dTbGlkZXIiOmZhbHNlLCJzbGlkZXJUaWNrSW5jcmVtZW50IjowLCJzdXBwb3J0ZWRWYWx1ZVR5cGVzIjpbImV4cHJlc3Npb24iLCJnbG9iYWxQYXJhbWV0ZXIiXSwidHlwZSI6Im51bWJlciIsInZhbHVlVHlwZSI6InN0cmluZyJ9LHsiZGVmYXVsdFZhbHVlIjoiNTAiLCJoaWRkZW4iOmZhbHNlLCJtYXhpbXVtIjoxMDAwLCJtYXhpbXVtRXhjbHVzaXZlIjpmYWxzZSwibWluaW11bSI6MSwibWluaW11bUV4Y2x1c2l2ZSI6ZmFsc2UsIm11bHRpcGxlT2YiOjEsIm5hbWUiOiJUZXN0X2Rpc3RNYXhpIiwicHJvbXB0IjoiRGlzdGFuY2UgbWF4aW1hbGUgZGUgcmVjaGVyY2hlIiwicmVxdWlyZWQiOnRydWUsInNob3dTbGlkZXIiOmZhbHNlLCJzbGlkZXJUaWNrSW5jcmVtZW50IjowLCJzdXBwb3J0ZWRWYWx1ZVR5cGVzIjpbImV4cHJlc3Npb24iLCJnbG9iYWxQYXJhbWV0ZXIiXSwidHlwZSI6Im51bWJlciIsInZhbHVlVHlwZSI6InN0cmluZyJ9XX0="
+#! >
+#! <PARAMETER_INFO>
+#!     <INFO NAME="DestDataset_GEOJSON" 
+#!   DEFAULT_VALUE="$(FME_MF_DIR)sourceTest_erreur.json"
+#!   SCOPE="DEPENDENT"
+#!   GENERATED_GUI_LINE="true"
+#!   GUI_LINE="GUI FILENAME DestDataset_GEOJSON GeoJSON_Documents(*.json;*.geojson)|*.json;*.geojson|GeoJSON_Documents(*.json)|*.json|GeoJSON_Documents(*.geojson)|*.geojson|All_Files(*)|* Fichiers GeoJSON Destination "
+#! />
+#!     <INFO NAME="SourceDataset_GEOJSON" 
+#!   DEFAULT_VALUE="$(FME_MF_DIR)sourceTest.json"
+#!   SCOPE="DEPENDENT"
+#!   GENERATED_GUI_LINE="true"
+#!   GUI_LINE="GUI FILE_OR_URL SourceDataset_GEOJSON INCLUDE_WEB_BROWSER%GeoJSON_Documents(*.json;*.geojson)|*.json;*.geojson|GeoJSON_Documents(*.json)|*.json|GeoJSON_Documents(*.geojson)|*.geojson|Archive_Files(*.7z;*.7zip;*.rar;*.rvz;*.tar;*.tar.bz2;*.tar.gz;*.tgz;*.zip;*.zipx)|*.7z;*.7zip;*.rar;*.rvz;*.tar;*.tar.bz2;*.tar.gz;*.tgz;*.zip;*.zipx|Compressed_Files(*.bz2;*.gz)|*.bz2;*.gz|All_Files(*)|* URL ou fichier GeoJSON source :"
+#! />
+#!     <INFO NAME="Test_ReverseGeocodePreference" 
+#!   DEFAULT_VALUE="StreetAddress CadastralParcel PositionOfInterest Administratif"
+#!   SCOPE="STAND_ALONE"
+#!   GENERATED_GUI_LINE="true"
+#!   GUI_LINE="GUI LOOKUP_LISTBOX_OR_ATTR Test_ReverseGeocodePreference Numero&lt;space&gt;et&lt;space&gt;nom&lt;space&gt;de&lt;space&gt;rue,StreetAddress%Point&lt;space&gt;d&lt;apos&gt;int&lt;u00e9&gt;r&lt;u00ea&gt;t,PositionOfInterest%Parcelle&lt;space&gt;Cadastrale,CadastralParcel%R&lt;u00e9&gt;f&lt;u00e9&gt;rences&lt;space&gt;administratives,Administratif Type de géocodage"
+#! />
+#!     <INFO NAME="Test_maximumResponses" 
+#!   DEFAULT_VALUE="2"
+#!   SCOPE="STAND_ALONE"
+#!   GENERATED_GUI_LINE="true"
+#!   GUI_LINE="GUI RANGE_SLIDER_OR_ATTR Test_maximumResponses RANGE:[1,100)%PRECISION:0 Nombre de réponses maximales"
+#! />
+#!     <INFO NAME="Test_distMaxi" 
+#!   DEFAULT_VALUE="50"
+#!   SCOPE="STAND_ALONE"
+#!   GENERATED_GUI_LINE="true"
+#!   GUI_LINE="GUI RANGE_SLIDER_OR_ATTR Test_distMaxi RANGE:[1,1000]%PRECISION:0 Distance maximale de recherche"
+#! />
+#! </PARAMETER_INFO>
+#! </USER_PARAMETERS>
+#! <COMMENTS>
+#! </COMMENTS>
+#! <CONSTANTS>
+#! </CONSTANTS>
+#! <BOOKMARKS>
+#! </BOOKMARKS>
+#! <TRANSFORMERS>
+#! <TRANSFORMER
+#!   IDENTIFIER="2"
+#!   TYPE="Creator"
+#!   VERSION="6"
+#!   POSITION="800 -1400"
+#!   BOUNDING_RECT="800 -1400 430 71"
+#!   ORDER="500000000000183"
+#!   PARMS_EDITED="true"
+#!   ENABLED="true"
+#!   LAST_PARM_EDIT="22776"
+#! >
+#!     <OUTPUT_FEAT NAME="CREATED"/>
+#!     <FEAT_COLLAPSED COLLAPSED="0"/>
+#!     <XFORM_PARM PARM_NAME="ATEND" PARM_VALUE="no"/>
+#!     <XFORM_PARM PARM_NAME="COORDS" PARM_VALUE="&lt;Unused&gt;"/>
+#!     <XFORM_PARM PARM_NAME="COORDSYS" PARM_VALUE=""/>
+#!     <XFORM_PARM PARM_NAME="CRE_ATTR" PARM_VALUE=""/>
+#!     <XFORM_PARM PARM_NAME="GEOM" PARM_VALUE="&lt;lt&gt;?xml&lt;space&gt;version=&lt;quote&gt;1.0&lt;quote&gt;&lt;space&gt;encoding=&lt;quote&gt;US_ASCII&lt;quote&gt;&lt;space&gt;standalone=&lt;quote&gt;no&lt;quote&gt;&lt;space&gt;?&lt;gt&gt;&lt;lt&gt;geometry&lt;gt&gt;&lt;lt&gt;point&lt;gt&gt;&lt;lt&gt;coord&lt;space&gt;x=&lt;quote&gt;2.3241667&lt;quote&gt;&lt;space&gt;y=&lt;quote&gt;48.8033333&lt;quote&gt;&lt;solidus&gt;&lt;gt&gt;&lt;lt&gt;&lt;solidus&gt;point&lt;gt&gt;&lt;lt&gt;&lt;solidus&gt;geometry&lt;gt&gt;"/>
+#!     <XFORM_PARM PARM_NAME="GEOMTYPE" PARM_VALUE="Geometry Object"/>
+#!     <XFORM_PARM PARM_NAME="NUM" PARM_VALUE="1"/>
+#!     <XFORM_PARM PARM_NAME="OAN_GROUP" PARM_VALUE=""/>
+#!     <XFORM_PARM PARM_NAME="PARAMETERS_GROUP" PARM_VALUE=""/>
+#!     <XFORM_PARM PARM_NAME="TRANSFORMER_GROUP" PARM_VALUE=""/>
+#!     <XFORM_PARM PARM_NAME="XFORMER_NAME" PARM_VALUE="Creator"/>
+#! </TRANSFORMER>
+#! <TRANSFORMER
+#!   IDENTIFIER="3"
+#!   TYPE="Creator"
+#!   VERSION="6"
+#!   POSITION="800 -1800"
+#!   BOUNDING_RECT="800 -1800 430 71"
+#!   ORDER="500000000000184"
+#!   PARMS_EDITED="true"
+#!   ENABLED="true"
+#!   LAST_PARM_EDIT="22776"
+#! >
+#!     <OUTPUT_FEAT NAME="CREATED"/>
+#!     <FEAT_COLLAPSED COLLAPSED="0"/>
+#!     <XFORM_PARM PARM_NAME="ATEND" PARM_VALUE="no"/>
+#!     <XFORM_PARM PARM_NAME="COORDS" PARM_VALUE="&lt;Unused&gt;"/>
+#!     <XFORM_PARM PARM_NAME="COORDSYS" PARM_VALUE=""/>
+#!     <XFORM_PARM PARM_NAME="CRE_ATTR" PARM_VALUE=""/>
+#!     <XFORM_PARM PARM_NAME="GEOM" PARM_VALUE="&lt;lt&gt;?xml&lt;space&gt;version=&lt;quote&gt;1.0&lt;quote&gt;&lt;space&gt;encoding=&lt;quote&gt;US_ASCII&lt;quote&gt;&lt;space&gt;standalone=&lt;quote&gt;no&lt;quote&gt;&lt;space&gt;?&lt;gt&gt;&lt;lt&gt;geometry&lt;gt&gt;&lt;lt&gt;null&lt;solidus&gt;&lt;gt&gt;&lt;lt&gt;&lt;solidus&gt;geometry&lt;gt&gt;"/>
+#!     <XFORM_PARM PARM_NAME="GEOMTYPE" PARM_VALUE="Geometry Object"/>
+#!     <XFORM_PARM PARM_NAME="NUM" PARM_VALUE="1"/>
+#!     <XFORM_PARM PARM_NAME="OAN_GROUP" PARM_VALUE=""/>
+#!     <XFORM_PARM PARM_NAME="PARAMETERS_GROUP" PARM_VALUE=""/>
+#!     <XFORM_PARM PARM_NAME="TRANSFORMER_GROUP" PARM_VALUE=""/>
+#!     <XFORM_PARM PARM_NAME="XFORMER_NAME" PARM_VALUE="Creator_2"/>
+#! </TRANSFORMER>
+#! <TRANSFORMER
+#!   IDENTIFIER="4"
+#!   TYPE="Creator"
+#!   VERSION="6"
+#!   POSITION="800 -2200"
+#!   BOUNDING_RECT="800 -2200 430 71"
+#!   ORDER="500000000000185"
+#!   PARMS_EDITED="true"
+#!   ENABLED="true"
+#!   LAST_PARM_EDIT="22776"
+#! >
+#!     <OUTPUT_FEAT NAME="CREATED"/>
+#!     <FEAT_COLLAPSED COLLAPSED="0"/>
+#!     <XFORM_PARM PARM_NAME="ATEND" PARM_VALUE="no"/>
+#!     <XFORM_PARM PARM_NAME="COORDS" PARM_VALUE="&lt;Unused&gt;"/>
+#!     <XFORM_PARM PARM_NAME="COORDSYS" PARM_VALUE=""/>
+#!     <XFORM_PARM PARM_NAME="CRE_ATTR" PARM_VALUE=""/>
+#!     <XFORM_PARM PARM_NAME="GEOM" PARM_VALUE="&lt;lt&gt;?xml&lt;space&gt;version=&lt;quote&gt;1.0&lt;quote&gt;&lt;space&gt;encoding=&lt;quote&gt;US_ASCII&lt;quote&gt;&lt;space&gt;standalone=&lt;quote&gt;no&lt;quote&gt;&lt;space&gt;?&lt;gt&gt;&lt;lt&gt;geometry&lt;gt&gt;&lt;lt&gt;line&lt;gt&gt;&lt;lt&gt;coord&lt;space&gt;x=&lt;quote&gt;2.3241667&lt;quote&gt;&lt;space&gt;y=&lt;quote&gt;48.803333&lt;quote&gt;&lt;solidus&gt;&lt;gt&gt;&lt;lt&gt;coord&lt;space&gt;x=&lt;quote&gt;2.4241667&lt;quote&gt;&lt;space&gt;y=&lt;quote&gt;48.903333&lt;quote&gt;&lt;solidus&gt;&lt;gt&gt;&lt;lt&gt;&lt;solidus&gt;line&lt;gt&gt;&lt;lt&gt;&lt;solidus&gt;geometry&lt;gt&gt;"/>
+#!     <XFORM_PARM PARM_NAME="GEOMTYPE" PARM_VALUE="Geometry Object"/>
+#!     <XFORM_PARM PARM_NAME="NUM" PARM_VALUE="1"/>
+#!     <XFORM_PARM PARM_NAME="OAN_GROUP" PARM_VALUE=""/>
+#!     <XFORM_PARM PARM_NAME="PARAMETERS_GROUP" PARM_VALUE=""/>
+#!     <XFORM_PARM PARM_NAME="TRANSFORMER_GROUP" PARM_VALUE=""/>
+#!     <XFORM_PARM PARM_NAME="XFORMER_NAME" PARM_VALUE="Creator_3"/>
+#! </TRANSFORMER>
+#! <TRANSFORMER
+#!   IDENTIFIER="5"
+#!   TYPE="Counter"
+#!   VERSION="4"
+#!   POSITION="1799.9999999999998 -1800"
+#!   BOUNDING_RECT="1799.9999999999998 -1800 454 71"
+#!   ORDER="500000000000186"
+#!   PARMS_EDITED="true"
+#!   ENABLED="true"
+#!   LAST_PARM_EDIT="22776"
+#! >
+#!     <OUTPUT_FEAT NAME="OUTPUT"/>
+#!     <FEAT_COLLAPSED COLLAPSED="0"/>
+#!     <XFORM_ATTR ATTR_NAME="id" IS_USER_CREATED="false" FEAT_INDEX="0" />
+#!     <XFORM_PARM PARM_NAME="ADVANCED_GROUP" PARM_VALUE=""/>
+#!     <XFORM_PARM PARM_NAME="CNT_ATTR" PARM_VALUE="id"/>
+#!     <XFORM_PARM PARM_NAME="DOMAIN" PARM_VALUE="counter"/>
+#!     <XFORM_PARM PARM_NAME="GROUP_BY" PARM_VALUE="&lt;Unused&gt;"/>
+#!     <XFORM_PARM PARM_NAME="GROUP_BY_MODE" PARM_VALUE="&lt;Unused&gt;"/>
+#!     <XFORM_PARM PARM_NAME="GROUP_PROCESSING_GROUP" PARM_VALUE="&lt;Unused&gt;"/>
+#!     <XFORM_PARM PARM_NAME="GRP_CNT_ATTR" PARM_VALUE=""/>
+#!     <XFORM_PARM PARM_NAME="OUTPUT_ATTR_NAMES_GROUP" PARM_VALUE=""/>
+#!     <XFORM_PARM PARM_NAME="PARAMETERS_GROUP" PARM_VALUE=""/>
+#!     <XFORM_PARM PARM_NAME="SCOPE" PARM_VALUE="Global"/>
+#!     <XFORM_PARM PARM_NAME="START" PARM_VALUE="0"/>
+#!     <XFORM_PARM PARM_NAME="TRANSFORMER_GROUP" PARM_VALUE=""/>
+#!     <XFORM_PARM PARM_NAME="XFORMER_NAME" PARM_VALUE="Counter"/>
+#! </TRANSFORMER>
+#! <TRANSFORMER
+#!   IDENTIFIER="12"
+#!   TYPE="OTV_GeolocInverseIGN"
+#!   VERSION="1"
+#!   POSITION="2600 -800"
+#!   BOUNDING_RECT="2600 -800 492.00106825772946 71"
+#!   ORDER="500000000000187"
+#!   PARMS_EDITED="true"
+#!   ENABLED="true"
+#!   LAST_PARM_EDIT="22776"
+#! >
+#!     <OUTPUT_FEAT NAME="StreetAddress"/>
+#!     <FEAT_COLLAPSED COLLAPSED="0"/>
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.Numero" IS_USER_CREATED="false" FEAT_INDEX="0" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.Rue" IS_USER_CREATED="false" FEAT_INDEX="0" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.Commune" IS_USER_CREATED="false" FEAT_INDEX="0" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.Departement" IS_USER_CREATED="false" FEAT_INDEX="0" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.CodeCommuneInsee" IS_USER_CREATED="false" FEAT_INDEX="0" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.CodePostal" IS_USER_CREATED="false" FEAT_INDEX="0" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.DistanceObjet" IS_USER_CREATED="false" FEAT_INDEX="0" />
+#!     <XFORM_ATTR ATTR_NAME="x_wgs84" IS_USER_CREATED="false" FEAT_INDEX="0" />
+#!     <XFORM_ATTR ATTR_NAME="y_wgs84" IS_USER_CREATED="false" FEAT_INDEX="0" />
+#!     <XFORM_ATTR ATTR_NAME="id" IS_USER_CREATED="false" FEAT_INDEX="0" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.listcoord{}.part" IS_USER_CREATED="false" FEAT_INDEX="0" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.listcoord{}.startIndex" IS_USER_CREATED="false" FEAT_INDEX="0" />
+#!     <OUTPUT_FEAT NAME="CadastralParcel"/>
+#!     <FEAT_COLLAPSED COLLAPSED="1"/>
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.ParcelleComplete" IS_USER_CREATED="false" FEAT_INDEX="1" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.Numero" IS_USER_CREATED="false" FEAT_INDEX="1" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.Feuille" IS_USER_CREATED="false" FEAT_INDEX="1" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.Section" IS_USER_CREATED="false" FEAT_INDEX="1" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.Departement" IS_USER_CREATED="false" FEAT_INDEX="1" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.CommuneAbsorbee" IS_USER_CREATED="false" FEAT_INDEX="1" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.Commune" IS_USER_CREATED="false" FEAT_INDEX="1" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.CodeCommuneInsee" IS_USER_CREATED="false" FEAT_INDEX="1" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.Arrondissement" IS_USER_CREATED="false" FEAT_INDEX="1" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.Type" IS_USER_CREATED="false" FEAT_INDEX="1" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.DistanceObjet" IS_USER_CREATED="false" FEAT_INDEX="1" />
+#!     <XFORM_ATTR ATTR_NAME="x_wgs84" IS_USER_CREATED="false" FEAT_INDEX="1" />
+#!     <XFORM_ATTR ATTR_NAME="y_wgs84" IS_USER_CREATED="false" FEAT_INDEX="1" />
+#!     <XFORM_ATTR ATTR_NAME="id" IS_USER_CREATED="false" FEAT_INDEX="1" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.listcoord{}.part" IS_USER_CREATED="false" FEAT_INDEX="1" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.listcoord{}.startIndex" IS_USER_CREATED="false" FEAT_INDEX="1" />
+#!     <OUTPUT_FEAT NAME="PointOfInterest"/>
+#!     <FEAT_COLLAPSED COLLAPSED="2"/>
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.Nom" IS_USER_CREATED="false" FEAT_INDEX="2" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.Nature" IS_USER_CREATED="false" FEAT_INDEX="2" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.DistanceObjet" IS_USER_CREATED="false" FEAT_INDEX="2" />
+#!     <XFORM_ATTR ATTR_NAME="x_wgs84" IS_USER_CREATED="false" FEAT_INDEX="2" />
+#!     <XFORM_ATTR ATTR_NAME="y_wgs84" IS_USER_CREATED="false" FEAT_INDEX="2" />
+#!     <XFORM_ATTR ATTR_NAME="id" IS_USER_CREATED="false" FEAT_INDEX="2" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.listcoord{}.part" IS_USER_CREATED="false" FEAT_INDEX="2" />
+#!     <XFORM_ATTR ATTR_NAME="GeolocInverse.listcoord{}.startIndex" IS_USER_CREATED="false" FEAT_INDEX="2" />
+#!     <OUTPUT_FEAT NAME="Administratif"/>
+#!     <FEAT_COLLAPSED COLLAPSED="3"/>
+#!     <XFORM_ATTR ATTR_NAME="id" IS_USER_CREATED="false" FEAT_INDEX="3" />
+#!     <XFORM_ATTR ATTR_NAME="_ReverseGeocodePreference" IS_USER_CREATED="false" FEAT_INDEX="3" />
+#!     <XFORM_ATTR ATTR_NAME="GeocodReversePref_listReverseGeocodePreference" IS_USER_CREATED="false" FEAT_INDEX="3" />
+#!     <XFORM_ATTR ATTR_NAME="_response_body" IS_USER_CREATED="false" FEAT_INDEX="3" />
+#!     <XFORM_ATTR ATTR_NAME="_http_status_code" IS_USER_CREATED="false" FEAT_INDEX="3" />
+#!     <OUTPUT_FEAT NAME="PasDeGeomSource"/>
+#!     <FEAT_COLLAPSED COLLAPSED="4"/>
+#!     <XFORM_ATTR ATTR_NAME="id" IS_USER_CREATED="false" FEAT_INDEX="4" />
+#!     <XFORM_PARM PARM_NAME="ReverseGeocodePreference" PARM_VALUE="$(Test_ReverseGeocodePreference)"/>
+#!     <XFORM_PARM PARM_NAME="TRANSFORMER_GROUP" PARM_VALUE=""/>
+#!     <XFORM_PARM PARM_NAME="XFORMER_NAME" PARM_VALUE="OTV_GeolocInverseIGN"/>
+#!     <XFORM_PARM PARM_NAME="__COMPOUND_PARAMETERS" PARM_VALUE=""/>
+#!     <XFORM_PARM PARM_NAME="distMaxi" PARM_VALUE="$(Test_distMaxi)"/>
+#!     <XFORM_PARM PARM_NAME="maximumResponses" PARM_VALUE="$(Test_maximumResponses)"/>
+#! </TRANSFORMER>
+#! </TRANSFORMERS>
+#! <FEAT_LINKS>
+#! <FEAT_LINK
+#!   IDENTIFIER="6"
+#!   SOURCE_NODE="2"
+#!   TARGET_NODE="5"
+#!   SOURCE_PORT_DESC="fo 0 CREATED"
+#!   TARGET_PORT_DESC="fi 0 "
+#!   ENABLED="true"
+#!   EXECUTION_IDX="0"
+#!   HIDDEN="false"
+#!   COLOUR="0,0,0,1"
+#!   PEN_WIDTH="4"
+#!   PEN_STYLE="1"
+#!   LINK_STYLE_NAME="&lt;Default&gt;"
+#!   EXTRA_POINTS=""
+#! />
+#! <FEAT_LINK
+#!   IDENTIFIER="7"
+#!   SOURCE_NODE="3"
+#!   TARGET_NODE="5"
+#!   SOURCE_PORT_DESC="fo 0 CREATED"
+#!   TARGET_PORT_DESC="fi 0 "
+#!   ENABLED="true"
+#!   EXECUTION_IDX="0"
+#!   HIDDEN="false"
+#!   COLOUR="0,0,0,1"
+#!   PEN_WIDTH="4"
+#!   PEN_STYLE="1"
+#!   LINK_STYLE_NAME="&lt;Default&gt;"
+#!   EXTRA_POINTS=""
+#! />
+#! <FEAT_LINK
+#!   IDENTIFIER="15"
+#!   SOURCE_NODE="4"
+#!   TARGET_NODE="14"
+#!   SOURCE_PORT_DESC="fo 0 CREATED"
+#!   TARGET_PORT_DESC="-1"
+#!   ENABLED="true"
+#!   EXECUTION_IDX="0"
+#!   HIDDEN="false"
+#!   COLOUR="0,0,0,1"
+#!   PEN_WIDTH="4"
+#!   PEN_STYLE="1"
+#!   LINK_STYLE_NAME="&lt;Default&gt;"
+#!   EXTRA_POINTS=""
+#! />
+#! <FEAT_LINK
+#!   IDENTIFIER="13"
+#!   SOURCE_NODE="11"
+#!   TARGET_NODE="12"
+#!   SOURCE_PORT_DESC="-1"
+#!   TARGET_PORT_DESC="fi 0 DonneesGeolocalisees"
+#!   ENABLED="true"
+#!   EXECUTION_IDX="0"
+#!   HIDDEN="false"
+#!   COLOUR="0,0,0,1"
+#!   PEN_WIDTH="4"
+#!   PEN_STYLE="1"
+#!   LINK_STYLE_NAME="&lt;Default&gt;"
+#!   EXTRA_POINTS=""
+#! />
+#! <FEAT_LINK
+#!   IDENTIFIER="10"
+#!   SOURCE_NODE="5"
+#!   TARGET_NODE="9"
+#!   SOURCE_PORT_DESC="fo 0 OUTPUT"
+#!   TARGET_PORT_DESC="-1"
+#!   ENABLED="true"
+#!   EXECUTION_IDX="0"
+#!   HIDDEN="false"
+#!   COLOUR="0,0,0,1"
+#!   PEN_WIDTH="4"
+#!   PEN_STYLE="1"
+#!   LINK_STYLE_NAME="&lt;Default&gt;"
+#!   EXTRA_POINTS=""
+#! />
+#! </FEAT_LINKS>
+#! <BREAKPOINTS>
+#! </BREAKPOINTS>
+#! <ATTR_LINKS>
+#! </ATTR_LINKS>
+#! <SUBDOCUMENTS>
+#! </SUBDOCUMENTS>
+#! <LOOKUP_TABLES>
+#! </LOOKUP_TABLES>
+#! </WORKSPACE>
+
+FME_PYTHON_VERSION 310
+ARCGIS_COMPATIBILITY ARCGIS_AUTO
+GUI IGNORE SourceDataset_GEOJSON_2,GEOJSON_IN_USE_SEARCH_ENVELOPE_GEOJSON_2,GEOJSON_IN_SEARCH_ENVELOPE_MINX_GEOJSON_2,GEOJSON_IN_SEARCH_ENVELOPE_MINY_GEOJSON_2,GEOJSON_IN_SEARCH_ENVELOPE_MAXX_GEOJSON_2,GEOJSON_IN_SEARCH_ENVELOPE_MAXY_GEOJSON_2,GEOJSON_IN_SEARCH_ENVELOPE_COORDINATE_SYSTEM_GEOJSON_2,GEOJSON_IN_CLIP_TO_ENVELOPE_GEOJSON_2,GEOJSON_IN_NETWORK_AUTHENTICATION_GEOJSON_2,DestDataset_GEOJSON_1,GEOJSON_OUT_FME_GROUP_NAMED1_GEOJSON_1,GEOJSON_OUT_WRITER_CHARSET_GEOJSON_1,GEOJSON_OUT_WRITE_BOM_GEOJSON_1,GEOJSON_OUT_FILE_STRUCTURE_GEOJSON_1,GEOJSON_OUT_FME_GROUP_NAMED2_GEOJSON_1,GEOJSON_OUT_PRETTY_PRINT_GEOJSON_1,GEOJSON_OUT_INDENT_SIZE_GEOJSON_1,GEOJSON_OUT_MAX_COORDINATE_PRECISION_GEOJSON_1,GEOJSON_OUT_FME_GROUP_NAMED3_GEOJSON_1,GEOJSON_OUT_COUNTER_CLOCKWISE_AREAS_GEOJSON_1,GEOJSON_OUT_WGS84_REPROJECTION_GEOJSON_1,GEOJSON_OUT_FME_GROUP_NAMED4_GEOJSON_1,GEOJSON_OUT_JSONP_FUNC_NAME_GEOJSON_1
+# ============================================================================
+DEFAULT_MACRO DestDataset_GEOJSON $(FME_MF_DIR)sourceTest_erreur.json
+
+DEFAULT_MACRO SourceDataset_GEOJSON $(FME_MF_DIR)sourceTest.json
+
+DEFAULT_MACRO Test_ReverseGeocodePreference StreetAddress CadastralParcel PositionOfInterest Administratif
+
+DEFAULT_MACRO Test_maximumResponses 2
+
+DEFAULT_MACRO Test_distMaxi 50
+
+# ============================================================================
+INCLUDE [ if {{$(DestDataset_GEOJSON$encode)} == {}} { puts_real {Parameter 'DestDataset_GEOJSON' must be given a value.}; exit 1; }; ]
+INCLUDE [ if {{$(SourceDataset_GEOJSON$encode)} == {}} { puts_real {Parameter 'SourceDataset_GEOJSON' must be given a value.}; exit 1; }; ]
+INCLUDE [ if {{$(Test_ReverseGeocodePreference$encode)} == {}} { puts_real {Parameter 'Test_ReverseGeocodePreference' must be given a value.}; exit 1; }; ]
+INCLUDE [ if {{$(Test_maximumResponses$encode)} == {}} { puts_real {Parameter 'Test_maximumResponses' must be given a value.}; exit 1; }; ]
+INCLUDE [ if {{$(Test_distMaxi$encode)} == {}} { puts_real {Parameter 'Test_distMaxi' must be given a value.}; exit 1; }; ]
+#! START_HEADER
+#! START_WB_HEADER
+READER_TYPE MULTI_READER
+MULTI_READER_TYPE{0} GEOJSON
+MULTI_READER_KEYWORD{0} GEOJSON_2
+MULTI_READER_GEN_DIRECTIVES{0} SEARCH_ENVELOPE_MINY,0,EXPOSE_ATTRS_GROUP,,SEARCH_ENVELOPE_MINX,0,SEARCH_ENVELOPE_MAXX,0,FLATTEN_MODE,ALL_LEVELS,USE_SEARCH_ENVELOPE,NO,CLIP_TO_ENVELOPE,NO,USE_BASENAME_AS_DEFAULT_FEATURE_TYPE,Yes,GEOJSON_EXPOSE_FORMAT_ATTRS,,SEARCH_ENVELOPE_COORDINATE_SYSTEM,,SEARCH_ENVELOPE_MAXY,0,_MERGE_SCHEMAS,YES
+WRITER_TYPE MULTI_WRITER
+MULTI_WRITER_DATASET_ORDER BY_ID
+MULTI_WRITER_FIRST_WRITER_ID 0
+MULTI_WRITER_TYPE{0} GEOJSON
+MULTI_WRITER_KEYWORD{0} GEOJSON_1
+#! END_WB_HEADER
+#! START_WB_HEADER
+MACRO WB_KEYWORD "GEOJSON_2"
+#! END_WB_HEADER
+#! START_SOURCE_HEADER GEOJSON GEOJSON_2
+# The dataset this mapping file was generated from was:
+#! END_SOURCE_HEADER
+#! START_WB_HEADER
+DEFAULT_MACRO SourceDataset
+INCLUDE [ if {{$(SourceDataset)} != ""} {                        \
+ puts {DEFAULT_MACRO SourceDataset_GEOJSON_2 $(SourceDataset)}     \
+ } ]
+#! END_WB_HEADER
+#! START_SOURCE_HEADER GEOJSON GEOJSON_2
+DEFAULT_MACRO SourceDataset_GEOJSON_2 $(SourceDataset_GEOJSON)
+GUI FILE_OR_URL SourceDataset_GEOJSON_2 GeoJSON_Documents(*.json;*.geojson)|*.json;*.geojson|GeoJSON_Documents(*.json)|*.json|GeoJSON_Documents(*.geojson)|*.geojson|All_Files|* Source GeoJSON File or URL:
+DEFAULT_MACRO GEOJSON_IN_FLATTEN_MODE_GEOJSON_2 ALL_LEVELS
+GEOJSON_2_FLATTEN_MODE "$(GEOJSON_IN_FLATTEN_MODE_GEOJSON_2)"
+DEFAULT_MACRO GEOJSON_IN_EXPOSE_ATTRS_GROUP_GEOJSON_2 
+GEOJSON_2_EXPOSE_ATTRS_GROUP "$(GEOJSON_IN_EXPOSE_ATTRS_GROUP_GEOJSON_2)"
+DEFAULT_MACRO GEOJSON_IN_USE_BASENAME_AS_DEFAULT_FEATURE_TYPE_GEOJSON_2 Yes
+GEOJSON_2_USE_BASENAME_AS_DEFAULT_FEATURE_TYPE "$(GEOJSON_IN_USE_BASENAME_AS_DEFAULT_FEATURE_TYPE_GEOJSON_2)"
+# Include this file in source setting section to add external search envelope processing
+# Zero as a default means we don't do any search -- this makes workbench happier
+DEFAULT_MACRO GEOJSON_IN_USE_SEARCH_ENVELOPE_GEOJSON_2 NO
+GEOJSON_2_USE_SEARCH_ENVELOPE "$(GEOJSON_IN_USE_SEARCH_ENVELOPE_GEOJSON_2)"
+GUI ACTIVEDISCLOSUREGROUP GEOJSON_IN_USE_SEARCH_ENVELOPE_GEOJSON_2 GEOJSON_IN_SEARCH_ENVELOPE_MINX_GEOJSON_2%GEOJSON_IN_SEARCH_ENVELOPE_MINY_GEOJSON_2%GEOJSON_IN_SEARCH_ENVELOPE_MAXX_GEOJSON_2%GEOJSON_IN_SEARCH_ENVELOPE_MAXY_GEOJSON_2%GEOJSON_IN_SEARCH_ENVELOPE_COORDINATE_SYSTEM_GEOJSON_2%GEOJSON_IN_CLIP_TO_ENVELOPE_GEOJSON_2%GEOJSON_IN_SEARCH_METHOD%GEOJSON_IN_SEARCH_METHOD_FILTER%GEOJSON_IN_SEARCH_ORDER%GEOJSON_IN_SEARCH_FEATURE%GEOJSON_IN_DUMMY_SEARCH_ENVELOPE_PARAMETER Use Search Envelope
+# ===========================================================================
+GUI LOOKUP GEOJSON_IN_SEARCH_ENVELOPE_MINX_GEOJSON_2 <Unused>,0 
+DEFAULT_MACRO GEOJSON_IN_SEARCH_ENVELOPE_MINX_GEOJSON_2 0
+GEOJSON_2_SEARCH_ENVELOPE "$(GEOJSON_IN_SEARCH_ENVELOPE_MINX_GEOJSON_2)"
+GUI OPTIONAL FLOAT GEOJSON_IN_SEARCH_ENVELOPE_MINX_GEOJSON_2 Minimum X:
+# ===========================================================================
+GUI LOOKUP GEOJSON_IN_SEARCH_ENVELOPE_MINY_GEOJSON_2 <Unused>,0 
+DEFAULT_MACRO GEOJSON_IN_SEARCH_ENVELOPE_MINY_GEOJSON_2 0
+GEOJSON_2_SEARCH_ENVELOPE "$(GEOJSON_IN_SEARCH_ENVELOPE_MINY_GEOJSON_2)"
+GUI OPTIONAL FLOAT GEOJSON_IN_SEARCH_ENVELOPE_MINY_GEOJSON_2 Minimum Y:
+# ===========================================================================
+GUI LOOKUP GEOJSON_IN_SEARCH_ENVELOPE_MAXX_GEOJSON_2 <Unused>,0 
+DEFAULT_MACRO GEOJSON_IN_SEARCH_ENVELOPE_MAXX_GEOJSON_2 0
+GEOJSON_2_SEARCH_ENVELOPE "$(GEOJSON_IN_SEARCH_ENVELOPE_MAXX_GEOJSON_2)"
+GUI OPTIONAL FLOAT GEOJSON_IN_SEARCH_ENVELOPE_MAXX_GEOJSON_2 Maximum X:
+# ===========================================================================
+GUI LOOKUP GEOJSON_IN_SEARCH_ENVELOPE_MAXY_GEOJSON_2 <Unused>,0 
+DEFAULT_MACRO GEOJSON_IN_SEARCH_ENVELOPE_MAXY_GEOJSON_2 0
+GEOJSON_2_SEARCH_ENVELOPE "$(GEOJSON_IN_SEARCH_ENVELOPE_MAXY_GEOJSON_2)"
+GUI OPTIONAL FLOAT GEOJSON_IN_SEARCH_ENVELOPE_MAXY_GEOJSON_2 Maximum Y:
+# ===========================================================================
+GUI LOOKUP GEOJSON_IN_SEARCH_ENVELOPE_COORDINATE_SYSTEM_GEOJSON_2 <Unused>, 
+DEFAULT_MACRO GEOJSON_IN_SEARCH_ENVELOPE_COORDINATE_SYSTEM_GEOJSON_2 
+GEOJSON_2_SEARCH_ENVELOPE "$(GEOJSON_IN_SEARCH_ENVELOPE_COORDINATE_SYSTEM_GEOJSON_2)"
+GUI OPTIONAL COORDSYS GEOJSON_IN_SEARCH_ENVELOPE_COORDINATE_SYSTEM_GEOJSON_2 Search Envelope Coordinate System:
+# ===========================================================================
+# BUG18999: We now have a soft clip to fall back on like native spatial index
+# thus we are reintroducing the clip to envelop as an option for users.
+# Defualt to soft clip as per the existing database readers we are emulating
+GUI LOOKUP GEOJSON_IN_CLIP_TO_ENVELOPE_GEOJSON_2 <Unused>,NO 
+DEFAULT_MACRO GEOJSON_IN_CLIP_TO_ENVELOPE_GEOJSON_2 NO
+GEOJSON_2_CLIP_TO_ENVELOPE "$(GEOJSON_IN_CLIP_TO_ENVELOPE_GEOJSON_2)"
+GUI OPTIONAL CHECKBOX GEOJSON_IN_CLIP_TO_ENVELOPE_GEOJSON_2 YES%NO Clip to Search Envelope
+# ===========================================================================
+DEFAULT_MACRO GEOJSON_IN_NETWORK_AUTHENTICATION_GEOJSON_2 
+GEOJSON_2_NETWORK_AUTHENTICATION "$(GEOJSON_IN_NETWORK_AUTHENTICATION_GEOJSON_2)"
+GUI OPTIONAL AUTHENTICATOR GEOJSON_IN_NETWORK_AUTHENTICATION_GEOJSON_2 CONTAINER%GROUP%CONTAINER_TITLE%"Network Authentication"%PROMPT_TYPE%NETWORK Network Authentication
+# ============================================================================
+DEFAULT_MACRO GEOJSON_IN_ATTRIBUTE_READING_GEOJSON_2 ALL
+GEOJSON_2_ATTRIBUTE_READING "$(GEOJSON_IN_ATTRIBUTE_READING_GEOJSON_2)"
+# ============================================================================
+GEOJSON_2_GENERATE_FME_BUILD_NUM 22776
+GEOJSON_2_DATASET "$(SourceDataset_GEOJSON_2)"
+#! END_SOURCE_HEADER
+#! START_WB_HEADER
+MACRO WB_KEYWORD "GEOJSON_1"
+#! END_WB_HEADER
+#! START_DEST_HEADER GEOJSON GEOJSON_1
+#! END_DEST_HEADER
+#! START_WB_HEADER
+DEFAULT_MACRO DestDataset
+INCLUDE [ if {"$(DestDataset)" != ""} {                          \
+ puts {DEFAULT_MACRO DestDataset_GEOJSON_1 $(DestDataset)}         \
+ } ]
+#! END_WB_HEADER
+#! START_DEST_HEADER GEOJSON GEOJSON_1
+DEFAULT_MACRO DestDataset_GEOJSON_1 $(DestDataset_GEOJSON)
+GUI FILENAME DestDataset_GEOJSON_1 GeoJSON_Documents(*.json;*.geojson)|*.json;*.geojson|GeoJSON_Documents(*.json)|*.json|GeoJSON_Documents(*.geojson)|*.geojson|All_Files|* Destination GeoJSON File:
+DEFAULT_MACRO GEOJSON_OUT_FME_GROUP_NAMED1_GEOJSON_1 
+GUI OPTIONAL DISCLOSUREGROUP GEOJSON_OUT_FME_GROUP_NAMED1_GEOJSON_1 GEOJSON_OUT_WRITER_CHARSET_GEOJSON_1%GEOJSON_OUT_WRITE_BOM_GEOJSON_1%GEOJSON_OUT_FILE_STRUCTURE_GEOJSON_1 Writer Parameters
+DEFAULT_MACRO GEOJSON_OUT_WRITER_CHARSET_GEOJSON_1 UTF-8
+GEOJSON_1_WRITER_CHARSET "$(GEOJSON_OUT_WRITER_CHARSET_GEOJSON_1)"
+GUI LOOKUP_CHOICE GEOJSON_OUT_WRITER_CHARSET_GEOJSON_1 UTF-8,UTF-8%UTF-16,UTF-16%UTF-16BE,UTF-16BE%UTF-16LE,UTF-16LE%UTF-32,UTF-32%UTF-32BE,UTF-32BE%UTF-32LE,UTF-32LE Output Character Set:
+DEFAULT_MACRO GEOJSON_OUT_WRITE_BOM_GEOJSON_1 No
+GEOJSON_1_WRITE_BOM "$(GEOJSON_OUT_WRITE_BOM_GEOJSON_1)"
+GUI LOOKUP_CHOICE GEOJSON_OUT_WRITE_BOM_GEOJSON_1 Yes,Yes%No,No Byte Order Marker:
+DEFAULT_MACRO GEOJSON_OUT_FILE_STRUCTURE_GEOJSON_1 SINGLE_FEATURE_COLLECTION
+GEOJSON_1_FILE_STRUCTURE "$(GEOJSON_OUT_FILE_STRUCTURE_GEOJSON_1)"
+GUI LOOKUP_CHOICE GEOJSON_OUT_FILE_STRUCTURE_GEOJSON_1 Single<space>FeatureCollection<space>object<space>containing<space>all<space>features,SINGLE_FEATURE_COLLECTION%Array<space>of<space>FeatureCollection<space>objects<space>-<space>one<space>per<space>feature<space>type,ARRAY_OF_FEATURE_COLLECTIONS%Object<space>with<space>feature<space>type<space>names<space>as<space>keys<comma><space>FeatureCollection<space>objects<space>as<space>values,OBJECT_WITH_FEATURE_TYPE_KEYS File Structure:
+DEFAULT_MACRO GEOJSON_OUT_FME_GROUP_NAMED2_GEOJSON_1 
+GUI OPTIONAL DISCLOSUREGROUP GEOJSON_OUT_FME_GROUP_NAMED2_GEOJSON_1 GEOJSON_OUT_PRETTY_PRINT_GEOJSON_1%GEOJSON_OUT_INDENT_SIZE_GEOJSON_1%GEOJSON_OUT_MAX_COORDINATE_PRECISION_GEOJSON_1 Formatting Parameters
+DEFAULT_MACRO GEOJSON_OUT_PRETTY_PRINT_GEOJSON_1 YES
+GEOJSON_1_PRETTY_PRINT "$(GEOJSON_OUT_PRETTY_PRINT_GEOJSON_1)"
+GUI ACTIVECHOICE_LOOKUP GEOJSON_OUT_PRETTY_PRINT_GEOJSON_1 Pretty<space>Print,YES%Linear,NO,GEOJSON_OUT_INDENT_SIZE_GEOJSON_1 Formatting Type:
+DEFAULT_MACRO GEOJSON_OUT_INDENT_SIZE_GEOJSON_1 0
+GEOJSON_1_INDENT_SIZE "$(GEOJSON_OUT_INDENT_SIZE_GEOJSON_1)"
+GUI LOOKUP_CHOICE GEOJSON_OUT_INDENT_SIZE_GEOJSON_1 Tabs,0%1<space>space,1%2<space>spaces,2%3<space>spaces,3%4<space>spaces,4%5<space>spaces,5%6<space>spaces,6%7<space>spaces,7%8<space>spaces,8 Indent Size:
+DEFAULT_MACRO GEOJSON_OUT_MAX_COORDINATE_PRECISION_GEOJSON_1 10
+GEOJSON_1_MAX_COORDINATE_PRECISION "$(GEOJSON_OUT_MAX_COORDINATE_PRECISION_GEOJSON_1)"
+GUI RANGE_SLIDER GEOJSON_OUT_MAX_COORDINATE_PRECISION_GEOJSON_1 1%15%0%ON Coordinate Precision (Maximum Number of Fractional Digits):
+DEFAULT_MACRO GEOJSON_OUT_FME_GROUP_NAMED3_GEOJSON_1 
+GUI OPTIONAL DISCLOSUREGROUP GEOJSON_OUT_FME_GROUP_NAMED3_GEOJSON_1 GEOJSON_OUT_COUNTER_CLOCKWISE_AREAS_GEOJSON_1%GEOJSON_OUT_WGS84_REPROJECTION_GEOJSON_1 Geometry
+DEFAULT_MACRO GEOJSON_OUT_COUNTER_CLOCKWISE_AREAS_GEOJSON_1 Yes
+GEOJSON_1_COUNTER_CLOCKWISE_AREAS "$(GEOJSON_OUT_COUNTER_CLOCKWISE_AREAS_GEOJSON_1)"
+GUI LOOKUP_CHOICE GEOJSON_OUT_COUNTER_CLOCKWISE_AREAS_GEOJSON_1 Yes,Yes%No,No Convert Areas to Counterclockwise:
+DEFAULT_MACRO GEOJSON_OUT_WGS84_REPROJECTION_GEOJSON_1 Yes
+GEOJSON_1_WGS84_REPROJECTION "$(GEOJSON_OUT_WGS84_REPROJECTION_GEOJSON_1)"
+GUI LOOKUP_CHOICE GEOJSON_OUT_WGS84_REPROJECTION_GEOJSON_1 Yes,Yes%No,No Reproject to WGS84:
+DEFAULT_MACRO GEOJSON_OUT_FME_GROUP_NAMED4_GEOJSON_1 
+GUI OPTIONAL DISCLOSUREGROUP GEOJSON_OUT_FME_GROUP_NAMED4_GEOJSON_1 GEOJSON_OUT_JSONP_FUNC_NAME_GEOJSON_1 JSONP
+DEFAULT_MACRO GEOJSON_OUT_JSONP_FUNC_NAME_GEOJSON_1 
+GEOJSON_1_JSONP_FUNC_NAME "$(GEOJSON_OUT_JSONP_FUNC_NAME_GEOJSON_1)"
+GUI OPTIONAL TEXT GEOJSON_OUT_JSONP_FUNC_NAME_GEOJSON_1 JSONP Function Name:
+# ============================================================================
+# Opt in for destination dataset type vs format type validation
+DEFAULT_MACRO GEOJSON_OUT_DESTINATION_DATASETTYPE_VALIDATION_GEOJSON_1 Yes
+GEOJSON_1_DESTINATION_DATASETTYPE_VALIDATION "$(GEOJSON_OUT_DESTINATION_DATASETTYPE_VALIDATION_GEOJSON_1)"
+# ============================================================================
+GEOJSON_1_GENERATE_FME_BUILD_NUM 22776
+GEOJSON_1_DATASET "$(DestDataset_GEOJSON_1)"
+#! END_DEST_HEADER
+#! START_WB_HEADER
+#! END_WB_HEADER
+#! END_HEADER
+
+LOG_FILENAME "$(FME_MF_DIR)Test_OTVGeolocInverseIGN.log"
+LOG_APPEND NO
+LOG_FILTER_MASK -18
+LOG_MAX_FEATURES 200
+LOG_MAX_RECORDED_FEATURES 200
+FME_REPROJECTION_ENGINE FME
+FME_IMPLICIT_CSMAP_REPROJECTION_MODE Auto
+FME_GEOMETRY_HANDLING Enhanced
+FME_STROKE_MAX_DEVIATION 0
+FME_NAMES_ENCODING UTF-8
+FME_BULK_MODE_THRESHOLD 2000
+LAST_SAVE_BUILD "FME 2022.2.1.0 (20221202 - Build 22776 - WIN64)"
+DEFAULT_MACRO DATASET_KEYWORD_GEOJSON_2 GEOJSON_2
+DEFAULT_MACRO DATASET_KEYWORD_GEOJSON_1 GEOJSON_1
+# -------------------------------------------------------------------------
+
+GEOJSON_2_READER_META_ATTRIBUTES fme_feature_type
+
+# -------------------------------------------------------------------------
+
+MULTI_READER_CONTINUE_ON_READER_FAILURE No
+
+# -------------------------------------------------------------------------
+
+MACRO WORKSPACE_NAME Test_OTVGeolocInverseIGN
+MACRO FME_VIEWER_APP fmedatainspector
+# -------------------------------------------------------------------------
+GEOJSON_2_DEF sourceTestgolocInverse   id                           int
+# -------------------------------------------------------------------------
+
+FACTORY_DEF * RoutingFactory   FACTORY_NAME "Router and Unexpected Input Remover"   COMMAND_PARM_EVALUATION SINGLE_PASS   MULTI_READER_KEYWORD $(DATASET_KEYWORD_GEOJSON_2)   INPUT FEATURE_TYPE *    ROUTE GEOJSON GEOJSON_2::sourceTestgolocInverse multi_reader_keyword,$(DATASET_KEYWORD_GEOJSON_2) TO FME_GENERIC ::sourceTestgolocInverse ALIAS_GEOMETRY    MERGE_INPUT Yes   OUTPUT ROUTED FEATURE_TYPE *
+GEOJSON_2_MERGE_DEF GEOJSON_2::sourceTestgolocInverse EXACT sourceTestgolocInverse
+# -------------------------------------------------------------------------
+
+FACTORY_DEF * TeeFactory    FACTORY_NAME "sourceTestgolocInverse_GEOJSON_2 Splitter"    INPUT FEATURE_TYPE sourceTestgolocInverse    OUTPUT FEATURE_TYPE sourceTestgolocInverse_GEOJSON_2
+DEFAULT_MACRO WB_CURRENT_CONTEXT
+# -------------------------------------------------------------------------
+Tcl2 proc Creator_CoordSysRemover {} {   global FME_CoordSys;   set FME_CoordSys {}; }
+MACRO Creator_XML     NOT_ACTIVATED
+MACRO Creator_CLASSIC NOT_ACTIVATED
+MACRO Creator_2D3D    2D_GEOMETRY
+MACRO Creator_COORDS  <Unused>
+INCLUDE [ if { {Geometry Object} == {Geometry Object} } {            puts {MACRO Creator_XML *} } ]
+INCLUDE [ if { {Geometry Object} == {2D Coordinate List} } {            puts {MACRO Creator_2D3D 2D_GEOMETRY};            puts {MACRO Creator_CLASSIC *} } ]
+INCLUDE [ if { {Geometry Object} == {3D Coordinate List} } {            puts {MACRO Creator_2D3D 3D_GEOMETRY};            puts {MACRO Creator_CLASSIC *} } ]
+INCLUDE [ if { {Geometry Object} == {2D Min/Max Box} } {            set comment {                We need to turn the COORDS which are                    minX minY maxX maxY                into a full polygon list of coordinates            };            set splitCoords [split [string trim {<Unused>}]];            if { [llength $splitCoords] > 4} {               set trimmedCoords {};               foreach item $splitCoords { if { $item != {} } {lappend trimmedCoords $item} };               set splitCoords $trimmedCoords;            };            if { [llength $splitCoords] != 4 } {                error {Creator: Coordinate list is expected to be a space delimited list of four numbers as 'minx miny maxx maxy' - `<Unused>' is invalid};            };            set minX [lindex $splitCoords 0];            set minY [lindex $splitCoords 1];            set maxX [lindex $splitCoords 2];            set maxY [lindex $splitCoords 3];            puts "MACRO Creator_COORDS $minX $minY $minX $maxY $maxX $maxY $maxX $minY $minX $minY";            puts {MACRO Creator_2D3D 2D_GEOMETRY};            puts {MACRO Creator_CLASSIC *} } ]
+FACTORY_DEF {$(Creator_XML)} CreationFactory    FACTORY_NAME { Creator_XML_Creator }    CREATE_AT_END { no }    OUTPUT { FEATURE_TYPE _____CREATED______        @Geometry(FROM_ENCODED_STRING,<lt>?xml<space>version=<quote>1.0<quote><space>encoding=<quote>US_ASCII<quote><space>standalone=<quote>no<quote><space>?<gt><lt>geometry<gt><lt>point<gt><lt>coord<space>x=<quote>2.3241667<quote><space>y=<quote>48.8033333<quote><solidus><gt><lt><solidus>point<gt><lt><solidus>geometry<gt>) }
+FACTORY_DEF {$(Creator_CLASSIC)} CreationFactory    FACTORY_NAME { Creator_CLASSIC_Creator }    $(Creator_2D3D) { $(Creator_COORDS) }    CREATE_AT_END { no }    OUTPUT { FEATURE_TYPE _____CREATED______ }
+FACTORY_DEF {*} TeeFactory    FACTORY_NAME { Creator_Cloner }    INPUT FEATURE_TYPE _____CREATED______        @Tcl2(Creator_CoordSysRemover)        @CoordSys()    NUMBER_OF_COPIES { 1 }    OUTPUT { FEATURE_TYPE Creator_CREATED        fme_feature_type Creator         }
+FACTORY_DEF * BranchingFactory   FACTORY_NAME "Creator_CREATED Brancher -1 6"   INPUT FEATURE_TYPE Creator_CREATED   TARGET_FACTORY "$(WB_CURRENT_CONTEXT)_CREATOR_BRANCH_TARGET"   MAXIMUM_COUNT None   OUTPUT PASSED FEATURE_TYPE *
+# -------------------------------------------------------------------------
+Tcl2 proc Creator_2_CoordSysRemover {} {   global FME_CoordSys;   set FME_CoordSys {}; }
+MACRO Creator_2_XML     NOT_ACTIVATED
+MACRO Creator_2_CLASSIC NOT_ACTIVATED
+MACRO Creator_2_2D3D    2D_GEOMETRY
+MACRO Creator_2_COORDS  <Unused>
+INCLUDE [ if { {Geometry Object} == {Geometry Object} } {            puts {MACRO Creator_2_XML *} } ]
+INCLUDE [ if { {Geometry Object} == {2D Coordinate List} } {            puts {MACRO Creator_2_2D3D 2D_GEOMETRY};            puts {MACRO Creator_2_CLASSIC *} } ]
+INCLUDE [ if { {Geometry Object} == {3D Coordinate List} } {            puts {MACRO Creator_2_2D3D 3D_GEOMETRY};            puts {MACRO Creator_2_CLASSIC *} } ]
+INCLUDE [ if { {Geometry Object} == {2D Min/Max Box} } {            set comment {                We need to turn the COORDS which are                    minX minY maxX maxY                into a full polygon list of coordinates            };            set splitCoords [split [string trim {<Unused>}]];            if { [llength $splitCoords] > 4} {               set trimmedCoords {};               foreach item $splitCoords { if { $item != {} } {lappend trimmedCoords $item} };               set splitCoords $trimmedCoords;            };            if { [llength $splitCoords] != 4 } {                error {Creator_2: Coordinate list is expected to be a space delimited list of four numbers as 'minx miny maxx maxy' - `<Unused>' is invalid};            };            set minX [lindex $splitCoords 0];            set minY [lindex $splitCoords 1];            set maxX [lindex $splitCoords 2];            set maxY [lindex $splitCoords 3];            puts "MACRO Creator_2_COORDS $minX $minY $minX $maxY $maxX $maxY $maxX $minY $minX $minY";            puts {MACRO Creator_2_2D3D 2D_GEOMETRY};            puts {MACRO Creator_2_CLASSIC *} } ]
+FACTORY_DEF {$(Creator_2_XML)} CreationFactory    FACTORY_NAME { Creator_2_XML_Creator }    CREATE_AT_END { no }    OUTPUT { FEATURE_TYPE _____CREATED______        @Geometry(FROM_ENCODED_STRING,<lt>?xml<space>version=<quote>1.0<quote><space>encoding=<quote>US_ASCII<quote><space>standalone=<quote>no<quote><space>?<gt><lt>geometry<gt><lt>null<solidus><gt><lt><solidus>geometry<gt>) }
+FACTORY_DEF {$(Creator_2_CLASSIC)} CreationFactory    FACTORY_NAME { Creator_2_CLASSIC_Creator }    $(Creator_2_2D3D) { $(Creator_2_COORDS) }    CREATE_AT_END { no }    OUTPUT { FEATURE_TYPE _____CREATED______ }
+FACTORY_DEF {*} TeeFactory    FACTORY_NAME { Creator_2_Cloner }    INPUT FEATURE_TYPE _____CREATED______        @Tcl2(Creator_2_CoordSysRemover)        @CoordSys()    NUMBER_OF_COPIES { 1 }    OUTPUT { FEATURE_TYPE Creator_2_CREATED        fme_feature_type Creator_2         }
+FACTORY_DEF * BranchingFactory   FACTORY_NAME "Creator_2_CREATED Brancher -1 7"   INPUT FEATURE_TYPE Creator_2_CREATED   TARGET_FACTORY "$(WB_CURRENT_CONTEXT)_CREATOR_BRANCH_TARGET"   MAXIMUM_COUNT None   OUTPUT PASSED FEATURE_TYPE *
+# -------------------------------------------------------------------------
+Tcl2 proc Creator_3_CoordSysRemover {} {   global FME_CoordSys;   set FME_CoordSys {}; }
+MACRO Creator_3_XML     NOT_ACTIVATED
+MACRO Creator_3_CLASSIC NOT_ACTIVATED
+MACRO Creator_3_2D3D    2D_GEOMETRY
+MACRO Creator_3_COORDS  <Unused>
+INCLUDE [ if { {Geometry Object} == {Geometry Object} } {            puts {MACRO Creator_3_XML *} } ]
+INCLUDE [ if { {Geometry Object} == {2D Coordinate List} } {            puts {MACRO Creator_3_2D3D 2D_GEOMETRY};            puts {MACRO Creator_3_CLASSIC *} } ]
+INCLUDE [ if { {Geometry Object} == {3D Coordinate List} } {            puts {MACRO Creator_3_2D3D 3D_GEOMETRY};            puts {MACRO Creator_3_CLASSIC *} } ]
+INCLUDE [ if { {Geometry Object} == {2D Min/Max Box} } {            set comment {                We need to turn the COORDS which are                    minX minY maxX maxY                into a full polygon list of coordinates            };            set splitCoords [split [string trim {<Unused>}]];            if { [llength $splitCoords] > 4} {               set trimmedCoords {};               foreach item $splitCoords { if { $item != {} } {lappend trimmedCoords $item} };               set splitCoords $trimmedCoords;            };            if { [llength $splitCoords] != 4 } {                error {Creator_3: Coordinate list is expected to be a space delimited list of four numbers as 'minx miny maxx maxy' - `<Unused>' is invalid};            };            set minX [lindex $splitCoords 0];            set minY [lindex $splitCoords 1];            set maxX [lindex $splitCoords 2];            set maxY [lindex $splitCoords 3];            puts "MACRO Creator_3_COORDS $minX $minY $minX $maxY $maxX $maxY $maxX $minY $minX $minY";            puts {MACRO Creator_3_2D3D 2D_GEOMETRY};            puts {MACRO Creator_3_CLASSIC *} } ]
+FACTORY_DEF {$(Creator_3_XML)} CreationFactory    FACTORY_NAME { Creator_3_XML_Creator }    CREATE_AT_END { no }    OUTPUT { FEATURE_TYPE _____CREATED______        @Geometry(FROM_ENCODED_STRING,<lt>?xml<space>version=<quote>1.0<quote><space>encoding=<quote>US_ASCII<quote><space>standalone=<quote>no<quote><space>?<gt><lt>geometry<gt><lt>line<gt><lt>coord<space>x=<quote>2.3241667<quote><space>y=<quote>48.803333<quote><solidus><gt><lt>coord<space>x=<quote>2.4241667<quote><space>y=<quote>48.903333<quote><solidus><gt><lt><solidus>line<gt><lt><solidus>geometry<gt>) }
+FACTORY_DEF {$(Creator_3_CLASSIC)} CreationFactory    FACTORY_NAME { Creator_3_CLASSIC_Creator }    $(Creator_3_2D3D) { $(Creator_3_COORDS) }    CREATE_AT_END { no }    OUTPUT { FEATURE_TYPE _____CREATED______ }
+FACTORY_DEF {*} TeeFactory    FACTORY_NAME { Creator_3_Cloner }    INPUT FEATURE_TYPE _____CREATED______        @Tcl2(Creator_3_CoordSysRemover)        @CoordSys()    NUMBER_OF_COPIES { 1 }    OUTPUT { FEATURE_TYPE Creator_3_CREATED        fme_feature_type Creator_3         }
+FACTORY_DEF * BranchingFactory   FACTORY_NAME "Creator_3_CREATED Brancher -1 15"   INPUT FEATURE_TYPE Creator_3_CREATED   TARGET_FACTORY "$(WB_CURRENT_CONTEXT)_CREATOR_BRANCH_TARGET"   MAXIMUM_COUNT None   OUTPUT PASSED FEATURE_TYPE *
+# -------------------------------------------------------------------------
+FACTORY_DEF * TeeFactory   FACTORY_NAME "$(WB_CURRENT_CONTEXT)_CREATOR_BRANCH_TARGET"   INPUT FEATURE_TYPE *  OUTPUT FEATURE_TYPE *
+# -------------------------------------------------------------------------
+FACTORY_DEF {*} CounterFactory    FACTORY_NAME { Counter }    FLUSH_WHEN_GROUPS_CHANGE { <Unused> }    START { "0" }    SCOPE { Global }    DOMAIN { "counter" }    COUNT_ATTR { "id" }    GROUP_ID_ATTR { "" }    INPUT  FEATURE_TYPE Creator_CREATED    INPUT  FEATURE_TYPE Creator_2_CREATED    OUTPUT { OUTPUT FEATURE_TYPE Counter_OUTPUT        }    OUTPUT { REJECTED FEATURE_TYPE Counter_<REJECTED>        }
+# -------------------------------------------------------------------------
+FACTORY_DEF * TeeFactory   FACTORY_NAME "OTV_GeolocInverseIGN DonneesGeolocalisees Input Collector"   INPUT FEATURE_TYPE sourceTestgolocInverse_GEOJSON_2   OUTPUT FEATURE_TYPE OTV_GeolocInverseIGN_DonneesGeolocalisees
+MACRO OTV_GeolocInverseIGN_WORKSPACE_NAME OTV_GeolocInverseIGN
+MACRO $(OTV_GeolocInverseIGN_WORKSPACE_NAME)_TRANSFORMER_GROUP 
+MACRO $(OTV_GeolocInverseIGN_WORKSPACE_NAME)_XFORMER_NAME OTV_GeolocInverseIGN
+MACRO $(OTV_GeolocInverseIGN_WORKSPACE_NAME)___COMPOUND_PARAMETERS 
+MACRO $(OTV_GeolocInverseIGN_WORKSPACE_NAME)_ReverseGeocodePreference $(Test_ReverseGeocodePreference)
+MACRO $(OTV_GeolocInverseIGN_WORKSPACE_NAME)_maximumResponses $(Test_maximumResponses)
+MACRO $(OTV_GeolocInverseIGN_WORKSPACE_NAME)_distMaxi $(Test_distMaxi)
+INCLUDE_CUSTOM_TRANSFORMER_VER OTV_GeolocInverseIGN:1
+FACTORY_DEF * TeeFactory   FACTORY_NAME "OTV_GeolocInverseIGN StreetAddress Output Renamer/Nuker"   INPUT FEATURE_TYPE OTV_GeolocInverseIGN_StreetAddress
+FACTORY_DEF * TeeFactory   FACTORY_NAME "OTV_GeolocInverseIGN CadastralParcel Output Renamer/Nuker"   INPUT FEATURE_TYPE OTV_GeolocInverseIGN_CadastralParcel
+FACTORY_DEF * TeeFactory   FACTORY_NAME "OTV_GeolocInverseIGN PointOfInterest Output Renamer/Nuker"   INPUT FEATURE_TYPE OTV_GeolocInverseIGN_PointOfInterest
+FACTORY_DEF * TeeFactory   FACTORY_NAME "OTV_GeolocInverseIGN Administratif Output Renamer/Nuker"   INPUT FEATURE_TYPE OTV_GeolocInverseIGN_Administratif
+FACTORY_DEF * TeeFactory   FACTORY_NAME "OTV_GeolocInverseIGN PasDeGeomSource Output Renamer/Nuker"   INPUT FEATURE_TYPE OTV_GeolocInverseIGN_PasDeGeomSource
+# -------------------------------------------------------------------------
+
+FACTORY_DEF * RoutingFactory FACTORY_NAME "Destination Feature Type Routing Correlator"   COMMAND_PARM_EVALUATION SINGLE_PASS   INPUT FEATURE_TYPE *    ROUTE FME_GENERIC Counter_OUTPUT TO GEOJSON __GO_TO_FINAL_OUTPUT_ROUTER__ multi_writer_id,0,<at>SupplyAttributes<openparen>ENCODED<comma>__wb_out_feat_type__<comma>sourceTestgolocInverse<closeparen> GEOMETRY    ROUTE FME_GENERIC Creator_3_CREATED TO GEOJSON __GO_TO_FINAL_OUTPUT_ROUTER__ multi_writer_id,0,<at>SupplyAttributes<openparen>ENCODED<comma>__wb_out_feat_type__<comma>sourceTestgolocInverse_erreur<closeparen> GEOMETRY   FEATURE_TYPE_ATTRIBUTE __wb_out_feat_type__   OUTPUT ROUTED FEATURE_TYPE *    OUTPUT NOT_ROUTED FEATURE_TYPE __nuke_me__ @Tcl2("FME_StatMessage 818059 [FME_GetAttribute fme_template_feature_type] 818060 818061 fme_warn")
+# -------------------------------------------------------------------------
+
+FACTORY_DEF * TeeFactory   FACTORY_NAME "Final Output Nuker"   INPUT FEATURE_TYPE __nuke_me__
+
+# -------------------------------------------------------------------------
+GEOJSON_1_DEF sourceTestgolocInverse_erreur
+# -------------------------------------------------------------------------
+GEOJSON_1_DEF sourceTestgolocInverse   id                           int

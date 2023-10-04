@@ -1,0 +1,3 @@
+-- New script in postgres.
+-- Date: 4 oct. 2023
+-- Time: 14:07:24

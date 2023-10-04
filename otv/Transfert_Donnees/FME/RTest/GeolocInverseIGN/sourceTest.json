@@ -1,0 +1,23 @@
+{
+	"type" : "FeatureCollection",
+	"name" : "sourceTestgolocInverse",
+	"features" : [
+		{
+			"type" : "Feature",
+			"geometry" : {
+				"type" : "Point",
+				"coordinates" : [ 2.3241667, 48.8033333 ]
+			},
+			"properties" : {
+				"id" : 0
+			}
+		},
+		{
+			"type" : "Feature",
+			"geometry" : null,
+			"properties" : {
+				"id" : 1
+			}
+		}
+	]
+}
