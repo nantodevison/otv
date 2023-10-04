@@ -12,19 +12,59 @@
                     <expectedstatus>success</expectedstatus>
 					<parameterCollection>
 						<parameter name="SourceDataset_GEOJSON" value="$(FME_MF_DIR)sourceTest.json" />
-                        <parameter name="Test_ReverseGeocodePreference" value="Numero et nom de rue&quot; &quot;Parcelle Cadastrale&quot; &quot;Point d'intérêt&quot; &quot;Références administratives&quot;" />
+                        <parameter name="Test_ReverseGeocodePreference" value="StreetAddress CadastralParcel Administratif PositionOfInterest" />
 						<parameter name="Test_maximumResponses" value="1"/>
                         <parameter name="Test_distMaxi" value="50" />
-                        <parameter name="RouteATester" value="D107" />
-                        <parameter name="DestDataset_POSTGRES" value="OTV_postgres" />
+                        <parameter name="DestDataset_POSTGRES" value="OTV_bureau" />
 					</parameterCollection>
 				</process>
 			</processCollection>
 			<checkCollection>
-				<check label="Localisation de la geometry">
-					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
-                            dbrequest="select GeolocInverse.Numero as observedvalue from rtest.geoloc_inverse_ign where GeolocInverse.typeGeoloc='StreetAddress' ;"/>
+				<check label="StreetAddress numero">
+					<source type="database" format="POSTGRES" connection="OTV_bureau" 
+                            dbrequest="select &quot;GeolocInverse.Numero&quot; as observedvalue from rtest.geoloc_inverse_ign where &quot;GeolocInverse.typeGeoloc&quot;='StreetAddress' ;"/>
 					<condition comparator="eq" expectedvalue="52"/>
+				</check>
+			
+				<check label="StreetAddress nom de rue">
+					<source type="database" format="POSTGRES" connection="OTV_bureau" 
+                            dbrequest="select &quot;GeolocInverse.Rue&quot; as observedvalue from rtest.geoloc_inverse_ign where &quot;GeolocInverse.typeGeoloc&quot;='StreetAddress' ;"/>
+					<condition comparator="eq" expectedvalue="av aristide briand"/>
+				</check>
+				<check label="StreetAddress Commune">
+					<source type="database" format="POSTGRES" connection="OTV_bureau" 
+                            dbrequest="select &quot;GeolocInverse.Commune&quot; as observedvalue from rtest.geoloc_inverse_ign where &quot;GeolocInverse.typeGeoloc&quot;='StreetAddress' ;"/>
+					<condition comparator="eq" expectedvalue="Bagneux"/>
+				</check>
+				<check label="StreetAddress Departement">
+					<source type="database" format="POSTGRES" connection="OTV_bureau" 
+                            dbrequest="select &quot;GeolocInverse.Departement&quot; as observedvalue from rtest.geoloc_inverse_ign where &quot;GeolocInverse.typeGeoloc&quot;='StreetAddress' ;"/>
+					<condition comparator="eq" expectedvalue="92"/>
+				</check>
+				<check label="StreetAddress CodeCommuneInsee">
+					<source type="database" format="POSTGRES" connection="OTV_bureau" 
+                            dbrequest="select &quot;GeolocInverse.CodeCommuneInsee&quot; as observedvalue from rtest.geoloc_inverse_ign where &quot;GeolocInverse.typeGeoloc&quot;='StreetAddress' ;"/>
+					<condition comparator="eq" expectedvalue="92007"/>
+				</check>
+				<check label="StreetAddress CodePostal">
+					<source type="database" format="POSTGRES" connection="OTV_bureau" 
+                            dbrequest="select &quot;GeolocInverse.CodePostal&quot; as observedvalue from rtest.geoloc_inverse_ign where &quot;GeolocInverse.typeGeoloc&quot;='StreetAddress' ;"/>
+					<condition comparator="eq" expectedvalue="92220"/>
+				</check>
+				<check label="StreetAddress x_wgs84">
+					<source type="database" format="POSTGRES" connection="OTV_bureau" 
+                            dbrequest="select &quot;GeolocInverse.x_wgs84&quot; is null as observedvalue from rtest.geoloc_inverse_ign where &quot;GeolocInverse.typeGeoloc&quot;='StreetAddress' ;"/>
+					<condition comparator="eq" expectedvalue="f"/>
+				</check>
+				<check label="StreetAddress y_wgs84">
+					<source type="database" format="POSTGRES" connection="OTV_bureau" 
+                            dbrequest="select &quot;GeolocInverse.y_wgs84&quot; is null as observedvalue from rtest.geoloc_inverse_ign where &quot;GeolocInverse.typeGeoloc&quot;='StreetAddress' ;"/>
+					<condition comparator="eq" expectedvalue="f"/>
+				</check>
+				<check label="CadastralParcel ParcelleComplete">
+					<source type="database" format="POSTGRES" connection="OTV_bureau" 
+                            dbrequest="select &quot;GeolocInverse.ParcelleComplete&quot; as observedvalue from rtest.geoloc_inverse_ign where &quot;GeolocInverse.typeGeoloc&quot;='CadastralParcel' ;"/>
+					<condition comparator="eq" expectedvalue="920070000R0132"/>
 				</check>
 			</checkCollection>
 		</rtest>		
