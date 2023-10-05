@@ -1,0 +1,1682 @@
+[
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "janv",
+		"indicateur" : "tmja",
+		"valeur" : 2000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "fevr",
+		"indicateur" : "tmja",
+		"valeur" : 2001
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "mars",
+		"indicateur" : "tmja",
+		"valeur" : 2002
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "avri",
+		"indicateur" : "tmja",
+		"valeur" : 2003
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "mai",
+		"indicateur" : "tmja",
+		"valeur" : 2004
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "juin",
+		"indicateur" : "tmja",
+		"valeur" : 2005
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "juil",
+		"indicateur" : "tmja",
+		"valeur" : 2006
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "aout",
+		"indicateur" : "tmja",
+		"valeur" : 2007
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "sept",
+		"indicateur" : "tmja",
+		"valeur" : 2008
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "octo",
+		"indicateur" : "tmja",
+		"valeur" : 2009
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "nove",
+		"indicateur" : "tmja",
+		"valeur" : 2010
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "dece",
+		"indicateur" : "tmja",
+		"valeur" : 2011
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "janv",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "fevr",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "mars",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "avri",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "mai",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "juin",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "juil",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "aout",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "sept",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "octo",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "nove",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs1",
+		"id_uniq" : 0,
+		"mois" : "dece",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "janv",
+		"indicateur" : "tmja",
+		"valeur" : 2000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "fevr",
+		"indicateur" : "tmja",
+		"valeur" : 2001
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "mars",
+		"indicateur" : "tmja",
+		"valeur" : 2002
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "avri",
+		"indicateur" : "tmja",
+		"valeur" : 2003
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "mai",
+		"indicateur" : "tmja",
+		"valeur" : 2004
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "juin",
+		"indicateur" : "tmja",
+		"valeur" : 2005
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "juil",
+		"indicateur" : "tmja",
+		"valeur" : 2006
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "aout",
+		"indicateur" : "tmja",
+		"valeur" : 2007
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "sept",
+		"indicateur" : "tmja",
+		"valeur" : 2008
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "octo",
+		"indicateur" : "tmja",
+		"valeur" : 2009
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "nove",
+		"indicateur" : "tmja",
+		"valeur" : 2010
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "dece",
+		"indicateur" : "tmja",
+		"valeur" : 2011
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "janv",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "fevr",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "mars",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "avri",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "mai",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "juin",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "juil",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "aout",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "sept",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "octo",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "nove",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs2",
+		"id_uniq" : 1,
+		"mois" : "dece",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "janv",
+		"indicateur" : "tmja",
+		"valeur" : 2000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "fevr",
+		"indicateur" : "tmja",
+		"valeur" : 2001
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "mars",
+		"indicateur" : "tmja",
+		"valeur" : 2002
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "avri",
+		"indicateur" : "tmja",
+		"valeur" : 2003
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "mai",
+		"indicateur" : "tmja",
+		"valeur" : 2004
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "juin",
+		"indicateur" : "tmja",
+		"valeur" : 2005
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "juil",
+		"indicateur" : "tmja",
+		"valeur" : 2006
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "aout",
+		"indicateur" : "tmja",
+		"valeur" : 2007
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "sept",
+		"indicateur" : "tmja",
+		"valeur" : 2008
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "octo",
+		"indicateur" : "tmja",
+		"valeur" : 2009
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "nove",
+		"indicateur" : "tmja",
+		"valeur" : 2010
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "dece",
+		"indicateur" : "tmja",
+		"valeur" : 2011
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "janv",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "fevr",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "mars",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "avri",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "mai",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "juin",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "juil",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "aout",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "sept",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "octo",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "nove",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs3",
+		"id_uniq" : 2,
+		"mois" : "dece",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "janv",
+		"indicateur" : "tmja",
+		"valeur" : 2000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "fevr",
+		"indicateur" : "tmja",
+		"valeur" : 2001
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "mars",
+		"indicateur" : "tmja",
+		"valeur" : 2002
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "avri",
+		"indicateur" : "tmja",
+		"valeur" : 2003
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "mai",
+		"indicateur" : "tmja",
+		"valeur" : 2004
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "juin",
+		"indicateur" : "tmja",
+		"valeur" : 2005
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "juil",
+		"indicateur" : "tmja",
+		"valeur" : 2006
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "aout",
+		"indicateur" : "tmja",
+		"valeur" : 2007
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "sept",
+		"indicateur" : "tmja",
+		"valeur" : 2008
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "octo",
+		"indicateur" : "tmja",
+		"valeur" : 2009
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "nove",
+		"indicateur" : "tmja",
+		"valeur" : 2010
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "dece",
+		"indicateur" : "tmja",
+		"valeur" : 2011
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "janv",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "fevr",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "mars",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "avri",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "mai",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "juin",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "juil",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "aout",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "sept",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "octo",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "nove",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs4",
+		"id_uniq" : 3,
+		"mois" : "dece",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "janv",
+		"indicateur" : "tmja",
+		"valeur" : 2105
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "fevr",
+		"indicateur" : "tmja",
+		"valeur" : 2105
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "mars",
+		"indicateur" : "tmja",
+		"valeur" : 2105
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "avri",
+		"indicateur" : "tmja",
+		"valeur" : 2105
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "mai",
+		"indicateur" : "tmja",
+		"valeur" : 2105
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "juin",
+		"indicateur" : "tmja",
+		"valeur" : 2105
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "juil",
+		"indicateur" : "tmja",
+		"valeur" : 2105
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "aout",
+		"indicateur" : "tmja",
+		"valeur" : 2105
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "sept",
+		"indicateur" : "tmja",
+		"valeur" : 2105
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "octo",
+		"indicateur" : "tmja",
+		"valeur" : 2105
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "nove",
+		"indicateur" : "tmja",
+		"valeur" : 2105
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "dece",
+		"indicateur" : "tmja",
+		"valeur" : 2105
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "janv",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "fevr",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "mars",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "avri",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "mai",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "juin",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "juil",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "aout",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "sept",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "octo",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "nove",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs5",
+		"id_uniq" : 4,
+		"mois" : "dece",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "janv",
+		"indicateur" : "tmja",
+		"valeur" : 1905
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "fevr",
+		"indicateur" : "tmja",
+		"valeur" : 1905
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "mars",
+		"indicateur" : "tmja",
+		"valeur" : 1905
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "avri",
+		"indicateur" : "tmja",
+		"valeur" : 1905
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "mai",
+		"indicateur" : "tmja",
+		"valeur" : 1905
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "juin",
+		"indicateur" : "tmja",
+		"valeur" : 1905
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "juil",
+		"indicateur" : "tmja",
+		"valeur" : 1905
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "aout",
+		"indicateur" : "tmja",
+		"valeur" : 1905
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "sept",
+		"indicateur" : "tmja",
+		"valeur" : 1905
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "octo",
+		"indicateur" : "tmja",
+		"valeur" : 1905
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "nove",
+		"indicateur" : "tmja",
+		"valeur" : 1905
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "dece",
+		"indicateur" : "tmja",
+		"valeur" : 1905
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "janv",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "fevr",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "mars",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "avri",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "mai",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "juin",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "juil",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "aout",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "sept",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "octo",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "nove",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs6",
+		"id_uniq" : 5,
+		"mois" : "dece",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "janv",
+		"indicateur" : "tmja",
+		"valeur" : 1000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "fevr",
+		"indicateur" : "tmja",
+		"valeur" : 2000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "mars",
+		"indicateur" : "tmja",
+		"valeur" : 3000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "avri",
+		"indicateur" : "tmja",
+		"valeur" : 4000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "mai",
+		"indicateur" : "tmja",
+		"valeur" : 5000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "juin",
+		"indicateur" : "tmja",
+		"valeur" : 6000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "juil",
+		"indicateur" : "tmja",
+		"valeur" : 7000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "aout",
+		"indicateur" : "tmja",
+		"valeur" : 8000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "sept",
+		"indicateur" : "tmja",
+		"valeur" : 9000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "octo",
+		"indicateur" : "tmja",
+		"valeur" : 10000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "nove",
+		"indicateur" : "tmja",
+		"valeur" : 11000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "dece",
+		"indicateur" : "tmja",
+		"valeur" : 12000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "janv",
+		"indicateur" : "pc_pl",
+		"valeur" : 1
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "fevr",
+		"indicateur" : "pc_pl",
+		"valeur" : 2
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "mars",
+		"indicateur" : "pc_pl",
+		"valeur" : 3
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "avri",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "mai",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "juin",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "juil",
+		"indicateur" : "pc_pl",
+		"valeur" : 7
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "aout",
+		"indicateur" : "pc_pl",
+		"valeur" : 8
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "sept",
+		"indicateur" : "pc_pl",
+		"valeur" : 9
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "octo",
+		"indicateur" : "pc_pl",
+		"valeur" : 10
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "nove",
+		"indicateur" : "pc_pl",
+		"valeur" : 11
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs7",
+		"id_uniq" : 6,
+		"mois" : "dece",
+		"indicateur" : "pc_pl",
+		"valeur" : 12
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "janv",
+		"indicateur" : "tmja",
+		"valeur" : 2000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "fevr",
+		"indicateur" : "tmja",
+		"valeur" : 2000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "mars",
+		"indicateur" : "tmja",
+		"valeur" : 2000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "avri",
+		"indicateur" : "tmja",
+		"valeur" : 2000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "mai",
+		"indicateur" : "tmja",
+		"valeur" : 2000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "juin",
+		"indicateur" : "tmja",
+		"valeur" : 2000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "juil",
+		"indicateur" : "tmja",
+		"valeur" : 2000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "aout",
+		"indicateur" : "tmja",
+		"valeur" : 2000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "sept",
+		"indicateur" : "tmja",
+		"valeur" : 2000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "octo",
+		"indicateur" : "tmja",
+		"valeur" : 2000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "nove",
+		"indicateur" : "tmja",
+		"valeur" : 2000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "dece",
+		"indicateur" : "tmja",
+		"valeur" : 2000
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "janv",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "fevr",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "mars",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "avri",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "mai",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "juin",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "juil",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "aout",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "sept",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "octo",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "nove",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs8",
+		"id_uniq" : 7,
+		"mois" : "dece",
+		"indicateur" : "pc_pl",
+		"valeur" : 5
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "janv",
+		"indicateur" : "tmja",
+		"valeur" : 2106
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "fevr",
+		"indicateur" : "tmja",
+		"valeur" : 2106
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "mars",
+		"indicateur" : "tmja",
+		"valeur" : 2106
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "avri",
+		"indicateur" : "tmja",
+		"valeur" : 2106
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "mai",
+		"indicateur" : "tmja",
+		"valeur" : 2106
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "juin",
+		"indicateur" : "tmja",
+		"valeur" : 2106
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "juil",
+		"indicateur" : "tmja",
+		"valeur" : 2106
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "aout",
+		"indicateur" : "tmja",
+		"valeur" : 2106
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "sept",
+		"indicateur" : "tmja",
+		"valeur" : 2106
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "octo",
+		"indicateur" : "tmja",
+		"valeur" : 2106
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "nove",
+		"indicateur" : "tmja",
+		"valeur" : 2106
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "dece",
+		"indicateur" : "tmja",
+		"valeur" : 2106
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "janv",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "fevr",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "mars",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "avri",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "mai",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "juin",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "juil",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "aout",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "sept",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "octo",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "nove",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs9",
+		"id_uniq" : 8,
+		"mois" : "dece",
+		"indicateur" : "pc_pl",
+		"valeur" : 6
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "janv",
+		"indicateur" : "tmja",
+		"valeur" : 1904
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "fevr",
+		"indicateur" : "tmja",
+		"valeur" : 1904
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "mars",
+		"indicateur" : "tmja",
+		"valeur" : 1904
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "avri",
+		"indicateur" : "tmja",
+		"valeur" : 1904
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "mai",
+		"indicateur" : "tmja",
+		"valeur" : 1904
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "juin",
+		"indicateur" : "tmja",
+		"valeur" : 1904
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "juil",
+		"indicateur" : "tmja",
+		"valeur" : 1904
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "aout",
+		"indicateur" : "tmja",
+		"valeur" : 1904
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "sept",
+		"indicateur" : "tmja",
+		"valeur" : 1904
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "octo",
+		"indicateur" : "tmja",
+		"valeur" : 1904
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "nove",
+		"indicateur" : "tmja",
+		"valeur" : 1904
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "dece",
+		"indicateur" : "tmja",
+		"valeur" : 1904
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "janv",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "fevr",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "mars",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "avri",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "mai",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "juin",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "juil",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "aout",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "sept",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "octo",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "nove",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	},
+	{
+		"id_comptag" : "DD-DXXXX-PR+Abs10",
+		"id_uniq" : 9,
+		"mois" : "dece",
+		"indicateur" : "pc_pl",
+		"valeur" : 4
+	}
+]

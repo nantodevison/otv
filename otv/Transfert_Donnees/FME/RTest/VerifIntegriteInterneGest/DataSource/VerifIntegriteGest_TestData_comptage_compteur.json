@@ -1,0 +1,106 @@
+{
+	"type" : "FeatureCollection",
+	"name" : "comptage.compteur",
+	"features" : [
+		{
+			"type" : "Feature",
+			"geometry" : null,
+			"properties" : {
+				"id_comptag" : "DD-DXXXX-PR+Abs1",
+				"id_uniq" : 0,
+				"tmja" : 2002,
+				"pc_pl" : 5
+			}
+		},
+		{
+			"type" : "Feature",
+			"geometry" : null,
+			"properties" : {
+				"id_comptag" : "DD-DXXXX-PR+Abs2",
+				"id_uniq" : 1,
+				"tmja" : 5000,
+				"pc_pl" : 5
+			}
+		},
+		{
+			"type" : "Feature",
+			"geometry" : null,
+			"properties" : {
+				"id_comptag" : "DD-DXXXX-PR+Abs3",
+				"id_uniq" : 2,
+				"tmja" : 2002,
+				"pc_pl" : 1
+			}
+		},
+		{
+			"type" : "Feature",
+			"geometry" : null,
+			"properties" : {
+				"id_comptag" : "DD-DXXXX-PR+Abs4",
+				"id_uniq" : 3,
+				"tmja" : 5000,
+				"pc_pl" : 1
+			}
+		},
+		{
+			"type" : "Feature",
+			"geometry" : null,
+			"properties" : {
+				"id_comptag" : "DD-DXXXX-PR+Abs5",
+				"id_uniq" : 4,
+				"tmja" : 2000,
+				"pc_pl" : 5
+			}
+		},
+		{
+			"type" : "Feature",
+			"geometry" : null,
+			"properties" : {
+				"id_comptag" : "DD-DXXXX-PR+Abs6",
+				"id_uniq" : 5,
+				"tmja" : 2000,
+				"pc_pl" : 5
+			}
+		},
+		{
+			"type" : "Feature",
+			"geometry" : null,
+			"properties" : {
+				"id_comptag" : "DD-DXXXX-PR+Abs7",
+				"id_uniq" : 6,
+				"tmja" : 2000,
+				"pc_pl" : 5
+			}
+		},
+		{
+			"type" : "Feature",
+			"geometry" : null,
+			"properties" : {
+				"id_comptag" : "DD-DXXXX-PR+Abs8",
+				"id_uniq" : 7,
+				"tmja" : 2000,
+				"pc_pl" : 5
+			}
+		},
+		{
+			"type" : "Feature",
+			"geometry" : null,
+			"properties" : {
+				"id_comptag" : "DD-DXXXX-PR+Abs9",
+				"id_uniq" : 8,
+				"tmja" : 2000,
+				"pc_pl" : 5
+			}
+		},
+		{
+			"type" : "Feature",
+			"geometry" : null,
+			"properties" : {
+				"id_comptag" : "DD-DXXXX-PR+Abs10",
+				"id_uniq" : 9,
+				"tmja" : 2000,
+				"pc_pl" : 5
+			}
+		}
+	]
+}

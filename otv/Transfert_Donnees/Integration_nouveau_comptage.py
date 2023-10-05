@@ -8,7 +8,7 @@ Module pour integrer les nouveaux comptages fournis par les gestionnaires
 
 import warnings, re
 import datetime as dt
-from Outils import Outils as O
+from Outils import Outils as O 
 import pandas as pd
 from Connexions import Connexion_Transfert as ct
 from collections import Counter

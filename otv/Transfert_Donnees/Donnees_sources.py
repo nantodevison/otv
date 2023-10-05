@@ -637,6 +637,7 @@ class FIM():
     """
     classe dedié aux fichiers FIM de comptage brut
     attributs : 
+        typeFim : lcr ou dle : change la configuartion des fichiers
         typeVeh : si le type de vehicule est connu ont le mis ici parmis 'NC', 'velo', 'tv', 'vl/pl'
         verifQualite ; value parmi 'Bloque' ou 'Message : la verif de qualite fait remonter une erreur et bloque la fonction ou la verif qualite affiche un message seulement
         dico_corresp_type_veh : dico poutr determiner le type de vehicule selon en-tete
@@ -657,7 +658,7 @@ class FIM():
         dfSemaineMoyenne : 
         periode : de forme YYYY/MM/DD-YYYY/MM/DD
     """
-    def __init__(self, fichier, gest=None, verifQualite='Bloque', typeVeh='NC'):
+    def __init__(self, fichier, gest=None, verifQualite='Bloque', typeVeh='NC', typeFim='dle'):
         O.checkParamValues(verifQualite, ('Bloque', 'Message'))
         O.checkParamValues(typeVeh, ('NC', 'velo', 'tv', 'vl/pl'))
         self.verifQualite = verifQualite
@@ -701,11 +702,11 @@ class FIM():
                     else : 
                         self.lignes[e] = l.replace('   4.   ','   4.P   ') 
                         i += 1
-            elif mode in ('QT.S0', 'QL.S0') : #porte ouvert pour d'auter corrections si beoisn
-                if 'QT.S0' in l or 'QL.S0' in l : 
+            elif mode in ('QT.S0', 'QL.S0', 'LC.S0') : #porte ouvert pour d'auter corrections si beoisn
+                if 'QT.S0' in l or 'QL.S0' in l or 'LC.S0' in l : 
                     if 'QT.S0' in l:
                         self.lignes[e] = l.replace('QT.S0','   1.T   ')
-                    elif 'QL.S0' in l:
+                    elif 'QL.S0' in l or 'LC.S0' in l:
                         self.lignes[e] = l.replace('QL.S0','   3.P   ') 
                     else:
                         pass
@@ -714,6 +715,8 @@ class FIM():
     def params_fim(self,lignes):
         """
         obtenir les infos générales du fichier : date_debut(anne, mois, jour, heure, minute), mode, geolocalisation
+        pour info, cf chap 9 et Annexe C norme NF P99-304 et Annexe 3 "Structure de Fichiers" du guide Cerema 
+        "Comptage temporaire du trafic routier - Stanczyk et Al (2004)"
         """
         lign0Splitpoint = self.lignes[0].split('.')
         annee,mois,jour,heure,minute,pas_temporel = (int(lign0Splitpoint[i].strip()) for i in range(5,11))
@@ -799,8 +802,9 @@ class FIM():
         taille_donnees=tuple(set([self.liste_lign_titre[i+1][0]-(self.liste_lign_titre[i][0]+1) for i in range(len(self.liste_lign_titre)-1)]+
                            [len(self.lignes)-1-self.liste_lign_titre[len(self.liste_lign_titre)-1][0]]))
         if len(taille_donnees)>1 : 
-            raise self.fim_TailleBlocDonneesError(taille_donnees)
+            raise self.fim_TailleBlocDonneesError(taille_donnees) 
         else : 
+            print(taille_donnees[0])
             return taille_donnees[0]
 
     def isoler_bloc(self,lignes, liste_lign_titre) : 

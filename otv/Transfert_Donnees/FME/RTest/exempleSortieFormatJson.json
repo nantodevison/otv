@@ -1,0 +1,211 @@
+﻿{
+   "rtcontrol" : {
+      "project" : "Geolocalisation PR et Abscisse",
+      "scenario" : "TestsUnitaires.xml",
+      "workdir" : "C:\\Users\\martin.schoreisz\\git\\otv\\otv\\Transfert_Donnees\\FME\\RTest\\GeolocPrAbsc",
+      "description" : "Géolocaliser un point sur un réseau routier à partir de référence en point de repère et abscisse",
+      "date" : "2023-08-25T09:09:29",
+      "duration" : "",
+      "author" : "",
+      "fme" : {
+         "version" : "FME(R) 2022.2.1.0"
+      },
+      "sc_fme" : {
+         "version" : ""
+      },
+      "os" : "Windows",
+      "logfile" : "../rtlog/sp_TestsUnitaires_1692947368607.log"
+   },
+   "rtestCollection" : [
+      {
+         "rtest" : {
+            "id" : "gpa.t1",
+            "label" : "Lineaire continu de la route entre PR et PR+1",
+            "processCollection" : [
+               {
+                  "process" : {
+                     "id" : "gpa.t1+p0",
+                     "description" : "Lancer GeolocPrAbsc.fmw avec l'id_comptage 17-D107-14+80 et les données de PR et de lineaire 2021",
+                     "workspace" : "C:\\Users\\martin.schoreisz\\Documents\\temp\\OTV\\testGeolocPrAbs\\GeolocPrAbsc.fmw",
+                     "expectedstatus" : "success",
+                     "logfile" : "../rtlog/GeolocPrAbsc_1692947369964.log",
+                     "number" : 0,
+                     "returnstatus" : 0,
+                     "parameters" : "['C:\\\\Program Files\\\\FME//fme.exe', 'C:\\\\Users\\\\martin.schoreisz\\\\Documents\\\\temp\\\\OTV\\\\testGeolocPrAbs\\\\GeolocPrAbsc.fmw', '--ExecuteRTest', 'NO', '--PurgeTableDestination', 'YES', '--Dept', '17', '--DeptLimitrophe', \"16','24\", '--RouteATester', 'D107', '--PR', '14', '--Absc', '80', '--Id_uniq', '0', '--Distance_proche_voisin_geolocPR', '5', '--ReferentielPR', 'ref.pr_ed21_p', '--ReferentielRoutier', 'lineaire.traf2021_bdt_na_ed21_l', '--TopoLineaireRoutier', 'lineaire.traf2021_bdt_na_ed21_l_vertices_pgr', '--SourceDataset_OGCGEOPACKAGE', '', '--Bdd_GeolocPr_table', 'geoloc_pr_abs', '--Bdd_GeolocPr_schema', 'rtest', '-LOG_FILENAME', 'C:\\\\Users\\\\martin.schoreisz\\\\git\\\\otv\\\\otv\\\\Transfert_Donnees\\\\FME\\\\RTest\\\\GeolocPrAbsc/rtlog/GeolocPrAbsc_1692947369964.log']",
+                     "issuccess" : "true",
+                     "peakmemory" : null,
+                     "currentprocessmemory" : null,
+                     "duration" : null,
+                     "errorfound" : "",
+                     "warningfound" : "|WARN  |NeighborFinder_5 (ProximityFactory): At least one argument to K_NEAREST must be non-empty. The \"# of Neighbors\" property was set to 0 for the current translation.\r\n|WARN  |NeighborFinder_8 (ProximityFactory): At least one argument to K_NEAREST must be non-empty. The \"# of Neighbors\" property was set to 0 for the current translation.\r\n|WARN  |StatisticsCalculator_2 (StatisticsCalculatorFactory): No Statistics to Calculate table statistics are selected. No statistics will be calculated\r\n|WARN  |StatisticsCalculator_5 (StatisticsCalculatorFactory): No Statistics to Calculate table statistics are selected. No statistics will be calculated\r\n",
+                     "fmeversion" : "FME 2022.2.1.0"
+                  }
+               }
+            ],
+            "checkCollection" : [
+               {
+                  "check" : {
+                     "source" : {
+                        "observedvalue" : "SRID=2154;POINT(387824.2320279859 6572380.196863495)",
+                        "dataset" : null,
+                        "type" : "database",
+                        "format" : "POSTGIS",
+                        "dbrequest" : "select ST_asEWKT(geom) as observedvalue from rtest.geoloc_pr_abs where id_uniq=0 ;",
+                        "connection" : "OTV_PostGis"
+                     },
+                     "condition" : {
+                        "comparator" : "eq",
+                        "expectedvalue" : "SRID=2154;POINT(387824.2320279859 6572380.196863495)"
+                     },
+                     "description" : "Localisation de la geometry",
+                     "number" : 0,
+                     "issuccess" : "true",
+                     "iserror" : "false",
+                     "message" : "",
+                     "id" : "gpa.t1+0"
+                  }
+               },
+               {
+                  "check" : {
+                     "source" : {
+                        "observedvalue" : "17-D107-14+80",
+                        "dataset" : null,
+                        "type" : "database",
+                        "format" : "POSTGIS",
+                        "dbrequest" : "select id_comptag as observedvalue from rtest.geoloc_pr_abs where id_uniq=0 ;",
+                        "connection" : "OTV_PostGis"
+                     },
+                     "condition" : {
+                        "comparator" : "eq",
+                        "expectedvalue" : "17-D107-14+80"
+                     },
+                     "description" : "Valeur de l'id_comptag",
+                     "number" : 1,
+                     "issuccess" : "true",
+                     "iserror" : "false",
+                     "message" : "",
+                     "id" : "gpa.t1+1"
+                  }
+               },
+               {
+                  "check" : {
+                     "source" : {
+                        "observedvalue" : "OK",
+                        "dataset" : null,
+                        "type" : "database",
+                        "format" : "POSTGIS",
+                        "dbrequest" : "select commentaire as observedvalue from rtest.geoloc_pr_abs where id_uniq=0 ;",
+                        "connection" : "OTV_PostGis"
+                     },
+                     "condition" : {
+                        "comparator" : "eq",
+                        "expectedvalue" : "OK"
+                     },
+                     "description" : "Valeur du commentaire",
+                     "number" : 2,
+                     "issuccess" : "true",
+                     "iserror" : "false",
+                     "message" : "",
+                     "id" : "gpa.t1+2"
+                  }
+               }
+            ]
+         }
+      },
+      {
+         "rtest" : {
+            "id" : "gpa.t2",
+            "label" : "Lineaire interrompu par rond point autre route entre PR et PR+1",
+            "processCollection" : [
+               {
+                  "process" : {
+                     "id" : "gpa.t2+p0",
+                     "description" : "Lancer GeolocPrAbsc.fmw avec l'id_comptage 17-D145-3+940 et les données de PR et de lineaire 2021",
+                     "workspace" : "C:\\Users\\martin.schoreisz\\Documents\\temp\\OTV\\testGeolocPrAbs\\GeolocPrAbsc.fmw",
+                     "expectedstatus" : "success",
+                     "logfile" : "../rtlog/GeolocPrAbsc_1692947373440.log",
+                     "number" : 0,
+                     "returnstatus" : 0,
+                     "parameters" : "['C:\\\\Program Files\\\\FME//fme.exe', 'C:\\\\Users\\\\martin.schoreisz\\\\Documents\\\\temp\\\\OTV\\\\testGeolocPrAbs\\\\GeolocPrAbsc.fmw', '--ExecuteRTest', 'NO', '--PurgeTableDestination', 'NO', '--Dept', '17', '--DeptLimitrophe', \"16','24\", '--RouteATester', 'D145', '--PR', '3', '--Absc', '940', '--Id_uniq', '1', '--Distance_proche_voisin_geolocPR', '5', '--ReferentielPR', 'ref.pr_ed21_p', '--ReferentielRoutier', 'lineaire.traf2021_bdt_na_ed21_l', '--TopoLineaireRoutier', 'lineaire.traf2021_bdt_na_ed21_l_vertices_pgr', '--SourceDataset_OGCGEOPACKAGE', '', '--Bdd_GeolocPr_table', 'geoloc_pr_abs', '--Bdd_GeolocPr_schema', 'rtest', '-LOG_FILENAME', 'C:\\\\Users\\\\martin.schoreisz\\\\git\\\\otv\\\\otv\\\\Transfert_Donnees\\\\FME\\\\RTest\\\\GeolocPrAbsc/rtlog/GeolocPrAbsc_1692947373440.log']",
+                     "issuccess" : "true",
+                     "peakmemory" : null,
+                     "currentprocessmemory" : null,
+                     "duration" : null,
+                     "errorfound" : "",
+                     "warningfound" : "|WARN  |NeighborFinder_5 (ProximityFactory): At least one argument to K_NEAREST must be non-empty. The \"# of Neighbors\" property was set to 0 for the current translation.\r\n|WARN  |NeighborFinder_8 (ProximityFactory): At least one argument to K_NEAREST must be non-empty. The \"# of Neighbors\" property was set to 0 for the current translation.\r\n|WARN  |StatisticsCalculator_2 (StatisticsCalculatorFactory): No Statistics to Calculate table statistics are selected. No statistics will be calculated\r\n|WARN  |StatisticsCalculator_5 (StatisticsCalculatorFactory): No Statistics to Calculate table statistics are selected. No statistics will be calculated\r\n|WARN  |No shortest path found from (382183.50534130225, 6524402.393636713) to (381667.1089773135, 6523573.587623213)\r\n|WARN  |NeighborFinder_8 (ProximityFactory): Close Candidate List Name is blank so Number of Neighbors to Find will be forced to 1 ('' was specified)\r\n",
+                     "fmeversion" : "FME 2022.2.1.0"
+                  }
+               }
+            ],
+            "checkCollection" : [
+               {
+                  "check" : {
+                     "source" : {
+                        "observedvalue" : "SRID=2154;POINT(381677.5652263577 6523583.015564721)",
+                        "dataset" : null,
+                        "type" : "database",
+                        "format" : "POSTGIS",
+                        "dbrequest" : "select ST_asEWKT(geom) as observedvalue from rtest.geoloc_pr_abs where id_uniq=1 ;",
+                        "connection" : "OTV_PostGis"
+                     },
+                     "condition" : {
+                        "comparator" : "eq",
+                        "expectedvalue" : "SRID=2154;POINT(381677.5652263577 6523583.015564721)"
+                     },
+                     "description" : "Localisation de la geometry",
+                     "number" : 0,
+                     "issuccess" : "true",
+                     "iserror" : "false",
+                     "message" : "",
+                     "id" : "gpa.t2+0"
+                  }
+               },
+               {
+                  "check" : {
+                     "source" : {
+                        "observedvalue" : "17-D145-3+940",
+                        "dataset" : null,
+                        "type" : "database",
+                        "format" : "POSTGIS",
+                        "dbrequest" : "select id_comptag as observedvalue from rtest.geoloc_pr_abs where id_uniq=1 ;",
+                        "connection" : "OTV_PostGis"
+                     },
+                     "condition" : {
+                        "comparator" : "eq",
+                        "expectedvalue" : "17-D145-3+940"
+                     },
+                     "description" : "Valeur de l'id_comptag",
+                     "number" : 1,
+                     "issuccess" : "true",
+                     "iserror" : "false",
+                     "message" : "",
+                     "id" : "gpa.t2+1"
+                  }
+               },
+               {
+                  "check" : {
+                     "source" : {
+                        "observedvalue" : "OK",
+                        "dataset" : null,
+                        "type" : "database",
+                        "format" : "POSTGIS",
+                        "dbrequest" : "select commentaire as observedvalue from rtest.geoloc_pr_abs where id_uniq=1 ;",
+                        "connection" : "OTV_PostGis"
+                     },
+                     "condition" : {
+                        "comparator" : "eq",
+                        "expectedvalue" : "OK"
+                     },
+                     "description" : "Valeur du commentaire",
+                     "number" : 2,
+                     "issuccess" : "true",
+                     "iserror" : "false",
+                     "message" : "",
+                     "id" : "gpa.t2+2"
+                  }
+               }
+            ]
+         }
+      }
+   ]
+}

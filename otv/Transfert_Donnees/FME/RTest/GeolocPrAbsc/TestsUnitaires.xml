@@ -1,0 +1,406 @@
+<?xml version="1.0" encoding="utf-8"?>
+<scenario xmlns="http://www.veremes.com/rtest" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.veremes.com/rtest http://schemas.veremes.net/rtest/2.0/rtest.xsd">
+	<project>Geolocalisation PR et Abscisse</project>
+	<description>Géolocaliser un point sur un réseau routier à partir de référence en point de repère et abscisse</description>
+	<rtestCollection>
+		<rtest id="gpa.t1" label="Lineaire continu de la route entre PR et PR+1">
+			<processCollection>
+				<process 
+                    label="Lancer GeolocPrAbsc.fmw avec l'id_comptage 17-D107-14+80 et les données de PR et de lineaire 2021"
+                    copylogto="C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\travail\IntegrationComptage\GeolocPrAbsc.log">
+					<workspace>C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\travail\IntegrationComptage\GeolocPrAbsc.fmw</workspace>
+                    <expectedstatus>success</expectedstatus>
+					<parameterCollection>
+						<parameter name="ExecuteRTest" value="NO" />
+                        <parameter name="PurgeTableDestination" value="YES" />
+						<parameter name="Dept" value="17"/>
+                        <parameter name="DeptLimitrophe" value="16','24" />
+                        <parameter name="RouteATester" value="D107" />
+                        <parameter name="PR" value="14" />
+                        <parameter name="Absc" value="80" />
+						<parameter name="Id_uniq" value="0"/>
+                        <parameter name="Distance_proche_voisin_geolocPR" value="5" />
+                        <parameter name="ReferentielPR" value="ref.pr_ed21_p" />
+                        <parameter name="ReferentielRoutier" value="lineaire.traf2021_bdt_na_ed21_l" />
+                        <parameter name="TopoLineaireRoutier" value="lineaire.traf2021_bdt_na_ed21_l_vertices_pgr" />
+                        <parameter name="SourceDataset_OGCGEOPACKAGE" value="" />
+                        <parameter name="Bdd_GeolocPr_table" value="geoloc_pr_abs" />
+                        <parameter name="Bdd_GeolocPr_schema" value="rtest" />
+					</parameterCollection>
+				</process>
+			</processCollection>
+			<checkCollection>
+				<check label="Localisation de la geometry">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+                            dbrequest="select ST_asEWKT(geom) as observedvalue from rtest.geoloc_pr_abs where id_uniq=0 ;"/>
+					<condition comparator="eq" expectedvalue="SRID=2154;POINT(387824.2320279859 6572380.196863495)"/>
+				</check>
+				<check label="Valeur de l'id_comptag">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+                            dbrequest="select id_comptag as observedvalue from rtest.geoloc_pr_abs where id_uniq=0 ;"/>
+					<condition comparator="eq" expectedvalue="17-D107-14+80"/>
+				</check>
+                <check label="Valeur du commentaire">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+                            dbrequest="select commentaire as observedvalue from rtest.geoloc_pr_abs where id_uniq=0 ;"/>
+					<condition comparator="eq" expectedvalue="OK"/>
+				</check>
+			</checkCollection>
+		</rtest>
+		<rtest id="gpa.t2" label="Lineaire interrompu par rond point autre route entre PR et PR+1">
+			<processCollection>
+				<process 
+                    label="Lancer GeolocPrAbsc.fmw avec l'id_comptage 17-D145-3+940 et les données de PR et de lineaire 2021"
+                    copylogto="C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\travail\IntegrationComptage\GeolocPrAbsc.log">
+					<workspace>C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\travail\IntegrationComptage\GeolocPrAbsc.fmw</workspace>
+                    <expectedstatus>success</expectedstatus>
+					<parameterCollection>
+						<parameter name="ExecuteRTest" value="NO" />
+                        <parameter name="PurgeTableDestination" value="NO" />
+						<parameter name="Dept" value="17"/>
+                        <parameter name="DeptLimitrophe" value="16','24" />
+                        <parameter name="RouteATester" value="D145" />
+                        <parameter name="PR" value="3" />
+                        <parameter name="Absc" value="940" />
+						<parameter name="Id_uniq" value="1"/>
+                        <parameter name="Distance_proche_voisin_geolocPR" value="5" />
+                        <parameter name="ReferentielPR" value="ref.pr_ed21_p" />
+                        <parameter name="ReferentielRoutier" value="lineaire.traf2021_bdt_na_ed21_l" />
+                        <parameter name="TopoLineaireRoutier" value="lineaire.traf2021_bdt_na_ed21_l_vertices_pgr" />
+                        <parameter name="SourceDataset_OGCGEOPACKAGE" value="" />
+                        <parameter name="Bdd_GeolocPr_table" value="geoloc_pr_abs" />
+                        <parameter name="Bdd_GeolocPr_schema" value="rtest" />
+					</parameterCollection>
+				</process>
+			</processCollection>
+			<checkCollection>
+				<check label="Localisation de la geometry">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+                            dbrequest="select ST_asEWKT(geom) as observedvalue from rtest.geoloc_pr_abs where id_uniq=1 ;"/>
+					<condition comparator="eq" expectedvalue="SRID=2154;POINT(381677.5652263577 6523583.015564721)"/>
+				</check>
+				<check label="Valeur de l'id_comptag">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+                            dbrequest="select id_comptag as observedvalue from rtest.geoloc_pr_abs where id_uniq=1 ;"/>
+					<condition comparator="eq" expectedvalue="17-D145-3+940"/>
+				</check>
+                <check label="Valeur du commentaire">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+                            dbrequest="select commentaire as observedvalue from rtest.geoloc_pr_abs where id_uniq=1 ;"/>
+					<condition comparator="eq" expectedvalue="OK"/>
+				</check>
+			</checkCollection>
+		</rtest>
+		<rtest id="gpa.t3" label="Lineaire interrompu par de nombreux 'trous' de longueur variables">
+			<processCollection>
+				<process 
+                    label="Lancer GeolocPrAbsc.fmw avec l'id_comptage 17-D145-41+940 et les données de PR et de lineaire 2021"
+                    copylogto="C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\travail\IntegrationComptage\GeolocPrAbsc.log">
+					<workspace>C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\travail\IntegrationComptage\GeolocPrAbsc.fmw</workspace>
+                    <expectedstatus>success</expectedstatus>
+					<parameterCollection>
+						<parameter name="ExecuteRTest" value="NO" />
+                        <parameter name="PurgeTableDestination" value="NO" />
+						<parameter name="Dept" value="17"/>
+                        <parameter name="DeptLimitrophe" value="16','24" />
+                        <parameter name="RouteATester" value="D145" />
+                        <parameter name="PR" value="41" />
+                        <parameter name="Absc" value="940" />
+						<parameter name="Id_uniq" value="2"/>
+                        <parameter name="Distance_proche_voisin_geolocPR" value="5" />
+                        <parameter name="ReferentielPR" value="ref.pr_ed21_p" />
+                        <parameter name="ReferentielRoutier" value="lineaire.traf2021_bdt_na_ed21_l" />
+                        <parameter name="TopoLineaireRoutier" value="lineaire.traf2021_bdt_na_ed21_l_vertices_pgr" />
+                        <parameter name="SourceDataset_OGCGEOPACKAGE" value="" />
+                        <parameter name="Bdd_GeolocPr_table" value="geoloc_pr_abs" />
+                        <parameter name="Bdd_GeolocPr_schema" value="rtest" />
+					</parameterCollection>
+				</process>
+			</processCollection>
+			<checkCollection>
+				<check label="Localisation de la geometry">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+                            dbrequest="select ST_asEWKT(geom) as observedvalue from rtest.geoloc_pr_abs where id_uniq=2 ;"/>
+					<condition comparator="eq" expectedvalue="SRID=2154;POINT(404524.00093936385 6494246.011841727)"/>
+				</check>
+				<check label="Valeur de l'id_comptag">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+                            dbrequest="select id_comptag as observedvalue from rtest.geoloc_pr_abs where id_uniq=2 ;"/>
+					<condition comparator="eq" expectedvalue="17-D145-41+940"/>
+				</check>
+                <check label="Valeur du commentaire">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+                            dbrequest="select commentaire as observedvalue from rtest.geoloc_pr_abs where id_uniq=2 ;"/>
+					<condition comparator="eq" expectedvalue="OK"/>
+				</check>
+			</checkCollection>
+		</rtest>	
+		<rtest id="gpa.t4" label="pas de PR+1, pas de 'trous' dans le linéaire après PR ">
+			<processCollection>
+				<process 
+                    label="Lancer GeolocPrAbsc.fmw avec l'id_comptage 17-D114-75+400 et les données de PR et de lineaire 2021"
+                    copylogto="C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\travail\IntegrationComptage\GeolocPrAbsc.log">
+					<workspace>C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\travail\IntegrationComptage\GeolocPrAbsc.fmw</workspace>
+                    <expectedstatus>success</expectedstatus>
+					<parameterCollection>
+						<parameter name="ExecuteRTest" value="NO" />
+                        <parameter name="PurgeTableDestination" value="NO" />
+						<parameter name="Dept" value="17"/>
+                        <parameter name="DeptLimitrophe" value="16','24" />
+                        <parameter name="RouteATester" value="D114" />
+                        <parameter name="PR" value="75" />
+                        <parameter name="Absc" value="400" />
+						<parameter name="Id_uniq" value="3"/>
+                        <parameter name="Distance_proche_voisin_geolocPR" value="5" />
+                        <parameter name="ReferentielPR" value="ref.pr_ed21_p" />
+                        <parameter name="ReferentielRoutier" value="lineaire.traf2021_bdt_na_ed21_l" />
+                        <parameter name="TopoLineaireRoutier" value="lineaire.traf2021_bdt_na_ed21_l_vertices_pgr" />
+                        <parameter name="SourceDataset_OGCGEOPACKAGE" value="" />
+                        <parameter name="Bdd_GeolocPr_table" value="geoloc_pr_abs" />
+                        <parameter name="Bdd_GeolocPr_schema" value="rtest" />
+					</parameterCollection>
+				</process>
+			</processCollection>
+			<checkCollection>
+				<check label="Localisation de la geometry">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+                            dbrequest="select ST_asEWKT(geom) as observedvalue from rtest.geoloc_pr_abs where id_uniq=3 ;"/>
+					<condition comparator="eq" expectedvalue="SRID=2154;POINT(418922.11665402685 6524508.740109208)"/>
+				</check>
+				<check label="Valeur de l'id_comptag">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+                            dbrequest="select id_comptag as observedvalue from rtest.geoloc_pr_abs where id_uniq=3 ;"/>
+					<condition comparator="eq" expectedvalue="17-D114-75+400"/>
+				</check>
+                <check label="Valeur du commentaire">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+                            dbrequest="select commentaire as observedvalue from rtest.geoloc_pr_abs where id_uniq=3 ;"/>
+					<condition comparator="eq" expectedvalue="OK"/>
+				</check>
+			</checkCollection>
+		</rtest>
+		<rtest id="gpa.t5" label="Besoin du département limitrophe">
+			<processCollection>
+				<process 
+                    label="Lancer GeolocPrAbsc.fmw avec l'id_comptage 17-D231-32+100 et les données de PR et de lineaire 2021"
+                    copylogto="C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\travail\IntegrationComptage\GeolocPrAbsc.log">
+					<workspace>C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\travail\IntegrationComptage\GeolocPrAbsc.fmw</workspace>
+                    <expectedstatus>success</expectedstatus>
+					<parameterCollection>
+						<parameter name="ExecuteRTest" value="NO" />
+                        <parameter name="PurgeTableDestination" value="NO" />
+						<parameter name="Dept" value="17"/>
+                        <parameter name="DeptLimitrophe" value="16','24" />
+                        <parameter name="RouteATester" value="D231" />
+                        <parameter name="PR" value="32" />
+                        <parameter name="Absc" value="100" />
+						<parameter name="Id_uniq" value="4"/>
+                        <parameter name="Distance_proche_voisin_geolocPR" value="5" />
+                        <parameter name="ReferentielPR" value="ref.pr_ed21_p" />
+                        <parameter name="ReferentielRoutier" value="lineaire.traf2021_bdt_na_ed21_l" />
+                        <parameter name="TopoLineaireRoutier" value="lineaire.traf2021_bdt_na_ed21_l_vertices_pgr" />
+                        <parameter name="SourceDataset_OGCGEOPACKAGE" value="" />
+                        <parameter name="Bdd_GeolocPr_table" value="geoloc_pr_abs" />
+                        <parameter name="Bdd_GeolocPr_schema" value="rtest" />
+					</parameterCollection>
+				</process>
+			</processCollection>
+			<checkCollection>
+				<check label="Localisation de la geometry">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+                            dbrequest="select ST_asEWKT(geom) as observedvalue from rtest.geoloc_pr_abs where id_uniq=4 ;"/>
+					<condition comparator="eq" expectedvalue="SRID=2154;POINT(448592.9369772733 6531516.421127598)"/>
+				</check>
+				<check label="Valeur de l'id_comptag">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+                            dbrequest="select id_comptag as observedvalue from rtest.geoloc_pr_abs where id_uniq=4 ;"/>
+					<condition comparator="eq" expectedvalue="17-D231-32+100"/>
+				</check>
+                <check label="Valeur du commentaire">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+                            dbrequest="select commentaire as observedvalue from rtest.geoloc_pr_abs where id_uniq=4 ;"/>
+					<condition comparator="eq" expectedvalue="OK"/>
+				</check>
+			</checkCollection>
+		</rtest>
+		<rtest id="gpa.t6" label="Linéaire interrompu, localisation avant trou">
+			<processCollection>
+				<process 
+					label="Lancer GeolocPrAbsc.fmw avec l'id_comptage 17-D131-52+440 et les données de PR et de lineaire 2021"
+					copylogto="C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\travail\IntegrationComptage\GeolocPrAbsc.log">
+					<workspace>C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\travail\IntegrationComptage\GeolocPrAbsc.fmw</workspace>
+					<expectedstatus>success</expectedstatus>
+					<parameterCollection>
+						<parameter name="ExecuteRTest" value="NO" />
+						<parameter name="PurgeTableDestination" value="NO" />
+						<parameter name="Dept" value="17"/>
+						<parameter name="DeptLimitrophe" value="16','24" />
+						<parameter name="RouteATester" value="D131" />
+						<parameter name="PR" value="52" />
+						<parameter name="Absc" value="440" />
+						<parameter name="Id_uniq" value="5"/>
+						<parameter name="Distance_proche_voisin_geolocPR" value="5" />
+						<parameter name="ReferentielPR" value="ref.pr_ed21_p" />
+						<parameter name="ReferentielRoutier" value="lineaire.traf2021_bdt_na_ed21_l" />
+						<parameter name="TopoLineaireRoutier" value="lineaire.traf2021_bdt_na_ed21_l_vertices_pgr" />
+						<parameter name="SourceDataset_OGCGEOPACKAGE" value="" />
+						<parameter name="Bdd_GeolocPr_table" value="geoloc_pr_abs" />
+						<parameter name="Bdd_GeolocPr_schema" value="rtest" />
+					</parameterCollection>
+				</process>
+			</processCollection>
+			<checkCollection>
+				<check label="Localisation de la geometry">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+							dbrequest="select ST_asEWKT(geom) as observedvalue from rtest.geoloc_pr_abs where id_uniq=5 ;"/>
+					<condition comparator="eq" expectedvalue="SRID=2154;POINT(436070.82801035745 6528118.052241181)"/>
+				</check>
+				<check label="Valeur de l'id_comptag">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+							dbrequest="select id_comptag as observedvalue from rtest.geoloc_pr_abs where id_uniq=5 ;"/>
+					<condition comparator="eq" expectedvalue="17-D131-52+440"/>
+				</check>
+				<check label="Valeur du commentaire">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+							dbrequest="select commentaire as observedvalue from rtest.geoloc_pr_abs where id_uniq=5 ;"/>
+					<condition comparator="eq" expectedvalue="OK"/>
+				</check>
+			</checkCollection>
+		</rtest>
+		<rtest id="gpa.t7" label="Linéaire interrompu, localisation après trou">
+			<processCollection>
+				<process 
+					label="Lancer GeolocPrAbsc.fmw avec l'id_comptage 17-D220-6+460 et les données de PR et de lineaire 2021"
+					copylogto="C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\travail\IntegrationComptage\GeolocPrAbsc.log">
+					<workspace>C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\travail\IntegrationComptage\GeolocPrAbsc.fmw</workspace>
+					<expectedstatus>success</expectedstatus>
+					<parameterCollection>
+						<parameter name="ExecuteRTest" value="NO" />
+						<parameter name="PurgeTableDestination" value="NO" />
+						<parameter name="Dept" value="17"/>
+						<parameter name="DeptLimitrophe" value="16','24" />
+						<parameter name="RouteATester" value="D220" />
+						<parameter name="PR" value="6" />
+						<parameter name="Absc" value="460" />
+						<parameter name="Id_uniq" value="6"/>
+						<parameter name="Distance_proche_voisin_geolocPR" value="6" />
+						<parameter name="ReferentielPR" value="ref.pr_ed21_p" />
+						<parameter name="ReferentielRoutier" value="lineaire.traf2021_bdt_na_ed21_l" />
+						<parameter name="TopoLineaireRoutier" value="lineaire.traf2021_bdt_na_ed21_l_vertices_pgr" />
+						<parameter name="SourceDataset_OGCGEOPACKAGE" value="" />
+						<parameter name="Bdd_GeolocPr_table" value="geoloc_pr_abs" />
+						<parameter name="Bdd_GeolocPr_schema" value="rtest" />
+					</parameterCollection>
+				</process>
+			</processCollection>
+			<checkCollection>
+				<check label="Localisation de la geometry">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+							dbrequest="select ST_asEWKT(geom) as observedvalue from rtest.geoloc_pr_abs where id_uniq=6 ;"/>
+					<condition comparator="eq" expectedvalue="SRID=2154;POINT(433854.7468908913 6549400.680425687)"/>
+				</check>
+				<check label="Valeur de l'id_comptag">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+							dbrequest="select id_comptag as observedvalue from rtest.geoloc_pr_abs where id_uniq=6 ;"/>
+					<condition comparator="eq" expectedvalue="17-D220-6+460"/>
+				</check>
+				<check label="Valeur du commentaire">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+							dbrequest="select commentaire as observedvalue from rtest.geoloc_pr_abs where id_uniq=6 ;"/>
+					<condition comparator="eq" expectedvalue="OK"/>
+				</check>
+			</checkCollection>
+		</rtest>
+		<rtest id="gpa.t8" label="Nom de route n'existe pas dans référentiel PR">
+			<processCollection>
+				<process 
+					label="Lancer GeolocPrAbsc.fmw avec l'id_comptage 47-D666B-0+80 et les données de PR et de lineaire 2021"
+					copylogto="C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\travail\IntegrationComptage\GeolocPrAbsc.log">
+					<workspace>C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\travail\IntegrationComptage\GeolocPrAbsc.fmw</workspace>
+					<expectedstatus>success</expectedstatus>
+					<parameterCollection>
+						<parameter name="ExecuteRTest" value="NO" />
+						<parameter name="PurgeTableDestination" value="NO" />
+						<parameter name="Dept" value="47"/>
+						<parameter name="DeptLimitrophe" value="33','40" />
+						<parameter name="RouteATester" value="D666B" />
+						<parameter name="PR" value="0" />
+						<parameter name="Absc" value="80" />
+						<parameter name="Id_uniq" value="7"/>
+						<parameter name="Distance_proche_voisin_geolocPR" value="5" />
+						<parameter name="ReferentielPR" value="ref.pr_ed21_p" />
+						<parameter name="ReferentielRoutier" value="lineaire.traf2021_bdt_na_ed21_l" />
+						<parameter name="TopoLineaireRoutier" value="lineaire.traf2021_bdt_na_ed21_l_vertices_pgr" />
+						<parameter name="SourceDataset_OGCGEOPACKAGE" value="" />
+						<parameter name="Bdd_GeolocPr_table" value="geoloc_pr_abs" />
+						<parameter name="Bdd_GeolocPr_schema" value="rtest" />
+					</parameterCollection>
+				</process>
+			</processCollection>
+			<checkCollection>
+				<check label="Localisation de la geometry">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+							dbrequest="select geom is null as observedvalue from rtest.geoloc_pr_abs where id_uniq=7 ;"/>
+					<condition comparator="eq" expectedvalue="t"/>
+				</check>
+				<check label="Valeur de l'id_comptag">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+							dbrequest="select id_comptag as observedvalue from rtest.geoloc_pr_abs where id_uniq=7 ;"/>
+					<condition comparator="eq" expectedvalue="47-D666B-0+80"/>
+				</check>
+				<check label="Valeur du commentaire">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+							dbrequest="select commentaire as observedvalue from rtest.geoloc_pr_abs where id_uniq=7 ;"/>
+					<condition comparator="eq" expectedvalue="KO route non présente dans le référentiel PR / KO Pas de PR / KO pas de fichier de géolocalisation"/>
+				</check>
+			</checkCollection>
+		</rtest>
+		<rtest id="gpa.t9" label="Pas de PR + 1 ; PR = 0 ; linéaire continu ">
+			<processCollection>
+				<process 
+					label="Lancer GeolocPrAbsc.fmw avec l'id_comptage 47-D666B1-0+80 et les données de PR et de lineaire 2021"
+					copylogto="C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\travail\IntegrationComptage\GeolocPrAbsc.log">
+					<workspace>C:\Users\martin.schoreisz\Box\Dossier_Perso\OTV\travail\IntegrationComptage\GeolocPrAbsc.fmw</workspace>
+					<expectedstatus>success</expectedstatus>
+					<parameterCollection>
+						<parameter name="ExecuteRTest" value="NO" />
+						<parameter name="PurgeTableDestination" value="NO" />
+						<parameter name="Dept" value="47"/>
+						<parameter name="DeptLimitrophe" value="33','40" />
+						<parameter name="RouteATester" value="D666B1" />
+						<parameter name="PR" value="0" />
+						<parameter name="Absc" value="80" />
+						<parameter name="Id_uniq" value="8"/>
+						<parameter name="Distance_proche_voisin_geolocPR" value="5" />
+						<parameter name="ReferentielPR" value="ref.pr_ed21_p" />
+						<parameter name="ReferentielRoutier" value="lineaire.traf2021_bdt_na_ed21_l" />
+						<parameter name="TopoLineaireRoutier" value="lineaire.traf2021_bdt_na_ed21_l_vertices_pgr" />
+						<parameter name="SourceDataset_OGCGEOPACKAGE" value="" />
+						<parameter name="Bdd_GeolocPr_table" value="geoloc_pr_abs" />
+						<parameter name="Bdd_GeolocPr_schema" value="rtest" />
+					</parameterCollection>
+				</process>
+			</processCollection>
+			<checkCollection>
+				<check label="Localisation de la geometry">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+							dbrequest="select ST_asEWKT(geom) as observedvalue from rtest.geoloc_pr_abs where id_uniq=8 ;"/>
+					<condition comparator="eq" expectedvalue="SRID=2154;POINT(488136.2200032476 6359727.425292867)"/>
+				</check>
+				<check label="Valeur de l'id_comptag">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+							dbrequest="select id_comptag as observedvalue from rtest.geoloc_pr_abs where id_uniq=8 ;"/>
+					<condition comparator="eq" expectedvalue="47-D666B1-0+80"/>
+				</check>
+				<check label="Valeur du commentaire">
+					<source type="database" format="POSTGIS" connection="OTV_PostGis" 
+							dbrequest="select commentaire as observedvalue from rtest.geoloc_pr_abs where id_uniq=8 ;"/>
+					<condition comparator="eq" expectedvalue="OK"/>
+				</check>
+			</checkCollection>
+		</rtest>
+
+
+		
+	</rtestCollection>
+</scenario>
